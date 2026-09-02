@@ -323,6 +323,10 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, update(socket, :sheet_amount, &(max(&1 + step, 0) |> :erlang.float()))}
   end
 
+  def handle_event("reset_amount", _params, socket) do
+    {:noreply, assign(socket, :sheet_amount, 0.0)}
+  end
+
   def handle_event("save_sheet", %{"entry" => params}, socket) do
     units = socket.assigns.unit_system
     child = socket.assigns.current_child
@@ -764,7 +768,7 @@ defmodule TryggWeb.DashboardLive do
               class="space-y-4"
             >
               <div>
-                <div class="text-3xl font-bold text-center tabular-nums">
+                <div id="bottle-amount" class="text-3xl font-bold text-center tabular-nums">
                   {trim(@amount)} <span class="text-base font-normal opacity-60">{@unit}</span>
                 </div>
                 <div class="flex gap-2 justify-center mt-2">
@@ -782,8 +786,8 @@ defmodule TryggWeb.DashboardLive do
                     type="button"
                     variant="ghost"
                     size="sm"
-                    phx-click="bump_amount"
-                    phx-value-by={neg_all(@amount)}
+                    id="bottle-reset"
+                    phx-click="reset_amount"
                   >
                     Reset
                   </.button>
@@ -1111,6 +1115,4 @@ defmodule TryggWeb.DashboardLive do
   defp trim(f) when is_float(f) do
     if f == Float.round(f), do: trunc(f), else: Float.round(f, 1)
   end
-
-  defp neg_all(amount), do: trunc(-amount)
 end

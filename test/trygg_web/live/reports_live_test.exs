@@ -57,6 +57,10 @@ defmodule TryggWeb.ReportsLiveTest do
 
     assert has_element?(lv, ~s(#download-pdf[href="/c/#{child.id}/reports.pdf?window=7"]))
     assert has_element?(lv, "#download-pdf[download]", "Download PDF report")
+    assert has_element?(lv, ~s(#download-pdf[phx-hook="DownloadPdf"][aria-busy="false"]))
+    assert has_element?(lv, "#download-pdf .loading-spinner")
+
+    assert render_hook(lv, "pdf_failed", %{}) =~ "build the PDF right now"
 
     lv |> element("#trend-period-30") |> render_click()
     assert has_element?(lv, ~s(#download-pdf[href="/c/#{child.id}/reports.pdf?window=30"]))

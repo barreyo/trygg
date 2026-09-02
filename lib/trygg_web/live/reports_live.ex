@@ -50,11 +50,16 @@ defmodule TryggWeb.ReportsLive do
         id="download-pdf"
         href={~p"/c/#{@current_child}/reports.pdf?#{[window: @window]}"}
         download
+        phx-hook="DownloadPdf"
+        aria-busy="false"
         variant="outline"
         size="sm"
-        class="w-full min-h-11 mt-3"
+        class="group w-full min-h-11 mt-3 aria-busy:pointer-events-none aria-busy:opacity-70"
       >
-        <.icon name="hero-arrow-down-tray" class="size-5" /> Download PDF report
+        <.icon name="hero-arrow-down-tray" class="size-5 group-aria-busy:hidden" />
+        <span class="loading loading-spinner loading-sm hidden group-aria-busy:inline-block"></span>
+        <span class="group-aria-busy:hidden">Download PDF report</span>
+        <span class="hidden group-aria-busy:inline">Preparing PDF…</span>
       </.button>
 
       <div
@@ -892,6 +897,11 @@ defmodule TryggWeb.ReportsLive do
 
   def handle_event("set_window", %{"window" => window}, socket) do
     {:noreply, push_patch(socket, to: report_path(socket, window: parse_window(window)))}
+  end
+
+  # Sent by the DownloadPdf hook when the fetch for the PDF fails.
+  def handle_event("pdf_failed", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Couldn't build the PDF right now — please try again.")}
   end
 
   def handle_event("chart_zoom", %{"dir" => dir}, socket) do

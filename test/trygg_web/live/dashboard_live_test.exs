@@ -523,6 +523,28 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert [%{data: %{"amount_ml" => 90.0}}] = Log.list_entries(scope, child)
     end
+
+    test "reset zeros a fractional ounce amount in the bottle sheet", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      # 74 ml displays as 2.5 oz. Reset used to trunc(-amount), leaving 0.5.
+      Trygg.LogFixtures.entry_fixture(scope, child, %{
+        :type => :feeding,
+        "data" => %{"bottle_contents" => "formula", "amount_ml" => 74}
+      })
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      lv |> element("button", "Log a bottle") |> render_click()
+
+      assert has_element?(lv, "#bottle-amount", ~r/\A\s*2\.5\s+oz/)
+
+      lv |> element("#bottle-reset") |> render_click()
+
+      assert has_element?(lv, "#bottle-amount", ~r/\A\s*0\s+oz/)
+      refute has_element?(lv, "#bottle-amount", ~r/0\.5/)
+    end
   end
 
   describe "realtime child rename" do
