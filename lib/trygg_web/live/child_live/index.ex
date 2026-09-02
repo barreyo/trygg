@@ -74,6 +74,16 @@ defmodule TryggWeb.ChildLive.Index do
           label="Time zone"
           options={timezone_options()}
         />
+        <.input
+          field={@form[:day_start]}
+          type="time"
+          label="Day starts"
+        />
+        <.input
+          field={@form[:night_start]}
+          type="time"
+          label="Night starts"
+        />
 
         <div class="flex gap-2 pt-2">
           <.button variant="primary" phx-disable-with="Saving…" class="flex-1">Save</.button>

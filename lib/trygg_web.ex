@@ -88,6 +88,7 @@ defmodule TryggWeb do
       # Core UI components
       import TryggWeb.CoreComponents
       import TryggWeb.LogComponents
+      import TryggWeb.ReportComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

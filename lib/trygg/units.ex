@@ -9,8 +9,8 @@ defmodule Trygg.Units do
     * `:weight` -> grams (`g`)
     * `:length` -> centimetres (`cm`)
 
-  Only `:volume` is exercised by the first version; `:weight` and `:length` are
-  provided for the upcoming growth-tracking work.
+  Metric *display* for weight is kilograms, so `to_display/3` / `from_display/3`
+  convert g ↔ kg. Volume and length already match their display labels.
   """
 
   @ml_per_oz 29.5735295625
@@ -40,6 +40,10 @@ defmodule Trygg.Units do
   """
   @spec to_display(number | nil, kind, system) :: float | nil
   def to_display(nil, _kind, _system), do: nil
+
+  def to_display(value, :weight, :metric) when is_number(value),
+    do: round_to(value / 1000, 3)
+
   def to_display(value, _kind, :metric) when is_number(value), do: round_to(value * 1.0, 1)
 
   def to_display(value, :volume, :imperial) when is_number(value),
@@ -57,6 +61,9 @@ defmodule Trygg.Units do
   """
   @spec from_display(number | nil, kind, system) :: float | nil
   def from_display(nil, _kind, _system), do: nil
+
+  def from_display(value, :weight, :metric) when is_number(value), do: value * 1000.0
+
   def from_display(value, _kind, :metric) when is_number(value), do: value * 1.0
 
   def from_display(value, :volume, :imperial) when is_number(value),

@@ -63,7 +63,7 @@ defmodule TryggWeb.TimelineLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
     lv |> element(~s([id$="#{entry.id}"])) |> render_click()
-    lv |> element("button", "Delete") |> render_click()
+    lv |> element("#edit-entry-delete") |> render_click()
 
     assert Log.list_entries(scope, child) == []
   end

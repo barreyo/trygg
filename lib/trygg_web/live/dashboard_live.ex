@@ -1,7 +1,7 @@
 defmodule TryggWeb.DashboardLive do
   use TryggWeb, :live_view
 
-  alias Trygg.{Families, Log}
+  alias Trygg.{Families, Log, Reports}
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
@@ -38,6 +38,8 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
       |> assign(:sheet_amount, 0.0)
+      |> assign(:editing, nil)
+      |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
       |> refresh()
 
@@ -49,8 +51,14 @@ defmodule TryggWeb.DashboardLive do
   @impl true
   def handle_info({:log, _action, _entry}, socket), do: {:noreply, refresh(socket)}
 
+  def handle_info({:growth, _action, _measurement}, socket),
+    do: {:noreply, refresh_summary(socket)}
+
   def handle_info({:child_updated, child}, socket) do
-    {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
+    {:noreply,
+     socket
+     |> assign(:current_child, %{child | role: socket.assigns.role})
+     |> refresh_summary()}
   end
 
   def handle_info({:child_deleted, _child_id}, socket) do
@@ -97,11 +105,20 @@ defmodule TryggWeb.DashboardLive do
       role ->
         child = %{child | role: role}
 
-        socket
-        |> assign(:role, role)
-        |> assign(:can_write, role in [:owner, :caregiver])
-        |> assign(:current_child, child)
-        |> assign(:current_scope, Scope.put_child(scope, child, role))
+        can_write = role in [:owner, :caregiver]
+
+        socket =
+          socket
+          |> assign(:role, role)
+          |> assign(:can_write, can_write)
+          |> assign(:current_child, child)
+          |> assign(:current_scope, Scope.put_child(scope, child, role))
+
+        if can_write do
+          socket
+        else
+          assign(socket, editing: nil, edit_form: nil)
+        end
     end
   end
 
@@ -264,6 +281,43 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, sheet: nil, sheet_form: nil)}
   end
 
+  def handle_event("edit", %{"id" => id}, socket) do
+    entry = Log.get_entry!(socket.assigns.current_scope, id)
+    params = entry_edit_params(entry, socket.assigns.current_child)
+
+    {:noreply,
+     socket
+     |> assign(sheet: nil, sheet_form: nil)
+     |> assign(editing: entry, edit_form: to_form(params, as: :entry))}
+  end
+
+  def handle_event("cancel_edit", _params, socket) do
+    {:noreply, assign(socket, editing: nil, edit_form: nil)}
+  end
+
+  def handle_event("save_edit", %{"entry" => params}, socket) do
+    case save_entry_edit(
+           socket.assigns.current_scope,
+           socket.assigns.editing,
+           socket.assigns.current_child,
+           params
+         ) do
+      {:ok, _entry} ->
+        {:noreply, socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Updated.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :edit_form, to_form(changeset, as: :entry))}
+
+      {:error, :invalid_time} ->
+        {:noreply, put_flash(socket, :error, "That date and time didn't look right.")}
+    end
+  end
+
+  def handle_event("delete_entry", _params, socket) do
+    {:ok, _} = Log.delete_entry(socket.assigns.current_scope, socket.assigns.editing)
+    {:noreply, socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Deleted.")}
+  end
+
   def handle_event("bump_amount", %{"by" => by}, socket) do
     step = String.to_integer(by)
     {:noreply, update(socket, :sheet_amount, &(max(&1 + step, 0) |> :erlang.float()))}
@@ -408,13 +462,16 @@ defmodule TryggWeb.DashboardLive do
 
   defp refresh(socket), do: socket |> refresh_summary() |> refresh_entries()
 
-  # Just the at-a-glance numbers (counts, "slept today", "Xm ago"). Cheap
-  # enough to recompute on every minute tick so time-derived figures advance
-  # without waiting for the next logged event.
+  # The at-a-glance numbers (counts, "slept today", "Xm ago") plus the outlook
+  # (next nap / next feed / alerts). Recomputed on every minute tick so
+  # time-derived figures advance without waiting for the next logged event.
   defp refresh_summary(socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
-    assign(socket, :summary, Log.summary(scope, child))
+
+    socket
+    |> assign(:summary, Log.summary(scope, child))
+    |> assign(:outlook, Reports.outlook(scope, child))
   end
 
   defp refresh_entries(socket) do
@@ -509,27 +566,46 @@ defmodule TryggWeb.DashboardLive do
 
       <%!-- At a glance --%>
       <section class="rounded-box border border-base-300 bg-base-200/40 p-2 space-y-2">
-        <div class="grid grid-cols-3 gap-2">
-          <.since_card
-            icon="hero-beaker"
-            label="Last feed"
-            value={relative_time(feed_time(@summary.last_feeding))}
-            sub={feed_sub(@summary.last_feeding, @unit_system)}
-          />
-          <.since_card
-            emoji={last_diaper_emoji(@summary.last_diaper)}
-            label="Last diaper"
-            value={relative_time(time_of(@summary.last_diaper))}
-            sub={diaper_sub(@summary.last_diaper)}
-          />
-          <.since_card
-            icon="hero-moon"
-            label="Sleep"
-            tone={if sleeping?(@summary), do: "warning", else: "base"}
-            value={sleep_value(@summary)}
-            sub={sleep_sub(@summary)}
-          />
+        <div id="glance-cards" class="grid grid-cols-3 gap-2">
+          <div id="glance-feed">
+            <.since_card
+              icon="hero-beaker"
+              label="Last feed"
+              tone={feed_tone(@outlook)}
+              value={relative_time(feed_time(@summary.last_feeding))}
+              sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+              status={feed_status(@summary.last_feeding, @outlook)}
+            />
+          </div>
+          <div id="glance-diaper">
+            <.since_card
+              emoji={last_diaper_emoji(@summary.last_diaper)}
+              label="Last diaper"
+              tone={diaper_tone(@outlook)}
+              value={relative_time(time_of(@summary.last_diaper))}
+              sub={diaper_sub(@summary.last_diaper)}
+              status={diaper_status(@outlook)}
+            />
+          </div>
+          <div id="glance-sleep">
+            <.since_card
+              icon={sleep_icon(@summary)}
+              label={sleep_label(@summary)}
+              tone={sleep_tone(@summary, @outlook)}
+              value={sleep_value(@summary)}
+              sub={sleep_sub(@summary, @outlook, @current_child)}
+              status={sleep_status(@summary, @outlook)}
+            />
+          </div>
         </div>
+
+        <p
+          :if={next_nap(@summary, @outlook)}
+          id="glance-next-nap"
+          class="text-xs text-center opacity-70 tabular-nums text-balance px-1"
+        >
+          {next_nap(@summary, @outlook)}
+        </p>
 
         <div class="grid grid-cols-3 gap-2 text-center text-sm">
           <div class="rounded-box bg-base-100 border border-base-300 py-2">
@@ -546,6 +622,19 @@ defmodule TryggWeb.DashboardLive do
           </div>
         </div>
       </section>
+
+      <div :if={@outlook.alerts != []} class="mt-4">
+        <.alerts_list
+          id="home-alerts"
+          alerts={@outlook.alerts}
+          links={
+            %{
+              vitals: ~p"/c/#{@current_child}/vitals",
+              reports: ~p"/c/#{@current_child}/reports"
+            }
+          }
+        />
+      </div>
 
       <%!-- Log something --%>
       <div :if={@can_write} class="mt-6 space-y-4">
@@ -616,6 +705,7 @@ defmodule TryggWeb.DashboardLive do
           entry={entry}
           unit_system={@unit_system}
           tz={@current_child.timezone}
+          on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
         />
       </div>
 
@@ -626,6 +716,8 @@ defmodule TryggWeb.DashboardLive do
         amount={@sheet_amount}
         unit_system={@unit_system}
       />
+
+      <.edit_modal :if={@editing} entry={@editing} form={@edit_form} />
     </Layouts.app>
     """
   end
@@ -869,24 +961,149 @@ defmodule TryggWeb.DashboardLive do
   defp time_of(nil), do: nil
   defp time_of(%Entry{started_at: at}), do: at
 
-  defp feed_sub(nil, _units), do: "no feeds yet"
-  defp feed_sub(%Entry{} = e, units), do: entry_title(e, units)
+  # Feed card. The neutral `sub` says what comes next; the tone-coloured
+  # `status` only appears when something needs attention (a cluster in
+  # progress, or a feed that is due / overdue).
+  @due_soon_seconds 15 * 60
+  @overdue_seconds -30 * 60
+
+  defp feed_sub(nil, _outlook, _units), do: "no feeds yet"
+
+  defp feed_sub(%Entry{} = e, outlook, units) do
+    cond do
+      match?(%{active?: true}, outlook.cluster) ->
+        "#{outlook.cluster.count} feeds in 2h"
+
+      next = outlook.next_feed ->
+        if next.in_seconds >= @due_soon_seconds,
+          do: "Next ≈ #{next.label} · in #{format_duration(next.in_seconds)}",
+          else: "Next ≈ #{next.label}"
+
+      true ->
+        entry_title(e, units)
+    end
+  end
+
+  defp feed_status(nil, _outlook), do: nil
+
+  defp feed_status(%Entry{}, outlook) do
+    cond do
+      match?(%{active?: true}, outlook.cluster) -> "cluster feeding?"
+      next = outlook.next_feed -> due_status(next.in_seconds)
+      true -> nil
+    end
+  end
+
+  defp due_status(s) when s <= @overdue_seconds, do: "#{format_duration(-s)} overdue"
+  defp due_status(s) when s < @due_soon_seconds, do: "due about now"
+  defp due_status(_), do: nil
+
+  defp feed_tone(%{next_feed: %{in_seconds: s}}) when is_integer(s) and s <= @overdue_seconds,
+    do: "warning"
+
+  defp feed_tone(_), do: "base"
+
+  defp due_label(seconds) when seconds < -60, do: "#{format_duration(-seconds)} overdue"
+  defp due_label(seconds) when seconds < 60, do: "about now"
+  defp due_label(seconds), do: "in #{format_duration(seconds)}"
 
   defp diaper_sub(nil), do: "none yet"
   defp diaper_sub(%Entry{data: %{"kind" => k}}), do: String.capitalize(k)
   defp diaper_sub(_), do: nil
 
-  defp sleeping?(%{running: running}), do: Enum.any?(running, &(&1.type == :sleep))
-
-  defp sleep_value(%{running: running} = summary) do
-    case Enum.find(running, &(&1.type == :sleep)) do
-      %Entry{} = e -> format_duration(Entry.duration_seconds(e))
-      nil -> relative_time(time_of(summary.last_sleep))
+  defp diaper_status(%{diapers: %{flags: flags} = diapers}) do
+    cond do
+      :no_wet_6h in flags -> "no wet diaper in #{div(diapers.dry_seconds || 0, 3600)}h"
+      :low_wet_pace in flags or :low_wet_day in flags -> "fewer wet diapers than usual"
+      true -> nil
     end
   end
 
-  defp sleep_sub(summary) do
-    if sleeping?(summary), do: "asleep now", else: "since they woke up"
+  defp diaper_status(_), do: nil
+
+  defp diaper_tone(%{diapers: %{flags: flags}}) when flags != [], do: "warning"
+  defp diaper_tone(_), do: "base"
+
+  # Sleep card. The label carries the state ("Asleep" / "Awake") so the value
+  # can be a plain duration instead of an ambiguous "1h 41m ago".
+  defp sleeping?(%{running: running}), do: Enum.any?(running, &(&1.type == :sleep))
+
+  defp running_sleep_entry(%{running: running}), do: Enum.find(running, &(&1.type == :sleep))
+
+  defp woke_at(%{last_sleep: %Entry{ended_at: %DateTime{} = at}}), do: at
+  defp woke_at(%{last_sleep: %Entry{started_at: at}}), do: at
+  defp woke_at(_), do: nil
+
+  defp sleep_icon(summary), do: if(sleeping?(summary), do: "hero-moon", else: "hero-sun")
+
+  defp sleep_label(summary) do
+    cond do
+      sleeping?(summary) -> "Asleep"
+      woke_at(summary) -> "Awake"
+      true -> "Sleep"
+    end
+  end
+
+  defp sleep_value(summary) do
+    case {running_sleep_entry(summary), woke_at(summary)} do
+      {%Entry{} = e, _} -> format_duration(Entry.duration_seconds(e))
+      {nil, %DateTime{} = woke} -> format_duration(DateTime.diff(now(), woke, :second))
+      _ -> "—"
+    end
+  end
+
+  defp sleep_sub(summary, outlook, child) do
+    cond do
+      e = running_sleep_entry(summary) ->
+        "since #{Child.local_clock(child, e.started_at)}"
+
+      pressure = wake_pressure(outlook) ->
+        "usually up #{format_duration(pressure.typical_seconds)}" <>
+          if(pressure.source == :age_prior, do: " (for age)", else: "")
+
+      woke = woke_at(summary) ->
+        "woke at #{Child.local_clock(child, woke)}"
+
+      true ->
+        "no sleep logged yet"
+    end
+  end
+
+  defp sleep_status(summary, outlook) do
+    if sleeping?(summary) do
+      nil
+    else
+      case wake_pressure(outlook) do
+        %{state: :past} -> "past the usual nap window"
+        %{state: :approaching} -> "nap window coming up"
+        _ -> nil
+      end
+    end
+  end
+
+  defp sleep_tone(summary, outlook) do
+    cond do
+      sleeping?(summary) -> "success"
+      match?(%{state: :past}, wake_pressure(outlook)) -> "warning"
+      true -> "base"
+    end
+  end
+
+  defp wake_pressure(%{prediction: %{state: :awake, wake_pressure: %{state: state} = p}})
+       when not is_nil(state),
+       do: p
+
+  defp wake_pressure(_), do: nil
+
+  defp next_nap(summary, outlook) do
+    with false <- sleeping?(summary),
+         %{state: :awake, next_nap: %{} = nap} <- outlook.prediction do
+      range = if nap.range, do: " (#{nap.range.label})", else: ""
+      source = if nap.source == :age_prior, do: " · typical for age", else: ""
+      "Next nap ≈ #{nap.label}#{range} · #{due_label(nap.in_seconds)}#{source}"
+    else
+      _ -> nil
+    end
   end
 
   defp trim(f) when is_float(f) do

@@ -3,9 +3,7 @@ defmodule TryggWeb.TimelineLive do
 
   alias Trygg.Accounts.Scope
   alias Trygg.Families
-  alias Trygg.Families.Child
   alias Trygg.Log
-  alias Trygg.Log.Entry
 
   @limit 200
   @filters [nil, :feeding, :diaper, :sleep]
@@ -128,7 +126,7 @@ defmodule TryggWeb.TimelineLive do
 
   def handle_event("edit", %{"id" => id}, socket) do
     entry = Log.get_entry!(socket.assigns.current_scope, id)
-    params = edit_params(entry, socket.assigns.current_child)
+    params = entry_edit_params(entry, socket.assigns.current_child)
     {:noreply, assign(socket, editing: entry, edit_form: to_form(params, as: :entry))}
   end
 
@@ -137,45 +135,24 @@ defmodule TryggWeb.TimelineLive do
   end
 
   def handle_event("save_edit", %{"entry" => params}, socket) do
-    entry = socket.assigns.editing
-    child = socket.assigns.current_child
+    case save_entry_edit(
+           socket.assigns.current_scope,
+           socket.assigns.editing,
+           socket.assigns.current_child,
+           params
+         ) do
+      {:ok, _entry} ->
+        {:noreply, socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Updated.")}
 
-    case local_to_utc(child, params["started_at"]) do
-      {:ok, started_at} ->
-        # feeds and diapers are instantaneous: keep ended_at pinned to started_at
-        ended_at =
-          if entry.type == :sleep do
-            case local_to_utc(child, params["ended_at"]) do
-              {:ok, dt} -> dt
-              _ -> nil
-            end
-          else
-            started_at
-          end
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :edit_form, to_form(changeset, as: :entry))}
 
-        attrs = %{
-          "type" => to_string(entry.type),
-          "started_at" => started_at,
-          "ended_at" => ended_at,
-          "note" => params["note"],
-          "data" => merge_amount(entry, params["amount"])
-        }
-
-        case Log.update_entry(socket.assigns.current_scope, entry, attrs) do
-          {:ok, _entry} ->
-            {:noreply,
-             socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Updated.")}
-
-          {:error, changeset} ->
-            {:noreply, assign(socket, :edit_form, to_form(changeset, as: :entry))}
-        end
-
-      :error ->
+      {:error, :invalid_time} ->
         {:noreply, put_flash(socket, :error, "That date and time didn't look right.")}
     end
   end
 
-  def handle_event("delete", _params, socket) do
+  def handle_event("delete_entry", _params, socket) do
     {:ok, _} = Log.delete_entry(socket.assigns.current_scope, socket.assigns.editing)
     {:noreply, socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Deleted.")}
   end
@@ -194,106 +171,9 @@ defmodule TryggWeb.TimelineLive do
     |> stream(:entries, entries, reset: true)
   end
 
-  defp edit_params(%Entry{} = e, %Child{} = child) do
-    %{
-      "started_at" => to_local_input(child, e.started_at),
-      "ended_at" => to_local_input(child, e.ended_at),
-      "note" => e.note,
-      "amount" => amount_display(e)
-    }
-  end
-
-  defp amount_display(%Entry{data: %{"amount_ml" => ml}}) when is_number(ml), do: ml
-  defp amount_display(_), do: nil
-
-  defp merge_amount(%Entry{data: data} = e, raw) do
-    case {has_amount?(e), parse_number(raw)} do
-      {true, n} when is_number(n) -> Map.put(data || %{}, "amount_ml", n)
-      _ -> data || %{}
-    end
-  end
-
-  defp has_amount?(%Entry{type: :feeding}), do: true
-  defp has_amount?(_), do: false
-
-  defp to_local_input(_child, nil), do: nil
-  defp to_local_input(%Child{} = child, %DateTime{} = dt), do: Child.to_local_input(child, dt)
-
-  # "" / nil -> {:ok, nil}; a value -> {:ok, utc_dt} or :error
-  defp local_to_utc(_child, blank) when blank in [nil, ""], do: {:ok, nil}
-  defp local_to_utc(%Child{} = child, value), do: Child.from_local_input(child, value)
-
-  defp parse_number(nil), do: nil
-  defp parse_number(""), do: nil
-
-  defp parse_number(s) when is_binary(s) do
-    case Float.parse(s) do
-      {n, _} -> n
-      :error -> nil
-    end
-  end
-
-  defp parse_number(n) when is_number(n), do: n
-
   defp filters, do: @filters
   defp filter_label(nil), do: "All"
   defp filter_label(:feeding), do: "Feeds"
   defp filter_label(:diaper), do: "Diapers"
   defp filter_label(:sleep), do: "Sleep"
-
-  defp time_label(%Entry{type: :sleep}), do: "Started"
-  defp time_label(_), do: "Time"
-
-  ## Edit modal ----------------------------------------------------------
-
-  attr :entry, Entry, required: true
-  attr :form, :any, required: true
-
-  defp edit_modal(assigns) do
-    ~H"""
-    <div
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      phx-window-keydown="cancel_edit"
-      phx-key="escape"
-    >
-      <div class="absolute inset-0 bg-black/60" phx-click="cancel_edit"></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
-        <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
-
-        <.form for={@form} id="edit-entry-form" phx-submit="save_edit" class="space-y-3">
-          <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
-          <.input
-            :if={@entry.type == :sleep}
-            field={@form[:ended_at]}
-            type="datetime-local"
-            label="Ended"
-          />
-          <.input
-            :if={has_amount?(@entry)}
-            field={@form[:amount]}
-            type="number"
-            step="any"
-            label="Amount (ml)"
-          />
-          <.input field={@form[:note]} type="text" label="Note" />
-
-          <div class="flex gap-2 pt-1">
-            <.button type="submit" variant="primary" class="flex-1">Save</.button>
-            <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
-          </div>
-          <.button
-            type="button"
-            variant="outline"
-            size="sm"
-            phx-click="delete"
-            data-confirm="Delete this entry?"
-            class="btn-error w-full mt-2"
-          >
-            Delete
-          </.button>
-        </.form>
-      </div>
-    </div>
-    """
-  end
 end

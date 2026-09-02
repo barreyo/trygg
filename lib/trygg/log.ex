@@ -46,6 +46,16 @@ defmodule Trygg.Log do
     list_entries(scope, child, limit: limit)
   end
 
+  @doc "The earliest `started_at` on the child's log, or `nil` when it's empty."
+  def oldest_started_at(%Scope{} = scope, %Child{} = child) do
+    Families.authorize!(scope, child, :viewer)
+
+    Entry
+    |> where(child_id: ^child.id)
+    |> select([e], min(e.started_at))
+    |> Repo.one()
+  end
+
   @doc "Fetches one entry, authorizing the caller as a viewer of its child."
   def get_entry!(%Scope{} = scope, id) do
     entry = Entry |> Repo.get!(id) |> Repo.preload(:logged_by)

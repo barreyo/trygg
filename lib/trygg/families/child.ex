@@ -13,6 +13,8 @@ defmodule Trygg.Families.Child do
     field :birth_time, :time
     field :sex, Ecto.Enum, values: @sexes, default: :unspecified
     field :timezone, :string, default: @default_timezone
+    field :day_start, :time, default: ~T[08:00:00]
+    field :night_start, :time, default: ~T[20:00:00]
 
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
@@ -26,12 +28,22 @@ defmodule Trygg.Families.Child do
   @doc false
   def changeset(child, attrs) do
     child
-    |> cast(attrs, [:name, :birth_date, :birth_time, :sex, :timezone])
+    |> cast(attrs, [:name, :birth_date, :birth_time, :sex, :timezone, :day_start, :night_start])
     |> update_change(:name, &String.trim/1)
-    |> validate_required([:name, :timezone])
+    |> validate_required([:name, :timezone, :day_start, :night_start])
     |> validate_length(:name, min: 1, max: 80)
     |> validate_timezone()
     |> validate_birth_date()
+    |> truncate_time(:day_start)
+    |> truncate_time(:night_start)
+    |> validate_day_night()
+  end
+
+  defp truncate_time(changeset, field) do
+    case get_change(changeset, field) do
+      %Time{} = time -> put_change(changeset, field, Time.truncate(time, :second))
+      _ -> changeset
+    end
   end
 
   defp validate_timezone(changeset) do
@@ -45,6 +57,22 @@ defmodule Trygg.Families.Child do
         else
           add_error(changeset, :timezone, "isn't a known time zone")
         end
+    end
+  end
+
+  defp validate_day_night(changeset) do
+    day = get_field(changeset, :day_start)
+    night = get_field(changeset, :night_start)
+
+    cond do
+      is_nil(day) or is_nil(night) ->
+        changeset
+
+      Time.compare(Time.truncate(day, :second), Time.truncate(night, :second)) == :eq ->
+        add_error(changeset, :night_start, "must be different from when day starts")
+
+      true ->
+        changeset
     end
   end
 
@@ -119,6 +147,48 @@ defmodule Trygg.Families.Child do
     {local_midnight(date, tz), local_midnight(Date.add(date, 1), tz)}
   end
 
+  @doc """
+  UTC datetime of `time` on the child's local `date`. DST-aware: spring-forward
+  gaps snap to the moment after, fall-back duplicates pick the earlier instant.
+  """
+  def at_local(%__MODULE__{timezone: tz}, %Date{} = date, %Time{} = time) do
+    naive = NaiveDateTime.new!(date, Time.truncate(time, :second))
+    {:ok, dt} = naive_in_zone(naive, tz)
+    dt |> DateTime.shift_zone!("Etc/UTC") |> DateTime.truncate(:second)
+  end
+
+  @doc "UTC datetime of the child's day-start clock on local `date`."
+  def day_start_at(%__MODULE__{} = child, date), do: at_local(child, date, child.day_start)
+
+  @doc "UTC datetime of the child's night-start clock on local `date`."
+  def night_start_at(%__MODULE__{} = child, date), do: at_local(child, date, child.night_start)
+
+  @doc """
+  The overnight window that *starts* on local `date`: `{night_start on date,
+  day_start on date + 1}`, both UTC.
+  """
+  def night_bounds(%__MODULE__{} = child, date \\ nil) do
+    date = date || local_today(child)
+    {night_start_at(child, date), day_start_at(child, Date.add(date, 1))}
+  end
+
+  @doc "Whether `dt` falls in the child's daytime (`day_start` until `night_start`)."
+  def daytime?(%__MODULE__{} = child, %DateTime{} = dt) do
+    local = DateTime.shift_zone!(dt, child.timezone)
+    t = local |> DateTime.to_time() |> Time.truncate(:second)
+    day = Time.truncate(child.day_start, :second)
+    night = Time.truncate(child.night_start, :second)
+
+    case Time.compare(day, night) do
+      :lt -> Time.compare(t, day) != :lt and Time.compare(t, night) == :lt
+      :gt -> Time.compare(t, day) != :lt or Time.compare(t, night) == :lt
+      :eq -> false
+    end
+  end
+
+  @doc ~S'Formats a `Time` as `"HH:MM"`.'
+  def format_clock(%Time{} = time), do: Calendar.strftime(Time.truncate(time, :second), "%H:%M")
+
   @doc "`HH:MM` for a UTC datetime, in the child's local time."
   def local_clock(%__MODULE__{timezone: tz}, %DateTime{} = dt) do
     dt |> DateTime.shift_zone!(tz) |> Calendar.strftime("%H:%M")
@@ -168,4 +238,6 @@ defmodule Trygg.Families.Child do
 
   def sexes, do: @sexes
   def default_timezone, do: @default_timezone
+  def default_day_start, do: ~T[08:00:00]
+  def default_night_start, do: ~T[20:00:00]
 end

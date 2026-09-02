@@ -394,6 +394,37 @@ defmodule TryggWeb.DashboardLiveTest do
       assert [%{type: :sleep, ended_at: nil}] = Log.running_timers(scope, child)
     end
 
+    test "tapping a recent entry opens it for editing", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+
+      assert has_element?(lv, "#edit-entry-form")
+
+      lv
+      |> form("#edit-entry-form", entry: %{note: "leaked"})
+      |> render_submit()
+
+      assert Log.get_entry!(scope, entry.id).note == "leaked"
+      refute has_element?(lv, "#edit-entry-form")
+    end
+
+    test "deleting from recent removes the entry", %{conn: conn, scope: scope, child: child} do
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+      lv |> element("#edit-entry-delete") |> render_click()
+
+      assert Log.list_entries(scope, child) == []
+      refute has_element?(lv, "#edit-entry-form")
+    end
+
     test "an entry logged by another caregiver appears live", %{conn: conn, child: child} do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
@@ -523,6 +554,101 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, _} = Families.delete_child(owner_scope, child)
 
       assert_redirect(lv, ~p"/")
+    end
+  end
+
+  describe "outlook" do
+    import Trygg.LogFixtures
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      child = child_fixture(scope, %{timezone: "Etc/UTC"})
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    test "a quiet log shows plain glance cards and no alerts", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#glance-feed", "no feeds yet")
+      assert has_element?(lv, "#glance-diaper")
+      assert has_element?(lv, "#glance-sleep")
+      refute has_element?(lv, "#home-alerts")
+      refute has_element?(lv, "#glance-next-nap")
+    end
+
+    test "regular bottles produce a next-feed estimate on the feed card", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#glance-feed", "Next ≈")
+      refute has_element?(lv, "#glance-feed", "overdue")
+    end
+
+    test "a feed well past its usual time shows an overdue status", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 5)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#glance-feed", "Next ≈")
+      assert has_element?(lv, "#glance-feed", "overdue")
+    end
+
+    test "six dry hours with recent activity raises a hydration alert", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      entry_fixture(scope, child, %{
+        :type => :diaper,
+        "started_at" => DateTime.add(now, -7 * 3600, :second)
+      })
+
+      entry_fixture(scope, child, %{
+        :type => :feeding,
+        "started_at" => DateTime.add(now, -30 * 60, :second)
+      })
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#home-alerts")
+      assert has_element?(lv, "#home-alerts-no-wet-diaper", "No wet diaper")
+      assert has_element?(lv, "#glance-diaper", "no wet diaper")
+      assert has_element?(lv, "#home-alerts", "Not medical advice")
+    end
+
+    test "a known age gives a next-nap estimate from the age prior", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      # Pin the child's local clock to around midday so "woke 20 minutes ago"
+      # is unambiguously this morning's wake-up whatever the wall clock says.
+      {:ok, child} =
+        Families.update_child(scope, child, %{
+          birth_date: Date.add(Date.utc_today(), -60),
+          timezone: midday_timezone()
+        })
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      entry_fixture(scope, child, %{
+        :type => :sleep,
+        "started_at" => DateTime.add(now, -9 * 3600, :second),
+        "ended_at" => DateTime.add(now, -20 * 60, :second)
+      })
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#glance-next-nap", "typical for age")
+      assert has_element?(lv, "#glance-sleep", "for age")
     end
   end
 end

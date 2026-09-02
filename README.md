@@ -2,8 +2,8 @@
 
 A low-friction, mobile-first newborn tracker. The point of the app is **shared
 state**: either caregiver glances at their phone and instantly sees what the
-other just logged — bottle feeds, diapers, sleep — with one-tap presets and a
-start/stop sleep timer.
+other just logged — bottle feeds, diapers, sleep, height and weight — with
+one-tap presets and a start/stop sleep timer.
 
 Built with Phoenix LiveView. Realtime sync is Phoenix PubSub over the LiveView
 socket (topic per child). Installable as a PWA with a true-black dark mode for
@@ -45,14 +45,40 @@ The wiring lives in `config/runtime.exs` (adapter + key) and `config/prod.exs`
 | --- | --- | --- |
 | Children, caregivers, invites | `Trygg.Families` | scope-first; roles `owner > caregiver > viewer` |
 | The shared event log + timers + broadcasts | `Trygg.Log` | `subscribe/1`, `summary/2`, `start_timer/4`, `stop_timer/3` |
+| Sleep calendars, trends, predictions, and alerts | `Trygg.Reports` | Today / 7-day / Trends on the Reports tab; `Reports.{Insights,Feeding,Diapers,Shifts,Alerts}` are pure functions over `Reports.Day`; `Reports.outlook/3` feeds the Home cards |
+| Height and weight over time | `Trygg.Growth` | stored as grams / centimetres; Vitals tab plots CDC 2000 infant (birth–36 months) 5th–95th percentiles when the child's sex is girl or boy; `Growth.Velocity` turns pairs of weights into g/week, percentile movement and newborn loss/regain |
 | Unit display (metric ⇄ imperial, stored metric) | `Trygg.Units` | per-user preference on `users.unit_system` |
 | Child resolution / PubSub subscribe for LiveViews | `TryggWeb.ChildScope` | `on_mount` hook in the authenticated `live_session` |
-| Screens | `TryggWeb.{Dashboard,Timeline,Caregiver,Invite,Preferences,ChildLive.Index}Live` | |
+| Screens | `TryggWeb.{Dashboard,Timeline,Vitals,Reports,Caregiver,Invite,Preferences,ChildLive.Index}Live` | |
 
 Run the checks with `mix precommit`.
 
+## Insights and evidence
+
+Everything predictive is computed from the child's own log, in memory, on
+every refresh — nothing is persisted and there are no fixed-age "regression"
+alerts. Population numbers appear only as labelled fallbacks (`typical for
+age`) or as safety floors, and every alert card carries a one-line "not
+medical advice" note.
+
+| Insight | Where | How | Basis |
+| --- | --- | --- | --- |
+| Next nap, wake pressure | Home, Reports → Trends | Personal median wake window per nap ordinal over the last 14 days, shown with its IQR range; age-band prior when history is thin | No validated wake-window table exists — published charts disagree by 2×, so the child's own pattern wins |
+| Next feed, feeds/day, volume | Home, Trends | Feeds < 30 min apart merge into one episode; median interval split by the child's day/night; cluster note at ≥ 3 feeds in 2 h | Descriptive, personal baseline |
+| Intake guide | Trends | 3-day average vs 150–180 / 120–150 / 100–120 ml/kg/day by age, needs a weight ≤ 14 days old; informational only | AAP / HealthyChildren formula guidance |
+| Hydration | Home, Trends | Wet diapers per day vs the child's 7-day median and same-time-of-day pace; floors: < 6 wet/day, ≥ 6 dry hours (newborn day-of-life ramp) | AAP dehydration signs |
+| Sleep shift | Home, Trends → Changes | Last 3 complete days vs the 14 before, robust z (median/MAD) with absolute floors on night wakings, night stretch, total sleep, naps | Change detection, not prediction; population data show no age-pinned regressions |
+| Growth burst signal | Home, Trends, Vitals | Total sleep ≥ baseline + max(2 h, 1.5·IQR) or ≥ 2 extra naps on the last day or two, optionally + 20 % milk | Lampl & Johnson, *Sleep* 2011 (sleep bursts preceded length saltations by 0–4 days) |
+| Weight gain | Vitals | g/day between the latest weight and one 7–35 days earlier; Δz from the CDC LMS tables; "expected gain to hold the percentile"; flag when Δz ≤ −0.67 over ≥ 14 days | CDC 2000 LMS; Merck / Mayo g/day ranges as a fallback |
+| Newborn checks | Vitals, Home | Birth weight = measurement dated on the birth date; > 10 % loss in week one; regain by day 14 | Standard newborn guidance |
+
+Deliberately excluded: sleep–feed causal correlations ("cap the afternoon
+bottle → longer nights"), fixed-age regression alerts, "growth spurt in N
+days" forecasts, WHO velocity tables (CDC stays), and push notifications (the
+cards are PubSub-driven, in-app only).
+
 ## Not in this version
 
-Growth charts / WHO percentiles, health & medication reminders, the milestone
+WHO 0–24 month growth charts (CDC 2000 infant percentiles are on Vitals), health & medication reminders, the milestone
 scrapbook, daily photos, and PDF/CSV pediatrician exports. Native lock-screen
 widgets need a companion native app and are out of scope for the web build.

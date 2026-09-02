@@ -4,34 +4,75 @@ defmodule TryggWeb.LogComponents do
   """
   use Phoenix.Component
 
-  import TryggWeb.CoreComponents, only: [icon: 1, button: 1]
+  import TryggWeb.CoreComponents, only: [icon: 1, button: 1, input: 1]
 
+  alias Trygg.Accounts.Scope
   alias Trygg.Accounts.User
+  alias Trygg.Families.Child
+  alias Trygg.Log
   alias Trygg.Log.Entry
   alias Trygg.Units
 
-  @doc "A compact 'time since last X' stat card."
+  @doc """
+  A compact 'time since last X' stat card.
+
+  Content is laid out top-to-bottom in order of importance — label, value,
+  supporting line, then an optional tone-coloured status line — and every line
+  wraps rather than truncates, so nothing is hidden on narrow screens. Cards in
+  the same grid row stretch to equal height.
+  """
   attr :icon, :string, default: nil, doc: "heroicon name; ignored when :emoji is given"
   attr :emoji, :string, default: nil, doc: "emoji glyph, shown instead of an icon"
   attr :label, :string, required: true
   attr :value, :string, required: true
-  attr :sub, :string, default: nil
+  attr :sub, :string, default: nil, doc: "neutral supporting line, e.g. \"Next ≈ 14:10\""
+
+  attr :status, :string,
+    default: nil,
+    doc: "short call-out rendered in the card's tone colour, e.g. \"40m overdue\""
+
+  attr :badge, :string, default: nil
+  attr :badge_label, :string, default: nil
+  attr :badge_id, :string, default: nil
   attr :tone, :string, default: "base", values: ~w(base warning success)
 
   def since_card(assigns) do
     ~H"""
     <div class={[
-      "rounded-box border p-3 flex flex-col gap-0.5",
+      "rounded-box border p-3 h-full min-w-0 flex flex-col gap-1",
       @tone == "base" && "bg-base-200 border-base-300",
       @tone == "warning" && "bg-warning/10 border-warning/40",
       @tone == "success" && "bg-success/10 border-success/40"
     ]}>
-      <div class="flex items-center gap-1.5 text-xs opacity-70">
-        <span :if={@emoji} class="text-sm leading-none" aria-hidden="true">{@emoji}</span>
-        <.icon :if={!@emoji && @icon} name={@icon} class="size-4" />{@label}
+      <div class="flex items-center gap-1.5 text-xs opacity-70 min-w-0">
+        <span :if={@emoji} class="text-sm leading-none shrink-0" aria-hidden="true">{@emoji}</span>
+        <.icon :if={!@emoji && @icon} name={@icon} class="size-4 shrink-0" />
+        <span class="truncate">{@label}</span>
       </div>
-      <div class="text-xl font-semibold leading-tight">{@value}</div>
-      <div :if={@sub} class="text-xs opacity-60 truncate">{@sub}</div>
+      <div class="flex items-end justify-between gap-2 min-w-0">
+        <div class="min-w-0 flex-1">
+          <div class="text-lg sm:text-xl font-semibold leading-tight tabular-nums break-words">
+            {@value}
+          </div>
+          <div :if={@sub} class="text-xs opacity-60 leading-snug break-words mt-0.5">{@sub}</div>
+        </div>
+        <div :if={@badge} id={@badge_id} class="text-right shrink-0">
+          <div class="text-lg font-semibold leading-tight tabular-nums">{@badge}</div>
+          <div :if={@badge_label} class="text-xs opacity-60">{@badge_label}</div>
+        </div>
+      </div>
+      <div
+        :if={@status}
+        class={[
+          "mt-auto pt-1 text-xs font-medium leading-snug break-words flex items-start gap-1.5",
+          @tone == "warning" && "text-warning",
+          @tone == "success" && "text-success",
+          @tone == "base" && "opacity-70"
+        ]}
+      >
+        <span class="mt-1.5 size-1.5 rounded-full bg-current shrink-0" aria-hidden="true"></span>
+        <span>{@status}</span>
+      </div>
     </div>
     """
   end
@@ -254,6 +295,8 @@ defmodule TryggWeb.LogComponents do
   @doc "Formats a duration in seconds as \"1h 12m\" / \"12m\" / \"45s\"."
   def format_duration(nil), do: "—"
 
+  def format_duration(seconds) when is_float(seconds), do: format_duration(round(seconds))
+
   def format_duration(seconds) when is_integer(seconds) do
     h = div(seconds, 3600)
     m = rem(div(seconds, 60), 60)
@@ -301,4 +344,134 @@ defmodule TryggWeb.LogComponents do
   defp presence(nil), do: nil
   defp presence(s) when is_binary(s), do: if(String.trim(s) == "", do: nil, else: s)
   defp presence(other), do: other
+
+  ## Edit sheet ----------------------------------------------------------
+
+  @doc "Form params for the shared entry edit sheet."
+  def entry_edit_params(%Entry{} = e, %Child{} = child) do
+    %{
+      "started_at" => to_local_input(child, e.started_at),
+      "ended_at" => to_local_input(child, e.ended_at),
+      "note" => e.note,
+      "amount" => amount_display(e)
+    }
+  end
+
+  @doc """
+  Applies the edit-sheet params to an entry. Returns `{:ok, entry}`,
+  `{:error, %Ecto.Changeset{}}`, or `{:error, :invalid_time}`.
+  """
+  def save_entry_edit(%Scope{} = scope, %Entry{} = entry, %Child{} = child, params) do
+    case local_to_utc(child, params["started_at"]) do
+      {:ok, started_at} ->
+        # feeds and diapers are instantaneous: keep ended_at pinned to started_at
+        ended_at =
+          if entry.type == :sleep do
+            case local_to_utc(child, params["ended_at"]) do
+              {:ok, dt} -> dt
+              _ -> nil
+            end
+          else
+            started_at
+          end
+
+        Log.update_entry(scope, entry, %{
+          "type" => to_string(entry.type),
+          "started_at" => started_at,
+          "ended_at" => ended_at,
+          "note" => params["note"],
+          "data" => merge_amount(entry, params["amount"])
+        })
+
+      :error ->
+        {:error, :invalid_time}
+    end
+  end
+
+  attr :entry, Entry, required: true
+  attr :form, :any, required: true
+
+  def edit_modal(assigns) do
+    ~H"""
+    <div
+      id="edit-entry-modal"
+      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      phx-window-keydown="cancel_edit"
+      phx-key="escape"
+    >
+      <div class="absolute inset-0 bg-black/60" phx-click="cancel_edit"></div>
+      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
+        <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
+
+        <.form for={@form} id="edit-entry-form" phx-submit="save_edit" class="space-y-3">
+          <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
+          <.input
+            :if={@entry.type == :sleep}
+            field={@form[:ended_at]}
+            type="datetime-local"
+            label="Ended"
+          />
+          <.input
+            :if={has_amount?(@entry)}
+            field={@form[:amount]}
+            type="number"
+            step="any"
+            label="Amount (ml)"
+          />
+          <.input field={@form[:note]} type="text" label="Note" />
+
+          <div class="flex gap-2 pt-1">
+            <.button type="submit" variant="primary" class="flex-1">Save</.button>
+            <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
+          </div>
+          <.button
+            id="edit-entry-delete"
+            type="button"
+            variant="outline"
+            size="sm"
+            phx-click="delete_entry"
+            data-confirm="Delete this entry?"
+            class="btn-error w-full mt-2"
+          >
+            Delete
+          </.button>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
+  defp time_label(%Entry{type: :sleep}), do: "Started"
+  defp time_label(_), do: "Time"
+
+  defp has_amount?(%Entry{type: :feeding}), do: true
+  defp has_amount?(_), do: false
+
+  defp amount_display(%Entry{data: %{"amount_ml" => ml}}) when is_number(ml), do: ml
+  defp amount_display(_), do: nil
+
+  defp merge_amount(%Entry{data: data} = e, raw) do
+    case {has_amount?(e), parse_number(raw)} do
+      {true, n} when is_number(n) -> Map.put(data || %{}, "amount_ml", n)
+      _ -> data || %{}
+    end
+  end
+
+  defp to_local_input(_child, nil), do: nil
+  defp to_local_input(%Child{} = child, %DateTime{} = dt), do: Child.to_local_input(child, dt)
+
+  defp local_to_utc(_child, blank) when blank in [nil, ""], do: {:ok, nil}
+  defp local_to_utc(%Child{} = child, value), do: Child.from_local_input(child, value)
+
+  defp parse_number(nil), do: nil
+  defp parse_number(""), do: nil
+
+  defp parse_number(s) when is_binary(s) do
+    case Float.parse(s) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
+
+  defp parse_number(n) when is_number(n), do: n
 end

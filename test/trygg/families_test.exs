@@ -68,6 +68,27 @@ defmodule Trygg.FamiliesTest do
       end
     end
 
+    test "day and night starts default to 08:00 / 20:00 and must differ" do
+      scope = user_scope_fixture()
+      assert {:ok, child} = Families.create_child(scope, valid_child_attributes())
+      assert child.day_start == ~T[08:00:00]
+      assert child.night_start == ~T[20:00:00]
+
+      assert {:ok, updated} =
+               Families.update_child(scope, child, %{
+                 day_start: ~T[07:30:00],
+                 night_start: ~T[19:00:00]
+               })
+
+      assert updated.day_start == ~T[07:30:00]
+      assert updated.night_start == ~T[19:00:00]
+
+      assert {:error, changeset} =
+               Families.update_child(scope, updated, %{night_start: ~T[07:30:00]})
+
+      assert %{night_start: _} = errors_on(changeset)
+    end
+
     test "broadcasts to subscribers" do
       %{owner_scope: owner, child: child} = shared_child_fixture()
       Families.subscribe(child.id)
