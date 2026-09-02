@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# preflight.sh - Run all CI checks locally (compile, format, credo, dialyzer,
+# notification samples, sobelow, audit, tests)
+# shellcheck source-path=SCRIPTDIR
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_colors.sh
+. "$SCRIPT_DIR/_colors.sh"
+
+echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
+echo "${BOLD}                           🚀 PREFLIGHT CHECKS                              ${RESET}"
+echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
+echo ""
+echo "${TEAL}Running all CI checks that would run in GitHub Actions...${RESET}"
+echo ""
+
+echo "${BOLD}Ensuring PostgreSQL is running...${RESET}"
+docker compose -f "${DOCKER_COMPOSE_FILE:-etc/docker/docker-compose.yml}" up -d postgres || true
+DBNAME=postgres "$SCRIPT_DIR/_wait_db_connection.sh"
+echo "${GREEN}✓ PostgreSQL is ready${RESET}"
+echo ""
+
+step=0
+total=10
+next_step() {
+  step=$((step + 1))
+  echo "${BOLD}[$step/$total] $1${RESET}"
+}
+
+next_step "Installing dependencies..."
+if ! mix deps.get; then
+  echo "${RED}✗ Dependencies installation failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Dependencies installed${RESET}"
+echo ""
+
+next_step "Compiling with warnings as errors..."
+if ! mix compile --warnings-as-errors; then
+  echo "${RED}✗ Compilation failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Compilation successful${RESET}"
+echo ""
+
+next_step "Checking code format..."
+if ! mix format --check-formatted; then
+  echo "${RED}✗ Code format check failed. Run 'make format' to fix.${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Code formatting is correct${RESET}"
+echo ""
+
+next_step "Checking shell scripts and config files (ShellCheck, shfmt, dprint)..."
+if ! make shell-lint shell-format-check config-format-check; then
+  echo "${RED}✗ Shell script or config file checks failed. Run 'make format' to fix formatting issues.${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Shell scripts and config files OK${RESET}"
+echo ""
+
+next_step "Running Credo (strict mode)..."
+if ! mix credo --strict; then
+  echo "${RED}✗ Credo checks failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Credo checks passed${RESET}"
+echo ""
+
+next_step "Linting notification preview samples..."
+if ! mix lint_notification_samples; then
+  echo "${RED}✗ Notification sample lint failed. Update priv/dev/notification_preview_samples.exs${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Notification preview samples OK${RESET}"
+echo ""
+
+next_step "Running Dialyzer..."
+if ! mix dialyzer; then
+  echo "${RED}✗ Dialyzer failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Dialyzer passed${RESET}"
+echo ""
+
+next_step "Running Sobelow (security audit)..."
+if ! mix sobelow --skip --exit; then
+  echo "${RED}✗ Sobelow security audit failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Sobelow security audit passed${RESET}"
+echo ""
+
+next_step "Running dependency audit..."
+if ! mix deps.audit --ignore-file config/mix_audit.ignore; then
+  echo "${RED}✗ Dependency audit failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ Dependency audit passed${RESET}"
+echo ""
+
+next_step "Running test suite with coverage..."
+if ! MIX_ENV="test" mix test --cover; then
+  echo "${RED}✗ Tests failed${RESET}"
+  exit 1
+fi
+echo "${GREEN}✓ All tests passed${RESET}"
+echo ""
+
+echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
+echo "${GREEN}${BOLD}                      ✓ ALL PREFLIGHT CHECKS PASSED!                       ${RESET}"
+echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
+echo ""
+echo "${TEAL}Your code is ready to be pushed to CI. All checks that run in GitHub Actions${RESET}"
+echo "${TEAL}have passed locally.${RESET}"
+echo ""
