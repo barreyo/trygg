@@ -98,6 +98,8 @@ defmodule TryggWeb.ChildLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
+
     {:ok, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
   end
 
@@ -105,6 +107,13 @@ defmodule TryggWeb.ChildLive.Index do
   def handle_params(params, _uri, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
+
+  @impl true
+  def handle_info({:children_changed, _user_id}, socket) do
+    {:noreply, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp apply_action(socket, :index, _params) do
     assign(socket, children: Families.list_children(socket.assigns.current_scope), child: nil)

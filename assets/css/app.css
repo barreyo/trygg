@@ -104,7 +104,17 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
-html, body { overflow-x: hidden; overscroll-behavior-y: none; }
+
+/*
+ * Contain horizontal bleed without making <html>/<body> scroll containers.
+ * `overflow-x: clip` clips the x-axis but — unlike `hidden` — leaves
+ * `overflow-y` computed as `visible`, so the normal document scroll keeps
+ * working. With `hidden` here, `overflow-y` computed to `auto` on both
+ * elements, giving iOS Safari a stuck nested `<body>` scroller: a visible
+ * scrollbar that wouldn't actually pan the page.
+ */
+html, body { overflow-x: clip; }
+html { overscroll-behavior-y: none; }
 
 /*
  * A color-less daisyUI `.btn` (the `<.button>` default variant) is nearly

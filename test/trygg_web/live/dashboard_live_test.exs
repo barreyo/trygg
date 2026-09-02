@@ -379,4 +379,81 @@ defmodule TryggWeb.DashboardLiveTest do
       assert render(lv) =~ "Wobble"
     end
   end
+
+  describe "realtime children list" do
+    setup :register_and_log_in_user
+
+    test "a child added from another session appears without a reload", %{
+      conn: conn,
+      scope: scope
+    } do
+      child = child_fixture(scope)
+      {:ok, lv, html} = live(conn, ~p"/c/#{child}")
+      refute html =~ "Sibling"
+
+      {:ok, _} = Families.create_child(scope, %{name: "Sibling", timezone: "Etc/UTC"})
+
+      assert render(lv) =~ "Sibling"
+    end
+
+    test "a rename by another caregiver updates the switcher", %{conn: conn, scope: scope} do
+      child = child_fixture(scope)
+      _other = child_fixture(scope, %{name: "Keeper"})
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      {:ok, _} = Families.update_child(scope, child, %{name: "Renamed"})
+
+      assert render(lv) =~ "Renamed"
+      refute render(lv) =~ child.name
+    end
+  end
+
+  describe "realtime access changes" do
+    test "a caregiver is bounced home the moment their access is revoked", %{conn: conn} do
+      owner_scope = user_scope_fixture()
+      child = child_fixture(owner_scope)
+
+      caregiver = user_fixture()
+      membership = membership_fixture(child, caregiver, :caregiver)
+      conn = log_in_user(conn, caregiver)
+
+      {:ok, lv, html} = live(conn, ~p"/c/#{child}")
+      assert html =~ "Start sleep"
+
+      {:ok, _} = Families.remove_member(owner_scope, child, membership)
+
+      assert_redirect(lv, ~p"/")
+    end
+
+    test "losing write access hides the logging controls live", %{conn: conn} do
+      owner_scope = user_scope_fixture()
+      child = child_fixture(owner_scope)
+
+      caregiver = user_fixture()
+      membership = membership_fixture(child, caregiver, :caregiver)
+      conn = log_in_user(conn, caregiver)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert render(lv) =~ "Start sleep"
+
+      {:ok, _} = Families.update_member_role(owner_scope, child, membership, :viewer)
+
+      refute render(lv) =~ "Start sleep"
+    end
+
+    test "a child deleted elsewhere bounces open dashboards home", %{conn: conn} do
+      owner_scope = user_scope_fixture()
+      child = child_fixture(owner_scope)
+
+      caregiver = user_fixture()
+      membership_fixture(child, caregiver, :caregiver)
+      conn = log_in_user(conn, caregiver)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      {:ok, _} = Families.delete_child(owner_scope, child)
+
+      assert_redirect(lv, ~p"/")
+    end
+  end
 end

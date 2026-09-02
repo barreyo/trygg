@@ -21,6 +21,24 @@ your email, click the link. Sessions last a year, so you sign in once. In
 development the email lands in the
 [mailbox preview](http://localhost:4000/dev/mailbox).
 
+## Production email
+
+Outbound mail goes through [Resend](https://resend.com). Because login is
+passwordless, a working mailer is not optional — the release refuses to boot
+without it. Set two secrets:
+
+| Variable | What |
+| --- | --- |
+| `RESEND_API_KEY` | API key from [resend.com/api-keys](https://resend.com/api-keys) (`re_…`) |
+| `MAIL_FROM` | Sender on a domain verified in Resend. Bare (`hello@trygg.app`) or named (`Trygg <hello@trygg.app>`). Defaults to Resend's shared `onboarding@resend.dev` sandbox sender, which only delivers to the Resend account owner. |
+
+```bash
+fly secrets set RESEND_API_KEY=re_xxx MAIL_FROM="Trygg <hello@trygg.app>"
+```
+
+The wiring lives in `config/runtime.exs` (adapter + key) and `config/prod.exs`
+(the Req-based API client); `Trygg.Mailer.from_address/0` resolves `MAIL_FROM`.
+
 ## Shape of the code
 
 | Area | Module | Notes |

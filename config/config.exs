@@ -47,6 +47,11 @@ config :trygg, TryggWeb.Endpoint,
 # at the `config/runtime.exs`.
 config :trygg, Trygg.Mailer, adapter: Swoosh.Adapters.Local
 
+# Default sender for all outbound mail. Overridden in production from the
+# MAIL_FROM env var (see config/runtime.exs). Accepts a bare address or a
+# "Name <addr>" string.
+config :trygg, :email_from, "Trygg <contact@example.com>"
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",

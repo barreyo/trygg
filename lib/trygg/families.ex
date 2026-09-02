@@ -10,6 +10,7 @@ defmodule Trygg.Families do
   import Ecto.Query, warn: false
 
   alias Trygg.Repo
+  alias Trygg.Accounts
   alias Trygg.Accounts.{Scope, User}
   alias Trygg.Families.{Child, Membership, Invite, FamilyNotifier}
 
@@ -28,6 +29,23 @@ defmodule Trygg.Families do
   @doc "Broadcast a realtime message to everyone watching a child."
   def broadcast(child_id, message) do
     Phoenix.PubSub.broadcast(Trygg.PubSub, topic(child_id), message)
+  end
+
+  # Tell every current member of a child that the set of children they can see
+  # changed (a child added, renamed, deleted, or a membership/role change).
+  # Delivered as `{:children_changed, user_id}` on each member's private
+  # `Trygg.Accounts` topic, which LiveViews subscribe to via
+  # `Accounts.subscribe_user/1`. `also` carries extra user ids that were
+  # members a moment ago (someone just removed, or the child about to be
+  # deleted).
+  defp broadcast_children_changed(child_id, also \\ []) do
+    (member_user_ids(child_id) ++ also)
+    |> Enum.uniq()
+    |> Enum.each(&Accounts.broadcast_user(&1, {:children_changed, &1}))
+  end
+
+  defp member_user_ids(child_id) do
+    Repo.all(from m in Membership, where: m.child_id == ^child_id, select: m.user_id)
   end
 
   ## Children -----------------------------------------------------------------
@@ -71,15 +89,21 @@ defmodule Trygg.Families do
   Creates a child and makes the current user its owner, atomically.
   """
   def create_child(%Scope{user: %User{id: user_id}}, attrs) do
-    Repo.transact(fn ->
-      with {:ok, child} <- %Child{} |> Child.changeset(attrs) |> Repo.insert(),
-           {:ok, _membership} <-
-             %Membership{child_id: child.id, user_id: user_id, role: :owner}
-             |> Membership.changeset(%{role: :owner})
-             |> Repo.insert() do
-        {:ok, %{child | role: :owner}}
-      end
-    end)
+    result =
+      Repo.transact(fn ->
+        with {:ok, child} <- %Child{} |> Child.changeset(attrs) |> Repo.insert(),
+             {:ok, _membership} <-
+               %Membership{child_id: child.id, user_id: user_id, role: :owner}
+               |> Membership.changeset(%{role: :owner})
+               |> Repo.insert() do
+          {:ok, %{child | role: :owner}}
+        end
+      end)
+
+    with {:ok, child} <- result do
+      broadcast_children_changed(child.id)
+      {:ok, child}
+    end
   end
 
   @doc "Updates a child. Requires the `:owner` role."
@@ -89,6 +113,7 @@ defmodule Trygg.Families do
     with {:ok, updated} <- child |> Child.changeset(attrs) |> Repo.update() do
       updated = %{updated | role: role}
       broadcast(child.id, {:child_updated, updated})
+      broadcast_children_changed(child.id)
       {:ok, updated}
     end
   end
@@ -96,7 +121,13 @@ defmodule Trygg.Families do
   @doc "Deletes a child and everything logged for it. Requires the `:owner` role."
   def delete_child(%Scope{} = scope, %Child{} = child) do
     authorize!(scope, child, :owner)
-    Repo.delete(child)
+    members = member_user_ids(child.id)
+
+    with {:ok, deleted} <- Repo.delete(child) do
+      broadcast(child.id, {:child_deleted, child.id})
+      broadcast_children_changed(child.id, members)
+      {:ok, deleted}
+    end
   end
 
   ## Roles / authorization --------------------------------------------------
@@ -161,6 +192,7 @@ defmodule Trygg.Families do
       true ->
         with {:ok, deleted} <- Repo.delete(membership) do
           broadcast(child.id, {:members_changed, child.id})
+          broadcast_children_changed(child.id, [membership.user_id])
           {:ok, deleted}
         end
     end
@@ -181,6 +213,7 @@ defmodule Trygg.Families do
         with {:ok, updated} <-
                membership |> Membership.changeset(%{role: role}) |> Repo.update() do
           broadcast(child.id, {:members_changed, child.id})
+          broadcast_children_changed(child.id)
           {:ok, updated}
         end
     end
@@ -315,6 +348,7 @@ defmodule Trygg.Families do
              |> Repo.update() do
         child = Repo.get!(Child, invite.child_id)
         broadcast(child.id, {:members_changed, child.id})
+        broadcast_children_changed(child.id)
         {:ok, %{child | role: membership.role}}
       end
     end)

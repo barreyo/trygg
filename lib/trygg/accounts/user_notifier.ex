@@ -9,7 +9,7 @@ defmodule Trygg.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"Trygg", "contact@example.com"})
+      |> from(Mailer.from_address())
       |> subject(subject)
       |> text_body(body)
 

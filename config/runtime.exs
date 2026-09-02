@@ -101,19 +101,31 @@ if config_env() == :prod do
 
   # ## Configuring the mailer
   #
-  # In production you need to configure the mailer to use a different adapter.
-  # Here is an example configuration for Mailgun:
+  # Production email goes through Resend (https://resend.com). Passwordless
+  # login is the only way into the app, so a working mailer is required — we
+  # raise here rather than silently degrade to a no-op adapter.
   #
-  #     config :trygg, Trygg.Mailer,
-  #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
+  # Set these as release secrets (e.g. `fly secrets set ...`):
   #
-  # Most non-SMTP adapters require an API client. Swoosh supports Req, Hackney,
-  # and Finch out-of-the-box. This configuration is typically done at
-  # compile-time in your config/prod.exs:
+  #   * RESEND_API_KEY  – API key from the Resend dashboard ("re_...")
+  #   * MAIL_FROM        – sender on a domain verified in Resend. Accepts a
+  #                        bare address ("hello@trygg.app") or a named address
+  #                        ("Trygg <hello@trygg.app>"). Defaults to the shared
+  #                        Resend sandbox sender, which only delivers to the
+  #                        account owner — fine for a first smoke test, not
+  #                        for real users.
   #
-  #     config :swoosh, :api_client, Swoosh.ApiClient.Req
-  #
-  # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+  # The Req-based API client is wired up at compile time in config/prod.exs.
+  resend_api_key =
+    System.get_env("RESEND_API_KEY") ||
+      raise """
+      environment variable RESEND_API_KEY is missing.
+      Grab one from https://resend.com/api-keys and set it as a release secret.
+      """
+
+  config :trygg, Trygg.Mailer,
+    adapter: Swoosh.Adapters.Resend,
+    api_key: resend_api_key
+
+  config :trygg, :email_from, System.get_env("MAIL_FROM") || "Trygg <onboarding@resend.dev>"
 end

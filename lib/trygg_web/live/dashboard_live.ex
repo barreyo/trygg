@@ -2,6 +2,7 @@ defmodule TryggWeb.DashboardLive do
   use TryggWeb, :live_view
 
   alias Trygg.{Families, Log}
+  alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
   alias Trygg.Units
@@ -22,7 +23,10 @@ defmodule TryggWeb.DashboardLive do
   end
 
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Process.send_after(self(), :tick, @tick_ms)
+    if connected?(socket) do
+      Process.send_after(self(), :tick, @tick_ms)
+      Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
+    end
 
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
@@ -50,12 +54,61 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
   end
 
+  def handle_info({:child_deleted, _child_id}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "#{socket.assigns.current_child.name} was deleted.")
+     |> push_navigate(to: ~p"/")}
+  end
+
+  def handle_info({:children_changed, _user_id}, socket) do
+    {:noreply, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
+  end
+
+  def handle_info({:members_changed, _child_id}, socket) do
+    {:noreply, resync_membership(socket)}
+  end
+
+  def handle_info({:user_updated, user}, socket) do
+    scope = %{socket.assigns.current_scope | user: user}
+
+    {:noreply,
+     socket
+     |> assign(:current_scope, scope)
+     |> assign(:unit_system, user.unit_system)
+     |> refresh()}
+  end
+
   def handle_info(:tick, socket) do
     Process.send_after(self(), :tick, @tick_ms)
-    {:noreply, assign(socket, :now_tick, System.system_time(:second))}
+    {:noreply, socket |> assign(:now_tick, System.system_time(:second)) |> refresh_summary()}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Re-check the caller's role after a membership change: bounce them home if
+  # they've lost access, otherwise fold the fresh role onto the socket so
+  # write controls appear/disappear immediately.
+  defp resync_membership(socket) do
+    scope = socket.assigns.current_scope
+    child = socket.assigns.current_child
+
+    case Families.member_role(scope, child) do
+      nil ->
+        socket
+        |> put_flash(:error, "You no longer have access to #{child.name}.")
+        |> push_navigate(to: ~p"/")
+
+      role ->
+        child = %{child | role: role}
+
+        socket
+        |> assign(:role, role)
+        |> assign(:can_write, role in [:owner, :caregiver])
+        |> assign(:current_child, child)
+        |> assign(:current_scope, Scope.put_child(scope, child, role))
+    end
+  end
 
   ## Sleep events -------------------------------------------------------
 
@@ -358,13 +411,23 @@ defmodule TryggWeb.DashboardLive do
     end
   end
 
-  defp refresh(socket) do
+  defp refresh(socket), do: socket |> refresh_summary() |> refresh_entries()
+
+  # Just the at-a-glance numbers (counts, "slept today", "Xm ago"). Cheap
+  # enough to recompute on every minute tick so time-derived figures advance
+  # without waiting for the next logged event.
+  defp refresh_summary(socket) do
+    scope = socket.assigns.current_scope
+    child = socket.assigns.current_child
+    assign(socket, :summary, Log.summary(scope, child))
+  end
+
+  defp refresh_entries(socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
     entries = Log.recent_entries(scope, child, @recent_limit)
 
     socket
-    |> assign(:summary, Log.summary(scope, child))
     |> assign(:entries_empty?, entries == [])
     |> stream(:entries, entries, reset: true)
   end
@@ -413,6 +476,7 @@ defmodule TryggWeb.DashboardLive do
       current_scope={@current_scope}
       current_child={@current_child}
       title={@current_child.name}
+      subtitle={Child.age_label(@current_child)}
     >
       <:actions>
         <div :if={length(@children) > 1} class="dropdown dropdown-end">

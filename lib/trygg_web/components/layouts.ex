@@ -29,6 +29,7 @@ defmodule TryggWeb.Layouts do
 
   attr :current_child, :map, default: nil, doc: "the active child, when on a child-scoped page"
   attr :title, :string, default: nil, doc: "heading shown in the top bar"
+  attr :subtitle, :string, default: nil, doc: "smaller line under the title, e.g. the child's age"
   attr :back, :string, default: nil, doc: "optional path for a back arrow in the top bar"
 
   slot :inner_block, required: true
@@ -49,9 +50,14 @@ defmodule TryggWeb.Layouts do
           >
             <.icon name="hero-chevron-left" class="size-5" />
           </.button>
-          <span class="font-semibold text-lg truncate flex-1">
-            {@title || "Trygg"}
-          </span>
+          <div class="flex-1 min-w-0 leading-tight">
+            <div class="font-semibold text-lg truncate">
+              {@title || "Trygg"}
+            </div>
+            <div :if={@subtitle} class="text-xs opacity-60 truncate">
+              {@subtitle}
+            </div>
+          </div>
           {render_slot(@actions)}
           <.theme_toggle />
         </div>
@@ -74,16 +80,17 @@ defmodule TryggWeb.Layouts do
     ~H"""
     <nav class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)]">
       <div class="mx-auto max-w-md grid grid-cols-4 text-center text-xs">
-        <.nav_item navigate={~p"/"} icon="hero-home" label="Children" />
         <%= if @current_child do %>
-          <.nav_item navigate={~p"/c/#{@current_child}"} icon="hero-bolt" label="Today" />
+          <.nav_item navigate={~p"/c/#{@current_child}"} icon="hero-home" label="Home" />
           <.nav_item navigate={~p"/c/#{@current_child}/log"} icon="hero-list-bullet" label="Log" />
+          <.nav_item navigate={~p"/c/#{@current_child}/vitals"} icon="hero-heart" label="Vitals" />
           <.nav_item
-            navigate={~p"/c/#{@current_child}/caregivers"}
-            icon="hero-users"
-            label="Sharing"
+            navigate={~p"/c/#{@current_child}/reports"}
+            icon="hero-chart-bar"
+            label="Reports"
           />
         <% else %>
+          <.nav_item navigate={~p"/"} icon="hero-home" label="Children" />
           <.nav_item navigate={~p"/preferences"} icon="hero-adjustments-horizontal" label="Units" />
           <.nav_item navigate={~p"/users/settings"} icon="hero-cog-6-tooth" label="Account" />
           <.nav_item

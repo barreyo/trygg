@@ -96,13 +96,49 @@ defmodule TryggWeb.CaregiverLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
+
     {:ok, load(socket)}
   end
 
   @impl true
   def handle_info({tag, _child_id}, socket)
       when tag in [:members_changed, :invites_changed] do
-    {:noreply, load(socket)}
+    scope = socket.assigns.current_scope
+    child = socket.assigns.current_child
+
+    case Families.member_role(scope, child) do
+      nil ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You no longer have access to #{child.name}.")
+         |> push_navigate(to: ~p"/")}
+
+      role ->
+        {:noreply,
+         socket
+         |> assign(:role, role)
+         |> assign(:current_child, %{child | role: role})
+         |> load()}
+    end
+  end
+
+  def handle_info({:child_updated, child}, socket) do
+    {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
+  end
+
+  def handle_info({:child_deleted, _child_id}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "#{socket.assigns.current_child.name} was deleted.")
+     |> push_navigate(to: ~p"/")}
+  end
+
+  def handle_info({:user_updated, user}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+     |> load()}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}

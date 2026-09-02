@@ -8,6 +8,21 @@ defmodule Trygg.Accounts do
 
   alias Trygg.Accounts.{User, UserToken, UserNotifier}
 
+  ## PubSub ----------------------------------------------------------------
+
+  @doc "Topic for realtime messages private to one user (across their devices)."
+  def user_topic(user_id), do: "user:#{user_id}"
+
+  @doc "Subscribe the calling process to a user's private realtime topic."
+  def subscribe_user(user_id) do
+    Phoenix.PubSub.subscribe(Trygg.PubSub, user_topic(user_id))
+  end
+
+  @doc "Broadcast a realtime message to every live view open for a user."
+  def broadcast_user(user_id, message) do
+    Phoenix.PubSub.broadcast(Trygg.PubSub, user_topic(user_id), message)
+  end
+
   ## Database getters
 
   @doc """
@@ -80,9 +95,10 @@ defmodule Trygg.Accounts do
   Updates the user's name.
   """
   def update_user_name(%User{} = user, attrs) do
-    user
-    |> User.name_changeset(attrs)
-    |> Repo.update()
+    with {:ok, user} <- user |> User.name_changeset(attrs) |> Repo.update() do
+      broadcast_user(user.id, {:user_updated, user})
+      {:ok, user}
+    end
   end
 
   ## Settings
@@ -130,6 +146,7 @@ defmodule Trygg.Accounts do
            {:ok, user} <- Repo.update(User.email_changeset(user, %{email: email})),
            {_count, _result} <-
              Repo.delete_all(from(UserToken, where: [user_id: ^user.id, context: ^context])) do
+        broadcast_user(user.id, {:user_updated, user})
         {:ok, user}
       else
         _ -> {:error, :transaction_aborted}
@@ -148,9 +165,10 @@ defmodule Trygg.Accounts do
   Updates the user's app preferences (measurement units, ...).
   """
   def update_user_settings(%User{} = user, attrs) do
-    user
-    |> User.settings_changeset(attrs)
-    |> Repo.update()
+    with {:ok, user} <- user |> User.settings_changeset(attrs) |> Repo.update() do
+      broadcast_user(user.id, {:user_updated, user})
+      {:ok, user}
+    end
   end
 
   ## Session

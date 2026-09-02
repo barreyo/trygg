@@ -32,6 +32,29 @@ defmodule TryggWeb.ChildLiveTest do
     assert path == ~p"/c/#{child}"
   end
 
+  test "the list updates live when a child is added from another session", %{
+    conn: conn,
+    scope: scope
+  } do
+    {:ok, lv, html} = live(conn, ~p"/children")
+    refute html =~ "Newbie"
+
+    {:ok, _} = Families.create_child(scope, %{name: "Newbie", timezone: "Etc/UTC"})
+
+    assert render(lv) =~ "Newbie"
+  end
+
+  test "the list reflects a live rename by a co-owner", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    {:ok, lv, html} = live(conn, ~p"/children")
+    assert html =~ child.name
+
+    {:ok, _} = Families.update_child(scope, child, %{name: "Pipkin"})
+
+    assert render(lv) =~ "Pipkin"
+    refute render(lv) =~ child.name
+  end
+
   test "editing renames the child", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
     {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")

@@ -1,6 +1,8 @@
 defmodule TryggWeb.TimelineLive do
   use TryggWeb, :live_view
 
+  alias Trygg.Accounts.Scope
+  alias Trygg.Families
   alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Log.Entry
@@ -53,6 +55,8 @@ defmodule TryggWeb.TimelineLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
+
     socket =
       socket
       |> assign(:unit_system, socket.assigns.current_scope.user.unit_system)
@@ -67,7 +71,52 @@ defmodule TryggWeb.TimelineLive do
 
   @impl true
   def handle_info({:log, _action, _entry}, socket), do: {:noreply, load_entries(socket)}
+
+  def handle_info({:child_updated, child}, socket) do
+    {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
+  end
+
+  def handle_info({:child_deleted, _child_id}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "#{socket.assigns.current_child.name} was deleted.")
+     |> push_navigate(to: ~p"/")}
+  end
+
+  def handle_info({:members_changed, _child_id}, socket) do
+    {:noreply, resync_membership(socket)}
+  end
+
+  def handle_info({:user_updated, user}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+     |> assign(:unit_system, user.unit_system)
+     |> load_entries()}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp resync_membership(socket) do
+    scope = socket.assigns.current_scope
+    child = socket.assigns.current_child
+
+    case Families.member_role(scope, child) do
+      nil ->
+        socket
+        |> put_flash(:error, "You no longer have access to #{child.name}.")
+        |> push_navigate(to: ~p"/")
+
+      role ->
+        child = %{child | role: role}
+
+        socket
+        |> assign(:role, role)
+        |> assign(:can_write, role in [:owner, :caregiver])
+        |> assign(:current_child, child)
+        |> assign(:current_scope, Scope.put_child(scope, child, role))
+    end
+  end
 
   @impl true
   def handle_event("filter", %{"type" => type}, socket) do

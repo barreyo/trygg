@@ -1,7 +1,7 @@
 // Minimal, conservative service worker: caches the app shell so the PWA opens
 // offline, but never touches the LiveView websocket/longpoll or any non-GET
 // request, and always prefers the network for navigations.
-const CACHE = "trygg-shell-v1"
+const CACHE = "trygg-shell-v2"
 const SHELL = ["/", "/assets/css/app.css", "/assets/js/app.js", "/manifest.webmanifest"]
 
 self.addEventListener("install", (event) => {

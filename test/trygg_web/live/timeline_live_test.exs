@@ -47,4 +47,49 @@ defmodule TryggWeb.TimelineLiveTest do
 
     assert Log.list_entries(scope, child) == []
   end
+
+  test "an entry logged by another caregiver shows up live", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    refute render(lv) =~ "Bottle"
+
+    entry_fixture(scope, child, type: :feeding)
+
+    assert render(lv) =~ "Bottle"
+  end
+
+  test "changing units elsewhere re-renders amounts live", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    entry_fixture(scope, child, type: :feeding)
+
+    {:ok, lv, html} = live(conn, ~p"/c/#{child}/log")
+    assert html =~ "90 ml"
+
+    {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{unit_system: :imperial})
+
+    html = render(lv)
+    refute html =~ "90 ml"
+    assert html =~ "oz"
+  end
+
+  test "a caregiver loses the log the moment their access is revoked", %{conn: conn} do
+    %{owner_scope: owner_scope, child: child, member: member} = shared_child_fixture()
+    conn = log_in_user(conn, member)
+
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+
+    [membership] =
+      Trygg.Families.list_members(owner_scope, child)
+      |> Enum.filter(&(&1.user_id == member.id))
+
+    {:ok, _} = Trygg.Families.remove_member(owner_scope, child, membership)
+
+    assert_redirect(lv, ~p"/")
+  end
 end

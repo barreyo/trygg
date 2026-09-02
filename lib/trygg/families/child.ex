@@ -69,6 +69,48 @@ defmodule Trygg.Families.Child do
   def local_today(%__MODULE__{} = child), do: DateTime.to_date(local_now(child))
 
   @doc """
+  The child's age as a `{years, months, days}` tuple, measured against `today`
+  (defaults to the child's own local calendar date). Returns `nil` when there's
+  no birth date, or when the birth date is after `today`.
+  """
+  def age(child, today \\ nil)
+
+  def age(%__MODULE__{birth_date: nil}, _today), do: nil
+
+  def age(%__MODULE__{birth_date: %Date{} = dob} = child, today) do
+    today = today || local_today(child)
+    if Date.after?(dob, today), do: nil, else: ymd_between(dob, today)
+  end
+
+  @doc ~S'A compact "1y 2mo 5d" label for `age/1`, or `nil` when age is unknown.'
+  def age_label(%__MODULE__{} = child) do
+    case age(child) do
+      {y, m, d} -> "#{y}y #{m}mo #{d}d"
+      nil -> nil
+    end
+  end
+
+  # Whole years/months/days between two dates, borrowing from the larger unit
+  # when a component goes negative (calendar-aware, so month length matters).
+  defp ymd_between(dob, today) do
+    years = today.year - dob.year
+    months = today.month - dob.month
+    days = today.day - dob.day
+
+    {days, months} =
+      if days < 0 do
+        prev_month = Date.add(%{today | day: 1}, -1)
+        {days + prev_month.day, months - 1}
+      else
+        {days, months}
+      end
+
+    {months, years} = if months < 0, do: {months + 12, years - 1}, else: {months, years}
+
+    {years, months, days}
+  end
+
+  @doc """
   The `{start_utc, end_utc}` UTC datetimes bounding the child's local calendar
   `date` (defaults to today). DST-aware: the day may be 23 or 25 hours long.
   """
