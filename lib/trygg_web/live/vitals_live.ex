@@ -8,6 +8,8 @@ defmodule TryggWeb.VitalsLive do
       flash={@flash}
       current_scope={@current_scope}
       current_child={@current_child}
+      children={@children}
+      child_switch_to={:vitals}
       title="Vitals"
       back={~p"/c/#{@current_child}"}
     >

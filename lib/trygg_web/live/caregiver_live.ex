@@ -10,6 +10,8 @@ defmodule TryggWeb.CaregiverLive do
       flash={@flash}
       current_scope={@current_scope}
       current_child={@current_child}
+      children={@children}
+      child_switch_to={:caregivers}
       title="Sharing"
       back={~p"/c/#{@current_child}"}
     >

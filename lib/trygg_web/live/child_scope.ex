@@ -1,13 +1,15 @@
 defmodule TryggWeb.ChildScope do
   @moduledoc """
   `on_mount` hook that resolves the `:id` route param to a child the current
-  user may see, assigns `@current_child` / `@role`, folds it onto the socket
-  `scope`, and subscribes the LiveView to that child's realtime topic.
+  user may see, assigns `@current_child` / `@role` / `@children`, folds the
+  child onto the socket `scope`, and subscribes the LiveView to that child's
+  realtime topic. `@children` is kept in sync when the user's set of children
+  changes.
 
   No-ops for routes without an `:id` param (e.g. the child index or preferences).
   """
   import Phoenix.Component, only: [assign: 3]
-  import Phoenix.LiveView, only: [connected?: 1, put_flash: 3, redirect: 2]
+  import Phoenix.LiveView, only: [connected?: 1, put_flash: 3, redirect: 2, attach_hook: 4]
   use TryggWeb, :verified_routes
 
   alias Trygg.Accounts.Scope
@@ -25,6 +27,8 @@ defmodule TryggWeb.ChildScope do
         |> assign(:current_scope, Scope.put_child(scope, child, child.role))
         |> assign(:current_child, child)
         |> assign(:role, child.role)
+        |> assign(:children, Families.list_children(scope))
+        |> attach_hook(:sync_children, :handle_info, &sync_children_hook/2)
 
       {:cont, socket}
     rescue
@@ -43,6 +47,13 @@ defmodule TryggWeb.ChildScope do
     {:cont,
      socket
      |> assign(:current_child, nil)
-     |> assign(:role, nil)}
+     |> assign(:role, nil)
+     |> assign(:children, [])}
   end
+
+  defp sync_children_hook({:children_changed, _user_id}, socket) do
+    {:halt, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
+  end
+
+  defp sync_children_hook(_msg, socket), do: {:cont, socket}
 end

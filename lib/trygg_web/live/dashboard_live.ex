@@ -35,7 +35,6 @@ defmodule TryggWeb.DashboardLive do
       socket
       |> assign(:unit_system, scope.user.unit_system)
       |> assign(:can_write, child.role in [:owner, :caregiver])
-      |> assign(:children, Families.list_children(scope))
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
       |> assign(:sheet_amount, 0.0)
@@ -59,10 +58,6 @@ defmodule TryggWeb.DashboardLive do
      socket
      |> put_flash(:error, "#{socket.assigns.current_child.name} was deleted.")
      |> push_navigate(to: ~p"/")}
-  end
-
-  def handle_info({:children_changed, _user_id}, socket) do
-    {:noreply, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
   end
 
   def handle_info({:members_changed, _child_id}, socket) do
@@ -477,22 +472,8 @@ defmodule TryggWeb.DashboardLive do
       current_child={@current_child}
       title={@current_child.name}
       subtitle={Child.age_label(@current_child)}
+      children={@children}
     >
-      <:actions>
-        <div :if={length(@children) > 1} class="dropdown dropdown-end">
-          <.button tabindex="0" type="button" variant="ghost" size="sm" aria-label="Switch child">
-            <.icon name="hero-chevron-up-down" class="size-4" />
-          </.button>
-          <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-40 w-52 p-2 shadow">
-            <li :for={c <- @children}>
-              <.link navigate={~p"/c/#{c}"} class={c.id == @current_child.id && "active"}>
-                {c.name}
-              </.link>
-            </li>
-          </ul>
-        </div>
-      </:actions>
-
       <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
       <div :for={entry <- @summary.running} class="mb-6">
         <.timer_banner

@@ -12,6 +12,26 @@ defmodule TryggWeb.TimelineLiveTest do
     %{conn: conn, scope: scope, child: child_fixture(scope)}
   end
 
+  test "the compact child switcher stays on the log for the other child", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    sibling = child_fixture(scope, %{name: "Sibling"})
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+
+    assert has_element?(lv, "#child-switcher-trigger", child.name)
+
+    {:ok, switched, _html} =
+      lv
+      |> element("#child-switcher-#{sibling.id}")
+      |> render_click()
+      |> follow_redirect(conn, ~p"/c/#{sibling}/log")
+
+    assert has_element?(switched, "#child-switcher-trigger", "Sibling")
+    assert has_element?(switched, "header", "Log")
+  end
+
   test "shows entries and filters by type", %{conn: conn, scope: scope, child: child} do
     entry_fixture(scope, child, type: :feeding)
     entry_fixture(scope, child, type: :diaper)

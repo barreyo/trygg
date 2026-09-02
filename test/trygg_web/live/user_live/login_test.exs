@@ -6,11 +6,12 @@ defmodule TryggWeb.UserLive.LoginTest do
 
   describe "login page" do
     test "renders login page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
       assert html =~ "Log in"
       assert html =~ "Sign up"
       assert html =~ "Email me a login link"
+      refute has_element?(lv, "#app-menu")
     end
   end
 

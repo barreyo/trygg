@@ -37,6 +37,75 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "header menu" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "opens children management from the dashboard", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#app-menu")
+      assert has_element?(lv, "#app-menu-children", "Children")
+      assert has_element?(lv, "#app-menu-preferences", "Preferences")
+
+      {:ok, _children_lv, html} =
+        lv
+        |> element("#app-menu-children")
+        |> render_click()
+        |> follow_redirect(conn, ~p"/children")
+
+      assert html =~ child.name
+    end
+
+    test "opens preferences from the dashboard", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      {:ok, _prefs_lv, html} =
+        lv
+        |> element("#app-menu-preferences")
+        |> render_click()
+        |> follow_redirect(conn, ~p"/preferences")
+
+      assert html =~ "Measurement units"
+    end
+  end
+
+  describe "child switcher" do
+    setup :register_and_log_in_user
+
+    test "is hidden when the user has only one child", %{conn: conn, scope: scope} do
+      child = child_fixture(scope)
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, "#child-switcher")
+      assert has_element?(lv, "header", child.name)
+    end
+
+    test "names every child, marks the current one, and switches", %{conn: conn, scope: scope} do
+      ada = child_fixture(scope, %{name: "Ada"})
+      ollie = child_fixture(scope, %{name: "Ollie"})
+      {:ok, lv, html} = live(conn, ~p"/c/#{ada}")
+
+      assert has_element?(lv, "#child-switcher-trigger", "Ada")
+      assert html =~ "Switch child, currently Ada"
+      assert has_element?(lv, "#child-switcher-#{ada.id}[aria-current=page]", "Ada")
+      assert has_element?(lv, "#child-switcher-#{ollie.id}", "Ollie")
+      refute has_element?(lv, "#child-switcher-#{ollie.id}[aria-current=page]")
+
+      {:ok, switched, switched_html} =
+        lv
+        |> element("#child-switcher-#{ollie.id}")
+        |> render_click()
+        |> follow_redirect(conn, ~p"/c/#{ollie}")
+
+      assert has_element?(switched, "#child-switcher-trigger", "Ollie")
+      assert switched_html =~ "Switch child, currently Ollie"
+      assert has_element?(switched, "#child-switcher-#{ollie.id}[aria-current=page]")
+    end
+  end
+
   describe "logging" do
     setup %{conn: conn} do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})

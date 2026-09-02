@@ -5,6 +5,8 @@ defmodule TryggWeb.Layouts do
   """
   use TryggWeb, :html
 
+  alias Trygg.Families.Child
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -28,6 +30,16 @@ defmodule TryggWeb.Layouts do
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
   attr :current_child, :map, default: nil, doc: "the active child, when on a child-scoped page"
+
+  attr :children, :list,
+    default: [],
+    doc: "children the user can switch between; the switcher shows when there are two or more"
+
+  attr :child_switch_to, :atom,
+    default: :home,
+    values: [:home, :log, :vitals, :reports, :caregivers],
+    doc: "which child page a switch should land on"
+
   attr :title, :string, default: nil, doc: "heading shown in the top bar"
   attr :subtitle, :string, default: nil, doc: "smaller line under the title, e.g. the child's age"
   attr :back, :string, default: nil, doc: "optional path for a back arrow in the top bar"
@@ -36,10 +48,12 @@ defmodule TryggWeb.Layouts do
   slot :actions, doc: "optional controls rendered at the right of the top bar"
 
   def app(assigns) do
+    assigns = assign(assigns, :child_switcher, child_switcher_kind(assigns))
+
     ~H"""
     <div class="min-h-dvh flex flex-col bg-base-100 text-base-content">
       <header class="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 pt-[env(safe-area-inset-top)]">
-        <div class="mx-auto max-w-md w-full flex items-center gap-2 px-4 h-14">
+        <div class="mx-auto max-w-md w-full flex items-center gap-2 px-4 min-h-14 py-1.5">
           <.button
             :if={@back}
             variant="ghost"
@@ -50,7 +64,14 @@ defmodule TryggWeb.Layouts do
           >
             <.icon name="hero-chevron-left" class="size-5" />
           </.button>
-          <div class="flex-1 min-w-0 leading-tight">
+          <.child_switcher
+            :if={@child_switcher == :full}
+            variant={:full}
+            current_child={@current_child}
+            children={@children}
+            child_switch_to={@child_switch_to}
+          />
+          <div :if={@child_switcher != :full} class="flex-1 min-w-0 leading-tight">
             <div class="font-semibold text-lg truncate">
               {@title || "Trygg"}
             </div>
@@ -59,7 +80,14 @@ defmodule TryggWeb.Layouts do
             </div>
           </div>
           {render_slot(@actions)}
-          <.theme_toggle />
+          <.child_switcher
+            :if={@child_switcher == :compact}
+            variant={:compact}
+            current_child={@current_child}
+            children={@children}
+            child_switch_to={@child_switch_to}
+          />
+          <.app_menu :if={@current_scope && @current_scope.user} />
         </div>
       </header>
 
@@ -164,42 +192,160 @@ defmodule TryggWeb.Layouts do
     """
   end
 
-  @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
+  defp child_switcher_kind(%{current_child: %{id: _}, children: children, back: back})
+       when is_list(children) do
+    if match?([_, _ | _], children) do
+      if back, do: :compact, else: :full
+    end
+  end
 
-  See <head> in root.html.heex which applies the theme before page load.
-  """
-  def theme_toggle(assigns) do
+  defp child_switcher_kind(_assigns), do: nil
+
+  attr :variant, :atom, required: true, values: [:full, :compact]
+  attr :current_child, :map, required: true
+  attr :children, :list, required: true
+  attr :child_switch_to, :atom, required: true
+
+  defp child_switcher(assigns) do
+    assigns =
+      assign(assigns, :age, Child.age_label(assigns.current_child))
+
     ~H"""
-    <div class="card relative flex flex-row items-center border border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
+    <div
+      id="child-switcher"
+      class={[
+        "dropdown",
+        @variant == :full && "flex-1 min-w-0",
+        @variant == :compact && "dropdown-end shrink-0"
+      ]}
+    >
       <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
-        aria-label="System theme"
+        :if={@variant == :full}
+        type="button"
+        tabindex="0"
+        class="flex items-center gap-2.5 w-full min-h-12 -ml-1 pl-1 pr-2 rounded-lg text-left cursor-pointer select-none touch-manipulation hover:bg-base-200 active:bg-base-300 [-webkit-tap-highlight-color:transparent]"
+        id="child-switcher-trigger"
+        aria-haspopup="menu"
+        aria-label={"Switch child, currently #{@current_child.name}"}
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <span class="size-10 rounded-full bg-primary/15 text-primary grid place-items-center font-semibold shrink-0">
+          {child_initial(@current_child)}
+        </span>
+        <span class="flex-1 min-w-0 leading-tight">
+          <span class="font-semibold text-lg truncate flex items-center gap-1">
+            <span class="truncate">{@current_child.name}</span>
+            <.icon name="hero-chevron-down" class="size-4 opacity-50 shrink-0" />
+          </span>
+          <span class="text-xs opacity-60 truncate block">
+            {@age || "Tap to switch child"}
+          </span>
+        </span>
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-        aria-label="Light theme"
+        :if={@variant == :compact}
+        type="button"
+        tabindex="0"
+        class="flex items-center gap-1.5 max-w-36 h-10 pl-1 pr-2 rounded-full border border-base-300 bg-base-200 cursor-pointer select-none touch-manipulation hover:bg-base-300 active:scale-[.97] [-webkit-tap-highlight-color:transparent]"
+        id="child-switcher-trigger"
+        aria-haspopup="menu"
+        aria-label={"Switch child, currently #{@current_child.name}"}
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <span class="size-7 rounded-full bg-primary/15 text-primary grid place-items-center text-xs font-semibold shrink-0">
+          {child_initial(@current_child)}
+        </span>
+        <span class="font-medium text-sm truncate">{@current_child.name}</span>
+        <.icon name="hero-chevron-down" class="size-3.5 opacity-50 shrink-0" />
       </button>
 
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-        aria-label="Dark theme"
+      <div
+        tabindex="0"
+        role="menu"
+        aria-label="Switch child"
+        class={[
+          "dropdown-content bg-base-100 rounded-box z-40 mt-1 p-1.5 shadow-lg border border-base-300",
+          @variant == :full && "w-full min-w-64",
+          @variant == :compact && "w-72"
+        ]}
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
+        <p class="px-2.5 pt-1.5 pb-1 text-xs font-medium uppercase tracking-wide opacity-50">
+          Switch child
+        </p>
+        <.link
+          :for={c <- @children}
+          id={"child-switcher-#{c.id}"}
+          navigate={child_path(c, @child_switch_to)}
+          role="menuitem"
+          aria-current={c.id == @current_child.id && "page"}
+          class={[
+            "flex items-center gap-3 rounded-box px-2 py-2 min-h-12",
+            "hover:bg-base-200 active:bg-base-300",
+            c.id == @current_child.id && "bg-primary/10"
+          ]}
+        >
+          <span class={[
+            "size-10 rounded-full grid place-items-center font-semibold shrink-0",
+            c.id == @current_child.id && "bg-primary text-primary-content",
+            c.id != @current_child.id && "bg-primary/15 text-primary"
+          ]}>
+            {child_initial(c)}
+          </span>
+          <span class="flex-1 min-w-0 leading-tight">
+            <span class="font-semibold truncate block">{c.name}</span>
+            <span :if={Child.age_label(c)} class="text-sm opacity-60 truncate block">
+              {Child.age_label(c)}
+            </span>
+          </span>
+          <.icon
+            :if={c.id == @current_child.id}
+            name="hero-check"
+            class="size-5 text-primary shrink-0"
+          />
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  defp child_path(child, :home), do: ~p"/c/#{child}"
+  defp child_path(child, :log), do: ~p"/c/#{child}/log"
+  defp child_path(child, :vitals), do: ~p"/c/#{child}/vitals"
+  defp child_path(child, :reports), do: ~p"/c/#{child}/reports"
+  defp child_path(child, :caregivers), do: ~p"/c/#{child}/caregivers"
+  defp child_path(child, _), do: ~p"/c/#{child}"
+
+  defp child_initial(%{name: name}) when is_binary(name) do
+    case String.trim(name) do
+      "" -> "?"
+      trimmed -> String.first(trimmed)
+    end
+  end
+
+  defp app_menu(assigns) do
+    ~H"""
+    <div id="app-menu" class="dropdown dropdown-end">
+      <.button
+        tabindex="0"
+        type="button"
+        variant="ghost"
+        size="sm"
+        class="btn-circle"
+        aria-label="Menu"
+      >
+        <.icon name="hero-ellipsis-vertical" class="size-5" />
+      </.button>
+      <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-40 w-52 p-2 shadow">
+        <li>
+          <.link id="app-menu-children" navigate={~p"/children"}>
+            <.icon name="hero-users" class="size-4" /> Children
+          </.link>
+        </li>
+        <li>
+          <.link id="app-menu-preferences" navigate={~p"/preferences"}>
+            <.icon name="hero-adjustments-horizontal" class="size-4" /> Preferences
+          </.link>
+        </li>
+      </ul>
     </div>
     """
   end
