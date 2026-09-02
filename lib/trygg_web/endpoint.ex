@@ -24,6 +24,9 @@ defmodule TryggWeb.Endpoint do
     at: "/",
     from: :trygg,
     gzip: not code_reloading?,
+    # In dev, force the browser to revalidate assets so a normal (Cmd+R)
+    # reload can't repaint with a stale app.css/app.js from the HTTP cache.
+    cache_control_for_etags: if(code_reloading?, do: "no-cache", else: "public"),
     only: TryggWeb.static_paths()
 
   # Code reloading can be explicitly enabled under the

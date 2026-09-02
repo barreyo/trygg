@@ -6,11 +6,13 @@ defmodule TryggWeb.LogComponents do
 
   import TryggWeb.CoreComponents, only: [icon: 1, button: 1]
 
+  alias Trygg.Accounts.User
   alias Trygg.Log.Entry
   alias Trygg.Units
 
   @doc "A compact 'time since last X' stat card."
-  attr :icon, :string, required: true
+  attr :icon, :string, default: nil, doc: "heroicon name; ignored when :emoji is given"
+  attr :emoji, :string, default: nil, doc: "emoji glyph, shown instead of an icon"
   attr :label, :string, required: true
   attr :value, :string, required: true
   attr :sub, :string, default: nil
@@ -25,7 +27,8 @@ defmodule TryggWeb.LogComponents do
       @tone == "success" && "bg-success/10 border-success/40"
     ]}>
       <div class="flex items-center gap-1.5 text-xs opacity-70">
-        <.icon name={@icon} class="size-4" />{@label}
+        <span :if={@emoji} class="text-sm leading-none" aria-hidden="true">{@emoji}</span>
+        <.icon :if={!@emoji && @icon} name={@icon} class="size-4" />{@label}
       </div>
       <div class="text-xl font-semibold leading-tight">{@value}</div>
       <div :if={@sub} class="text-xs opacity-60 truncate">{@sub}</div>
@@ -101,41 +104,54 @@ defmodule TryggWeb.LogComponents do
     ~H"""
     <div
       class={[
-        "flex items-start gap-3 py-3",
+        "flex items-center gap-3 py-2.5",
         @on_click && "cursor-pointer active:bg-base-200 -mx-2 px-2 rounded-lg"
       ]}
       phx-click={@on_click}
       {@rest}
     >
       <div class={[
-        "mt-0.5 size-9 rounded-full grid place-items-center shrink-0",
-        if(asleep_now?(@entry), do: "bg-primary/15 text-primary", else: "bg-base-200")
+        "size-9 rounded-full grid place-items-center shrink-0",
+        if(asleep_now?(@entry), do: "bg-primary/15 text-primary", else: "bg-base-200 opacity-70")
       ]}>
+        <span
+          :if={@entry.type == :diaper}
+          class="text-base leading-none"
+          aria-hidden="true"
+        >
+          {diaper_emoji(@entry.data["kind"])}
+        </span>
         <.icon
+          :if={@entry.type != :diaper}
           name={entry_icon(@entry.type)}
           class={"size-5 " <> if(asleep_now?(@entry), do: "motion-safe:animate-pulse", else: "")}
         />
       </div>
       <div class="flex-1 min-w-0">
         <%= if asleep_now?(@entry) do %>
-          <div class="font-medium text-primary flex items-center gap-1">
+          <div class="font-semibold text-primary flex items-center gap-1 leading-tight">
             Sleeping <span class="snooze" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
           </div>
         <% else %>
-          <div class="font-medium">{entry_title(@entry, @unit_system)}</div>
-          <div :if={entry_detail(@entry, @unit_system)} class="text-sm opacity-70">
+          <div class="font-semibold leading-tight truncate">
+            {entry_title(@entry, @unit_system)}
+          </div>
+          <div
+            :if={entry_detail(@entry, @unit_system)}
+            class="mt-0.5 text-sm opacity-60 leading-tight truncate"
+          >
             {entry_detail(@entry, @unit_system)}
           </div>
         <% end %>
       </div>
-      <div class="text-right shrink-0">
-        <div class="text-sm opacity-70 whitespace-nowrap">
+      <div class="text-right shrink-0 leading-tight">
+        <div class="text-sm font-semibold tabular-nums opacity-90 whitespace-nowrap">
           {if @show_date,
             do: stamp(@entry.started_at, @tz),
             else: clock(@entry.started_at, @tz)}
         </div>
-        <div :if={@entry.logged_by} class="text-xs opacity-40 truncate max-w-24">
-          {short_email(@entry.logged_by.email)}
+        <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-40 truncate max-w-24">
+          {User.capitalize_name(@entry.logged_by.first_name)}
         </div>
       </div>
     </div>
@@ -149,6 +165,22 @@ defmodule TryggWeb.LogComponents do
   def entry_icon(:diaper), do: "hero-sparkles"
   def entry_icon(:sleep), do: "hero-moon"
   def entry_icon(_), do: "hero-clipboard-document-list"
+
+  # {emoji, stored kind, label} — the single source of truth for how each
+  # diaper kind is shown, used by the quick buttons, the "log from earlier"
+  # sheet, and every log row.
+  @diaper_choices [{"💧", "pee", "Pee"}, {"💩", "poo", "Poo"}, {"💧💩", "mixed", "Mixed"}]
+
+  @doc "The diaper kinds as `{emoji, value, label}` triples, in display order."
+  def diaper_choices, do: @diaper_choices
+
+  @doc ~S|Emoji for a diaper kind ("pee" / "poo" / "mixed"); a plain diaper pin as a fallback.|
+  def diaper_emoji(kind) do
+    case Enum.find(@diaper_choices, fn {_e, v, _l} -> v == to_string(kind) end) do
+      {emoji, _v, _l} -> emoji
+      nil -> "🧷"
+    end
+  end
 
   @doc ~S(Short, human title for an entry, e.g. "Bottle · 90 ml" or "Slept 1h 12m".)
   def entry_title(%Entry{type: :feeding, data: data}, units) do
@@ -233,9 +265,6 @@ defmodule TryggWeb.LogComponents do
       true -> "#{s}s"
     end
   end
-
-  def short_email(email) when is_binary(email), do: email |> String.split("@") |> hd()
-  def short_email(_), do: ""
 
   # Formatted duration, or nil for anything under a minute / still open.
   defp short_duration(%Entry{ended_at: nil}), do: nil

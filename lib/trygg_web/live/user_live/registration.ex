@@ -24,13 +24,27 @@ defmodule TryggWeb.UserLive.Registration do
 
         <.form for={@form} id="registration_form" phx-submit="save" phx-change="validate">
           <.input
+            field={@form[:first_name]}
+            type="text"
+            label="First name"
+            autocomplete="given-name"
+            required
+            phx-mounted={JS.focus()}
+          />
+          <.input
+            field={@form[:last_name]}
+            type="text"
+            label="Last name"
+            autocomplete="family-name"
+            required
+          />
+          <.input
             field={@form[:email]}
             type="email"
             label="Email"
             autocomplete="username"
             spellcheck="false"
             required
-            phx-mounted={JS.focus()}
           />
 
           <.button variant="primary" phx-disable-with="Creating account..." class="w-full">
@@ -49,7 +63,7 @@ defmodule TryggWeb.UserLive.Registration do
   end
 
   def mount(_params, _session, socket) do
-    changeset = Accounts.change_user_email(%User{}, %{}, validate_unique: false)
+    changeset = Accounts.change_user_registration(%User{})
 
     {:ok, assign_form(socket, changeset), temporary_assigns: [form: nil]}
   end
@@ -78,7 +92,7 @@ defmodule TryggWeb.UserLive.Registration do
   end
 
   def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset = Accounts.change_user_email(%User{}, user_params, validate_unique: false)
+    changeset = Accounts.change_user_registration(%User{}, user_params)
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 

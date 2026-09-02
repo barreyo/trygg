@@ -4,6 +4,8 @@ defmodule Trygg.Accounts.User do
 
   schema "users" do
     field :email, :string
+    field :first_name, :string
+    field :last_name, :string
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
     field :unit_system, Ecto.Enum, values: [:metric, :imperial], default: :metric
@@ -18,6 +20,50 @@ defmodule Trygg.Accounts.User do
     user
     |> cast(attrs, [:unit_system])
     |> validate_required([:unit_system])
+  end
+
+  @doc """
+  A changeset for registering a user: their name plus the email address they
+  sign in with.
+  """
+  def registration_changeset(user, attrs, opts \\ []) do
+    user
+    |> name_changeset(attrs)
+    |> email_changeset(attrs, opts)
+  end
+
+  @doc """
+  A changeset for the user's name (first and last), both required. Names are
+  normalized to proper capitalization on the way in.
+  """
+  def name_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:first_name, :last_name])
+    |> update_change(:first_name, &capitalize_name/1)
+    |> update_change(:last_name, &capitalize_name/1)
+    |> validate_required([:first_name, :last_name])
+    |> validate_length(:first_name, max: 100)
+    |> validate_length(:last_name, max: 100)
+  end
+
+  @doc ~S"""
+  Normalizes a personal name for storage and display: trims, collapses inner
+  whitespace, and upper-cases the first letter of every space- or
+  hyphen-separated part while lower-casing the rest.
+
+      iex> Trygg.Accounts.User.capitalize_name("  anne-marie  VAN  der berg ")
+      "Anne-Marie Van Der Berg"
+  """
+  def capitalize_name(nil), do: nil
+
+  def capitalize_name(name) when is_binary(name) do
+    name
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.map_join(" ", fn word ->
+      word
+      |> String.split("-")
+      |> Enum.map_join("-", &String.capitalize/1)
+    end)
   end
 
   @doc """

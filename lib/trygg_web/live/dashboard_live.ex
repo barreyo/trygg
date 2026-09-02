@@ -106,6 +106,21 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, :sheet_form, to_form(params, as: :sleep))}
   end
 
+  def handle_event("sheet_change", %{"entry" => params}, socket) do
+    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
+  end
+
+  def handle_event("nudge_feed", %{"by" => by}, socket) do
+    at = DateTime.add(now(), String.to_integer(by) * 60, :second)
+
+    params =
+      socket
+      |> current_sheet_params()
+      |> Map.put("at", Child.to_local_input(socket.assigns.current_child, at))
+
+    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
+  end
+
   def handle_event("set_note", %{"text" => text}, socket) do
     params = Map.put(current_sheet_params(socket), "note", text)
     {:noreply, assign(socket, :sheet_form, to_form(params, as: :sleep))}
@@ -120,7 +135,26 @@ defmodule TryggWeb.DashboardLive do
   def handle_event("quick", %{"kind" => kind}, socket), do: {:noreply, quick_log(socket, kind)}
 
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
-    {:noreply, assign(socket, sheet: :bottle, sheet_amount: 0.0)}
+    last = socket.assigns.summary.last_feeding
+
+    form =
+      to_form(
+        %{
+          "at" => Child.to_local_input(socket.assigns.current_child, now()),
+          "bottle_contents" => last_bottle_contents(last),
+          "note" => ""
+        },
+        as: :entry
+      )
+
+    socket =
+      assign(socket,
+        sheet: :bottle,
+        sheet_form: form,
+        sheet_amount: last_bottle_amount(last, socket.assigns.unit_system)
+      )
+
+    {:noreply, socket}
   end
 
   def handle_event("open_sheet", %{"kind" => "sleep_start"}, socket) do
@@ -162,6 +196,22 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, sheet: :sleep_past, sheet_form: form)}
   end
 
+  def handle_event("open_sheet", %{"kind" => "diaper_past"}, socket) do
+    child = socket.assigns.current_child
+
+    form =
+      to_form(
+        %{
+          "started_at" => Child.to_local_input(child, now()),
+          "kind" => "pee",
+          "note" => ""
+        },
+        as: :entry
+      )
+
+    {:noreply, assign(socket, sheet: :diaper_past, sheet_form: form)}
+  end
+
   def handle_event("close_sheet", _params, socket) do
     {:noreply, assign(socket, sheet: nil, sheet_form: nil)}
   end
@@ -173,24 +223,62 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("save_sheet", %{"entry" => params}, socket) do
     units = socket.assigns.unit_system
+    child = socket.assigns.current_child
     ml = Units.from_display(socket.assigns.sheet_amount, :volume, units)
 
-    attrs = %{
-      "type" => "feeding",
-      "data" => %{"bottle_contents" => params["bottle_contents"], "amount_ml" => ml},
-      "note" => blank(params["note"])
-    }
+    result =
+      with {:ok, at} <- Child.from_local_input(child, params["at"] || ""),
+           :ok <- not_future(at) do
+        Log.create_entry(socket.assigns.current_scope, child, :feeding, %{
+          "type" => "feeding",
+          "started_at" => at,
+          "data" => %{"bottle_contents" => params["bottle_contents"], "amount_ml" => ml},
+          "note" => blank(params["note"])
+        })
+      end
 
-    case Log.create_entry(
-           socket.assigns.current_scope,
-           socket.assigns.current_child,
-           :feeding,
-           attrs
-         ) do
-      {:ok, _entry} -> {:noreply, socket |> assign(:sheet, nil) |> put_flash(:info, "Saved.")}
-      {:error, _changeset} -> {:noreply, put_flash(socket, :error, "Pick an amount first.")}
-    end
+    {:noreply, settle_feed(socket, result)}
   end
+
+  def handle_event("save_diaper", %{"entry" => params}, socket) do
+    child = socket.assigns.current_child
+
+    result =
+      with {:ok, started} <- Child.from_local_input(child, params["started_at"] || ""),
+           :ok <- not_future(started) do
+        Log.create_entry(socket.assigns.current_scope, child, :diaper, %{
+          "started_at" => started,
+          "data" => %{"kind" => params["kind"]},
+          "note" => blank(params["note"])
+        })
+      end
+
+    {:noreply, settle_diaper(socket, result)}
+  end
+
+  defp settle_diaper(socket, {:ok, _}),
+    do: socket |> assign(sheet: nil, sheet_form: nil) |> put_flash(:info, "Added that diaper.")
+
+  defp settle_diaper(socket, {:error, :future}),
+    do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
+
+  defp settle_diaper(socket, :error),
+    do: put_flash(socket, :error, "That date and time didn't look right.")
+
+  defp settle_diaper(socket, {:error, _}),
+    do: put_flash(socket, :error, "Hmm, that didn't save — try again.")
+
+  defp settle_feed(socket, {:ok, _}),
+    do: socket |> assign(sheet: nil, sheet_form: nil) |> put_flash(:info, "Saved.")
+
+  defp settle_feed(socket, {:error, :future}),
+    do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
+
+  defp settle_feed(socket, :error),
+    do: put_flash(socket, :error, "That date and time didn't look right.")
+
+  defp settle_feed(socket, {:error, _}),
+    do: put_flash(socket, :error, "Pick an amount first.")
 
   ## Sleep save logic ----------------------------------------------------
 
@@ -384,7 +472,7 @@ defmodule TryggWeb.DashboardLive do
             sub={feed_sub(@summary.last_feeding, @unit_system)}
           />
           <.since_card
-            icon="hero-sparkles"
+            emoji={last_diaper_emoji(@summary.last_diaper)}
             label="Last diaper"
             value={relative_time(time_of(@summary.last_diaper))}
             sub={diaper_sub(@summary.last_diaper)}
@@ -445,10 +533,23 @@ defmodule TryggWeb.DashboardLive do
         <div>
           <div class="text-xs opacity-60 mb-1.5">Diaper</div>
           <div class="grid grid-cols-3 gap-2">
-            <.action_btn kind="diaper_wet" label="Wet" />
-            <.action_btn kind="diaper_dirty" label="Dirty" />
-            <.action_btn kind="diaper_mixed" label="Mixed" />
+            <.action_btn
+              :for={{emoji, value, label} <- diaper_choices()}
+              kind={"diaper_#{value}"}
+              label={label}
+              emoji={emoji}
+            />
           </div>
+          <.button
+            type="button"
+            variant="ghost"
+            size="sm"
+            phx-click="open_sheet"
+            phx-value-kind="diaper_past"
+            class="w-full mt-2"
+          >
+            <.icon name="hero-plus" class="size-4" /> Add one from earlier
+          </.button>
         </div>
       </div>
 
@@ -488,11 +589,12 @@ defmodule TryggWeb.DashboardLive do
 
   attr :kind, :string, required: true
   attr :label, :string, required: true
+  attr :emoji, :string, required: true
 
   defp action_btn(assigns) do
     ~H"""
     <.button type="button" phx-click="quick" phx-value-kind={@kind} class="h-auto py-3 flex-col gap-1">
-      <.icon name="hero-sparkles" class="size-6" />
+      <span class="text-2xl leading-none" aria-hidden="true">{@emoji}</span>
       <span class="text-xs font-medium">{@label}</span>
     </.button>
     """
@@ -518,8 +620,9 @@ defmodule TryggWeb.DashboardLive do
           <% :bottle -> %>
             <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
             <.form
-              for={to_form(%{}, as: :entry)}
+              for={@form}
               id="bottle-form"
+              phx-change="sheet_change"
               phx-submit="save_sheet"
               class="space-y-4"
             >
@@ -551,14 +654,35 @@ defmodule TryggWeb.DashboardLive do
               </div>
 
               <select name="entry[bottle_contents]" class="select select-bordered w-full">
-                <option value="formula">Formula</option>
-                <option value="expressed">Expressed milk</option>
-                <option value="donor">Donor milk</option>
+                <option
+                  :for={c <- Entry.bottle_contents()}
+                  value={c}
+                  selected={c == @form.params["bottle_contents"]}
+                >
+                  {contents_option_label(c)}
+                </option>
               </select>
+
+              <div>
+                <div class="flex flex-wrap gap-2 mb-2">
+                  <.button
+                    :for={{label, mins} <- feed_offsets()}
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    phx-click="nudge_feed"
+                    phx-value-by={mins}
+                  >
+                    {label}
+                  </.button>
+                </div>
+                <.input field={@form[:at]} type="datetime-local" label="When" />
+              </div>
 
               <input
                 type="text"
                 name="entry[note]"
+                value={@form.params["note"]}
                 placeholder="Note (optional)"
                 class="input input-bordered w-full"
               />
@@ -597,6 +721,29 @@ defmodule TryggWeb.DashboardLive do
               <.input field={@form[:ended_at]} type="datetime-local" label="Woke up" />
               <.note_field form={@form} />
               <.sheet_buttons save="Add sleep" />
+            </.form>
+          <% :diaper_past -> %>
+            <h3 class="font-semibold text-lg mb-3">Add a diaper from earlier</h3>
+            <.form for={@form} id="diaper-form" phx-submit="save_diaper" class="space-y-4">
+              <div class="join w-full">
+                <input
+                  :for={{emoji, value, label} <- diaper_choices()}
+                  type="radio"
+                  name="entry[kind]"
+                  value={value}
+                  aria-label={"#{emoji} #{label}"}
+                  checked={value == @form.params["kind"]}
+                  class="join-item btn flex-1"
+                />
+              </div>
+              <.input field={@form[:started_at]} type="datetime-local" label="When" />
+              <.input
+                field={@form[:note]}
+                type="text"
+                label="Note"
+                placeholder="Anything to remember? (optional)"
+              />
+              <.sheet_buttons save="Add diaper" />
             </.form>
         <% end %>
       </div>
@@ -646,6 +793,30 @@ defmodule TryggWeb.DashboardLive do
 
   defp nudge_minutes, do: @nudge_minutes
   defp note_suggestions, do: @note_suggestions
+
+  # Emoji for the "Last diaper" card — the most recent diaper's kind, or a
+  # neutral pin when nothing's been logged yet. `diaper_choices/0` /
+  # `diaper_emoji/1` come from TryggWeb.LogComponents so every surface agrees.
+  defp last_diaper_emoji(%Entry{data: %{"kind" => k}}), do: diaper_emoji(k)
+  defp last_diaper_emoji(_), do: diaper_emoji(nil)
+
+  # {label, minutes-from-now} one-tap chips for back-dating a bottle.
+  defp feed_offsets,
+    do: [{"Now", 0}, {"15m ago", -15}, {"30m ago", -30}, {"1h ago", -60}, {"2h ago", -120}]
+
+  defp contents_option_label("formula"), do: "Formula"
+  defp contents_option_label("expressed"), do: "Expressed milk"
+  defp contents_option_label("donor"), do: "Donor milk"
+  defp contents_option_label(other), do: String.capitalize(to_string(other))
+
+  # Seed the bottle sheet from the last feed so caregivers rarely have to adjust.
+  defp last_bottle_amount(%Entry{data: %{"amount_ml" => ml}}, units) when is_number(ml),
+    do: Units.to_display(ml, :volume, units)
+
+  defp last_bottle_amount(_last, _units), do: 0.0
+
+  defp last_bottle_contents(%Entry{data: %{"bottle_contents" => c}}) when is_binary(c), do: c
+  defp last_bottle_contents(_last), do: "formula"
 
   defp feed_time(nil), do: nil
   defp feed_time(%Entry{started_at: at}), do: at

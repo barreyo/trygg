@@ -62,7 +62,7 @@ defmodule Trygg.LogTest do
       viewer = user_scope_fixture(viewer_user)
 
       assert_raise Trygg.Families.NotAuthorizedError, fn ->
-        Log.create_entry(viewer, child, :diaper, %{"data" => %{"kind" => "wet"}})
+        Log.create_entry(viewer, child, :diaper, %{"data" => %{"kind" => "pee"}})
       end
 
       assert Log.recent_entries(viewer, child) == []
@@ -157,7 +157,7 @@ defmodule Trygg.LogTest do
     test "writes broadcast on the child's topic", %{scope: scope, child: child} do
       Trygg.Families.subscribe(child.id)
 
-      {:ok, entry} = Log.create_entry(scope, child, :diaper, %{"data" => %{"kind" => "wet"}})
+      {:ok, entry} = Log.create_entry(scope, child, :diaper, %{"data" => %{"kind" => "pee"}})
       assert_receive {:log, :created, %Entry{id: id}}
       assert id == entry.id
 
@@ -165,7 +165,7 @@ defmodule Trygg.LogTest do
         Log.update_entry(scope, entry, %{
           "type" => "diaper",
           "started_at" => entry.started_at,
-          "data" => %{"kind" => "dirty"}
+          "data" => %{"kind" => "poo"}
         })
 
       assert_receive {:log, :updated, %Entry{}}

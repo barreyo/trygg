@@ -15,7 +15,7 @@ defmodule Trygg.Log.Entry do
   @timer_types [:sleep]
 
   @bottle_contents ~w(formula expressed donor)
-  @diaper_kinds ~w(wet dirty mixed)
+  @diaper_kinds ~w(pee poo mixed)
   @sleep_locations ~w(bassinet crib contact stroller other)
 
   schema "log_entries" do
@@ -103,7 +103,7 @@ defmodule Trygg.Log.Entry do
 
       put_change(changeset, :data, data)
     else
-      add_error(changeset, :data, "diaper kind must be wet, dirty or mixed")
+      add_error(changeset, :data, "diaper kind must be pee, poo or mixed")
     end
   end
 

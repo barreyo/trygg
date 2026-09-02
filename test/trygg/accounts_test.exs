@@ -6,6 +6,8 @@ defmodule Trygg.AccountsTest do
   import Trygg.AccountsFixtures
   alias Trygg.Accounts.{User, UserToken}
 
+  doctest Trygg.Accounts.User, only: [capitalize_name: 1]
+
   describe "get_user_by_email/1" do
     test "does not return the user if the email does not exist" do
       refute Accounts.get_user_by_email("unknown@example.com")
@@ -31,16 +33,19 @@ defmodule Trygg.AccountsTest do
   end
 
   describe "register_user/1" do
-    test "requires email to be set" do
+    test "requires email and name to be set" do
       {:error, changeset} = Accounts.register_user(%{})
 
-      assert %{email: ["can't be blank"]} = errors_on(changeset)
+      errors = errors_on(changeset)
+      assert "can't be blank" in errors.email
+      assert "can't be blank" in errors.first_name
+      assert "can't be blank" in errors.last_name
     end
 
     test "validates email when given" do
       {:error, changeset} = Accounts.register_user(%{email: "not valid"})
 
-      assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
+      assert "must have the @ sign and no spaces" in errors_on(changeset).email
     end
 
     test "validates maximum values for email for security" do
@@ -64,6 +69,16 @@ defmodule Trygg.AccountsTest do
       {:ok, user} = Accounts.register_user(valid_user_attributes(email: email))
       assert user.email == email
       assert is_nil(user.confirmed_at)
+    end
+
+    test "normalizes name capitalization on the way in" do
+      {:ok, user} =
+        Accounts.register_user(
+          valid_user_attributes(first_name: "  aNNe-marie ", last_name: "van der BERG")
+        )
+
+      assert user.first_name == "Anne-Marie"
+      assert user.last_name == "Van Der Berg"
     end
   end
 

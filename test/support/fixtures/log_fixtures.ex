@@ -17,7 +17,7 @@ defmodule Trygg.LogFixtures do
   end
 
   defp default_data(:feeding), do: %{"bottle_contents" => "formula", "amount_ml" => 90}
-  defp default_data(:diaper), do: %{"kind" => "wet"}
+  defp default_data(:diaper), do: %{"kind" => "pee"}
   defp default_data(:sleep), do: %{"location" => "bassinet"}
   defp default_data(_), do: %{}
 end

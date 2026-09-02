@@ -12,9 +12,15 @@ defmodule TryggWeb.UserLive.Settings do
       <div class="text-center">
         <.header>
           Account
-          <:subtitle>Change the email address you sign in with.</:subtitle>
+          <:subtitle>Your name and the email address you sign in with.</:subtitle>
         </.header>
       </div>
+
+      <.form for={@name_form} id="name_form" phx-submit="update_name" phx-change="validate_name">
+        <.input field={@name_form[:first_name]} type="text" label="First name" required />
+        <.input field={@name_form[:last_name]} type="text" label="Last name" required />
+        <.button variant="primary" phx-disable-with="Saving...">Save name</.button>
+      </.form>
 
       <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
         <.input
@@ -48,16 +54,47 @@ defmodule TryggWeb.UserLive.Settings do
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     email_changeset = Accounts.change_user_email(user, %{}, validate_unique: false)
+    name_changeset = Accounts.change_user_name(user)
 
     socket =
       socket
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
+      |> assign(:name_form, to_form(name_changeset))
 
     {:ok, socket}
   end
 
   @impl true
+  def handle_event("validate_name", %{"user" => user_params}, socket) do
+    name_form =
+      socket.assigns.current_scope.user
+      |> Accounts.change_user_name(user_params)
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    {:noreply, assign(socket, name_form: name_form)}
+  end
+
+  def handle_event("update_name", %{"user" => user_params}, socket) do
+    user = socket.assigns.current_scope.user
+    true = Accounts.sudo_mode?(user)
+
+    case Accounts.update_user_name(user, user_params) do
+      {:ok, user} ->
+        socket =
+          socket
+          |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+          |> assign(:name_form, to_form(Accounts.change_user_name(user)))
+          |> put_flash(:info, "Name updated.")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :name_form, to_form(changeset, action: :insert))}
+    end
+  end
+
   def handle_event("validate_email", params, socket) do
     %{"user" => user_params} = params
 

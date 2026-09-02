@@ -58,8 +58,31 @@ defmodule Trygg.Accounts do
   """
   def register_user(attrs) do
     %User{}
-    |> User.email_changeset(attrs)
+    |> User.registration_changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for registering a user.
+  """
+  def change_user_registration(user \\ %User{}, attrs \\ %{}) do
+    User.registration_changeset(user, attrs, validate_unique: false)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for changing the user's name.
+  """
+  def change_user_name(user, attrs \\ %{}) do
+    User.name_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates the user's name.
+  """
+  def update_user_name(%User{} = user, attrs) do
+    user
+    |> User.name_changeset(attrs)
+    |> Repo.update()
   end
 
   ## Settings

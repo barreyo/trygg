@@ -46,10 +46,54 @@ defmodule TryggWeb.DashboardLiveTest do
     test "a one-tap diaper button records an entry", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
-      lv |> element(~s(button[phx-value-kind="diaper_wet"])) |> render_click()
+      lv |> element(~s(button[phx-value-kind="diaper_pee"])) |> render_click()
 
-      assert render(lv) =~ "Wet diaper"
+      assert render(lv) =~ "Pee diaper"
       assert [%{type: :diaper}] = Log.list_entries(scope, child)
+    end
+
+    test "a past diaper can be logged through the sheet", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
+
+      earlier =
+        DateTime.utc_now()
+        |> DateTime.add(-2 * 3600, :second)
+        |> Calendar.strftime("%Y-%m-%dT%H:%M")
+
+      lv
+      |> form("#diaper-form", entry: %{kind: "poo", started_at: earlier, note: "at grandma's"})
+      |> render_submit()
+
+      assert [%{type: :diaper, data: %{"kind" => "poo"}, note: "at grandma's"} = entry] =
+               Log.list_entries(scope, child)
+
+      assert DateTime.diff(DateTime.utc_now(), entry.started_at, :second) > 3600
+      assert render(lv) =~ "Poo diaper"
+    end
+
+    test "a future diaper time is rejected", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
+
+      later =
+        DateTime.utc_now()
+        |> DateTime.add(3600, :second)
+        |> Calendar.strftime("%Y-%m-%dT%H:%M")
+
+      html =
+        lv
+        |> form("#diaper-form", entry: %{kind: "pee", started_at: later, note: ""})
+        |> render_submit()
+
+      assert html =~ "in the future"
+      assert Log.list_entries(scope, child) == []
     end
 
     test "logging a bottle through the sheet records a feed", %{
@@ -73,6 +117,69 @@ defmodule TryggWeb.DashboardLiveTest do
       assert feed.ended_at == feed.started_at
       assert render(lv) =~ "Bottle"
       assert render(lv) =~ "90 ml"
+    end
+
+    test "a bottle can be back-dated through the sheet", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
+
+      earlier =
+        DateTime.utc_now()
+        |> DateTime.add(-90 * 60, :second)
+        |> Calendar.strftime("%Y-%m-%dT%H:%M")
+
+      lv
+      |> form("#bottle-form",
+        entry: %{bottle_contents: "formula", at: earlier, note: "sleepy feed"}
+      )
+      |> render_submit()
+
+      assert [%{type: :feeding, note: "sleepy feed"} = feed] = Log.list_entries(scope, child)
+      assert feed.ended_at == feed.started_at
+      assert DateTime.diff(DateTime.utc_now(), feed.started_at, :second) > 3600
+    end
+
+    test "a future bottle time is rejected", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
+
+      later =
+        DateTime.utc_now()
+        |> DateTime.add(3600, :second)
+        |> Calendar.strftime("%Y-%m-%dT%H:%M")
+
+      html =
+        lv
+        |> form("#bottle-form", entry: %{bottle_contents: "formula", at: later})
+        |> render_submit()
+
+      assert html =~ "in the future"
+      assert Log.list_entries(scope, child) == []
+    end
+
+    test "the bottle sheet pre-fills the last feed's amount", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      Trygg.LogFixtures.entry_fixture(scope, child, %{
+        :type => :feeding,
+        "data" => %{"bottle_contents" => "expressed", "amount_ml" => 120}
+      })
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      html = lv |> element("button", "Log a bottle") |> render_click()
+      assert html =~ "120"
+
+      # saving without touching the amount reuses it
+      lv |> form("#bottle-form", entry: %{}) |> render_submit()
+
+      assert [%{data: %{"amount_ml" => 120.0}}, _older] = Log.list_entries(scope, child)
     end
 
     test "one tap starts a sleep timer; Stop asks for an end time and note", %{
