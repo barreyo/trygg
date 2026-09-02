@@ -2,6 +2,8 @@ defmodule TryggWeb.UserLive.Login do
   use TryggWeb, :live_view
 
   alias Trygg.Accounts
+  alias Trygg.RateLimit
+  alias TryggWeb.RequestIp
 
   @impl true
   def render(assigns) do
@@ -36,7 +38,6 @@ defmodule TryggWeb.UserLive.Login do
         </div>
 
         <.form
-          :let={f}
           for={@form}
           id="login_form_magic"
           action={~p"/users/log-in"}
@@ -44,7 +45,7 @@ defmodule TryggWeb.UserLive.Login do
         >
           <.input
             readonly={!!@current_scope}
-            field={f[:email]}
+            field={@form[:email]}
             type="email"
             label="Email"
             autocomplete="username"
@@ -67,18 +68,22 @@ defmodule TryggWeb.UserLive.Login do
       Phoenix.Flash.get(socket.assigns.flash, :email) ||
         get_in(socket.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
 
-    form = to_form(%{"email" => email}, as: "user")
+    form = to_form(%{"email" => email}, as: "user", id: "login_form_magic")
 
-    {:ok, assign(socket, form: form)}
+    {:ok, assign(socket, form: form, client_ip: RequestIp.from_socket(socket))}
   end
 
   @impl true
   def handle_event("submit_magic", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_login_instructions(
-        user,
-        &url(~p"/users/log-in/#{&1}")
-      )
+    ip = socket.assigns.client_ip
+    email_key = email |> String.trim() |> String.downcase()
+
+    with :ok <- RateLimit.check(:login_ip, ip),
+         :ok <- RateLimit.check(:login_email, email_key),
+         %{} = user <- Accounts.get_user_by_email(email) do
+      Accounts.deliver_login_instructions(user, &url(~p"/users/log-in/#{&1}"))
+    else
+      _ -> :ok
     end
 
     info =

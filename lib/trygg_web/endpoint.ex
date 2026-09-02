@@ -1,19 +1,23 @@
 defmodule TryggWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :trygg
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # Cookie session: signed and encrypted. `secure` is compile-time so the
+  # production release always sets the Secure flag; Fly terminates TLS.
   @session_options [
     store: :cookie,
     key: "_trygg_key",
     signing_salt: "P//bBZWg",
-    same_site: "Lax"
+    encryption_salt: "trygg_cookie",
+    same_site: "Lax",
+    secure: Mix.env() == :prod
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:peer_data, :x_headers, :uri, session: @session_options]],
+    longpoll: [connect_info: [:peer_data, :x_headers, :uri, session: @session_options]]
+
+  # Fly (and any other orchestrator) probes this before Plug.Static / session.
+  plug TryggWeb.Health
 
   # Serve at "/" the static files from "priv/static" directory.
   #

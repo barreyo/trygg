@@ -6,22 +6,14 @@
 # Digest pins the multi-arch manifest (linux/amd64 + linux/arm64) for reproducible builds.
 FROM hexpm/elixir:1.20.2-erlang-27.3.4.14-alpine-3.22.5@sha256:6bb74368bbf64a2119c21583c8d5e48deb0fef6ee7a63d7bfc36d5bc9c69384a AS builder
 
-# Install build dependencies
-# ffmpeg is required during asset compilation (mix assets.deploy)
+# git is required for the heroicons GitHub Mix dep
 RUN apk add --no-cache \
     build-base \
-    git \
-    python3 \
-    nodejs \
-    npm \
-    zstd \
-    ffmpeg
+    git
 
-# Set environment variables
 ENV MIX_ENV=prod \
     NODE_ENV=production
 
-# Build version argument (can be overridden at build time)
 ARG BUILD_VERSION
 
 WORKDIR /app
@@ -32,84 +24,52 @@ RUN chmod +x etc/scripts/install_hex.sh && \
     sh etc/scripts/install_hex.sh && \
     mix local.rebar --force
 
-# Install mix dependencies
-# Cache mounts avoid re-downloading deps on every build (host-local cache, not in image)
 COPY mix.exs mix.lock ./
-# Path deps (currently vendor/blurhash) must exist before mix deps.get / deps.compile
-COPY vendor vendor
 RUN --mount=type=cache,target=/root/.hex \
     --mount=type=cache,target=/root/.mix \
     mix deps.get --only prod
 
-# Copy config files and compile deps
 COPY config/config.exs config/prod.exs config/runtime.exs config/
 RUN mix deps.compile
+RUN mix assets.setup
 
 COPY rel rel
 COPY priv priv
-COPY assets assets
-
-# Copy all application files
 COPY lib lib
-
-# Package source files for Sentry source maps
-RUN mix sentry.package_source_code
-
-# Preserve original webmanifest before digesting (browsers need exact filename),
-# compile assets, then restore it — all in one layer to avoid intermediate state
-RUN if [ -f priv/static/site.webmanifest ]; then \
-      cp priv/static/site.webmanifest priv/static/site.webmanifest.orig; \
-    fi \
-    && mix assets.deploy \
-    && if [ -f priv/static/site.webmanifest.orig ]; then \
-      mv priv/static/site.webmanifest.orig priv/static/site.webmanifest; \
-    fi
-
-# Compile the application with BUILD_VERSION set
-# BUILD_VERSION is embedded at compile time in Trygg.BuildVersion module
-# If BUILD_VERSION arg is not provided, calculate it from git
 RUN BUILD_VERSION=${BUILD_VERSION:-$(git describe --first-parent --abbrev=10 --long --tags --dirty 2>/dev/null || echo "unknown")} \
-    mix do compile --warnings-as-errors + release
+    mix compile --warnings-as-errors
+
+COPY assets assets
+RUN mix assets.deploy
+RUN mix release
 
 # ===============================================
 # Stage 2: Create the final production image
 # ===============================================
 FROM alpine:3.22@sha256:55ae5d250caebc548793f321534bc6a8ef1d116f334f18f4ada1b2daad3251b2 AS app
 
-# Install runtime dependencies (chromium + fonts for ChromicPDF / TV poster capture)
 RUN apk add --no-cache \
     libstdc++ \
     openssl \
     ncurses-libs \
     ca-certificates \
-    tini \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ttf-freefont
+    tini
 
-# Create non-root user and working directory in one layer
 RUN adduser -D app && mkdir -p /app && chown app /app
 
 WORKDIR /app
 
-# Copy the release from the builder stage (rel/ is build config only; the compiled
-# release in _build/prod/rel/trygg already has everything baked in)
 COPY --from=builder --chown=app:app /app/_build/prod/rel/trygg ./
 COPY --from=builder --chown=app:app /app/priv/static ./priv/static
 
-# Ensure bin scripts have execute permissions
 RUN chmod +x bin/* 2>/dev/null || true
 
-# Set environment variables
 ENV PORT=4000 \
     LANG=C.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
     PHX_SERVER=true
 
-# Use the non-root user
 USER app
 
 EXPOSE 4000

@@ -10,10 +10,9 @@ defmodule Trygg.Application do
     children = [
       TryggWeb.Telemetry,
       Trygg.Repo,
+      Trygg.RateLimit,
       {DNSCluster, query: Application.get_env(:trygg, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Trygg.PubSub},
-      # Start a worker by calling: Trygg.Worker.start_link(arg)
-      # {Trygg.Worker, arg},
       # Start to serve requests, typically the last entry
       TryggWeb.Endpoint
     ]

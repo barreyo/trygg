@@ -1,8 +1,12 @@
 // Minimal, conservative service worker: caches the app shell so the PWA opens
 // offline, but never touches the LiveView websocket/longpoll or any non-GET
 // request, and always prefers the network for navigations.
-const CACHE = "trygg-shell-v2"
-const SHELL = ["/", "/assets/css/app.css", "/assets/js/app.js", "/manifest.webmanifest"]
+//
+// Digested CSS/JS (`app-<hash>.css`) are cached on first successful fetch —
+// do not precache `/assets/css/app.css` / `/assets/js/app.js`; those paths
+// 404 in production after `mix phx.digest`.
+const CACHE = "trygg-shell-v3"
+const SHELL = ["/", "/manifest.webmanifest"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()))
@@ -22,6 +26,7 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method !== "GET" || url.origin !== self.location.origin) return
   if (url.pathname.startsWith("/live") || url.pathname.startsWith("/phoenix")) return
+  if (url.pathname === "/health") return
 
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match("/")))

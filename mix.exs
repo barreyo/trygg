@@ -5,13 +5,18 @@ defmodule Trygg.MixProject do
     [
       app: :trygg,
       version: "0.1.0",
-      elixir: "~> 1.15",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: [
+        trygg: [
+          include_executables_for: [:unix]
+        ]
+      ]
     ]
   end
 
@@ -68,7 +73,9 @@ defmodule Trygg.MixProject do
       {:bandit, "~> 1.5"},
       # IANA time-zone database (pure Elixir, compiled in) so per-child local
       # time is DST-correct year round.
-      {:tz, "~> 0.28"}
+      {:tz, "~> 0.28"},
+      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
 

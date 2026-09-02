@@ -53,6 +53,31 @@ The wiring lives in `config/runtime.exs` (adapter + key) and `config/prod.exs`
 
 Run the checks with `mix precommit`.
 
+## Production
+
+Hosted on [Fly.io](https://fly.io) (`track.backmanwong.family`). Deploys from `main` via GitHub Actions after compile, format, Sobelow, and tests. Locally: `make deploy-prod`.
+
+Set these as Fly secrets before the first boot (`fly secrets set ...`). The release refuses to start without the ones marked required.
+
+| Variable | Required | What |
+| --- | --- | --- |
+| `SECRET_KEY_BASE` | yes | Cookie signing/encryption. `mix phx.gen.secret` |
+| `DATABASE_URL` | yes | Postgres URL (`fly pg attach` writes this) |
+| `RESEND_API_KEY` | yes | Resend API key (`re_…`) — login is passwordless |
+| `MAIL_FROM` | no | Sender on a domain verified in Resend. Defaults to the Resend sandbox address, which only delivers to the account owner |
+| `RELEASE_COOKIE` | yes for clustering | Shared Erlang cookie. `mix phx.gen.secret` |
+| `PHX_HOST` | set in `fly.toml` | Public hostname (`track.backmanwong.family`) |
+| `POOL_SIZE` | set in `fly.toml` | Ecto pool size (default 10) |
+
+```bash
+fly secrets set SECRET_KEY_BASE="$(mix phx.gen.secret)" RELEASE_COOKIE="$(mix phx.gen.secret)"
+fly secrets set RESEND_API_KEY=re_xxx MAIL_FROM="Trygg <hello@trygg.app>"
+```
+
+`GET /health` is the Fly HTTP check (plain `ok`, hits Postgres). TLS terminates at Fly; the app sets HSTS and treats `X-Forwarded-Proto` as the client scheme. LiveView origin checks follow the request host so the custom domain and `*.fly.dev` both work.
+
+## Production email
+
 ## Insights and evidence
 
 Everything predictive is computed from the child's own log, in memory, on

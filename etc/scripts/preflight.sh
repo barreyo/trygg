@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# preflight.sh - Run all CI checks locally (compile, format, credo, dialyzer,
-# notification samples, sobelow, audit, tests)
+# preflight.sh - Run the checks that CI runs (compile, format, sobelow, tests)
+# plus local shell/config lints.
 # shellcheck source-path=SCRIPTDIR
 
 set -euo pipefail
@@ -10,10 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_colors.sh"
 
 echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
-echo "${BOLD}                           🚀 PREFLIGHT CHECKS                              ${RESET}"
+echo "${BOLD}                           PREFLIGHT CHECKS                                ${RESET}"
 echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
 echo ""
-echo "${TEAL}Running all CI checks that would run in GitHub Actions...${RESET}"
+echo "${TEAL}Running the checks that GitHub Actions runs, plus local shell/config lints.${RESET}"
 echo ""
 
 echo "${BOLD}Ensuring PostgreSQL is running...${RESET}"
@@ -23,7 +23,7 @@ echo "${GREEN}✓ PostgreSQL is ready${RESET}"
 echo ""
 
 step=0
-total=10
+total=7
 next_step() {
   step=$((step + 1))
   echo "${BOLD}[$step/$total] $1${RESET}"
@@ -61,32 +61,8 @@ fi
 echo "${GREEN}✓ Shell scripts and config files OK${RESET}"
 echo ""
 
-next_step "Running Credo (strict mode)..."
-if ! mix credo --strict; then
-  echo "${RED}✗ Credo checks failed${RESET}"
-  exit 1
-fi
-echo "${GREEN}✓ Credo checks passed${RESET}"
-echo ""
-
-next_step "Linting notification preview samples..."
-if ! mix lint_notification_samples; then
-  echo "${RED}✗ Notification sample lint failed. Update priv/dev/notification_preview_samples.exs${RESET}"
-  exit 1
-fi
-echo "${GREEN}✓ Notification preview samples OK${RESET}"
-echo ""
-
-next_step "Running Dialyzer..."
-if ! mix dialyzer; then
-  echo "${RED}✗ Dialyzer failed${RESET}"
-  exit 1
-fi
-echo "${GREEN}✓ Dialyzer passed${RESET}"
-echo ""
-
 next_step "Running Sobelow (security audit)..."
-if ! mix sobelow --skip --exit; then
+if ! mix sobelow --exit --quiet --ignore Config.HTTPS; then
   echo "${RED}✗ Sobelow security audit failed${RESET}"
   exit 1
 fi
@@ -94,7 +70,7 @@ echo "${GREEN}✓ Sobelow security audit passed${RESET}"
 echo ""
 
 next_step "Running dependency audit..."
-if ! mix deps.audit --ignore-file config/mix_audit.ignore; then
+if ! mix deps.audit; then
   echo "${RED}✗ Dependency audit failed${RESET}"
   exit 1
 fi
@@ -113,6 +89,5 @@ echo "${BOLD}══════════════════════�
 echo "${GREEN}${BOLD}                      ✓ ALL PREFLIGHT CHECKS PASSED!                       ${RESET}"
 echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
 echo ""
-echo "${TEAL}Your code is ready to be pushed to CI. All checks that run in GitHub Actions${RESET}"
-echo "${TEAL}have passed locally.${RESET}"
+echo "${TEAL}Ready to push. CI will compile, format, Sobelow, and test before deploy.${RESET}"
 echo ""

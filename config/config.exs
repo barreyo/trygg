@@ -81,6 +81,16 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Scrub secrets from logs (magic-link tokens live in params and URLs).
+config :phoenix, :filter_parameters, ["passw", "secret", "token", "auth", "_key", "credential"]
+
+# Passwordless login/register email throttling. Disabled in test.
+config :trygg, Trygg.RateLimit,
+  enabled: true,
+  login_ip: [limit: 10, window_ms: 900_000],
+  login_email: [limit: 5, window_ms: 900_000],
+  register_ip: [limit: 5, window_ms: 900_000]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

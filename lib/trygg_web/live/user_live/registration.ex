@@ -3,6 +3,8 @@ defmodule TryggWeb.UserLive.Registration do
 
   alias Trygg.Accounts
   alias Trygg.Accounts.User
+  alias Trygg.RateLimit
+  alias TryggWeb.RequestIp
 
   @impl true
   def render(assigns) do
@@ -65,26 +67,33 @@ defmodule TryggWeb.UserLive.Registration do
   def mount(_params, _session, socket) do
     changeset = Accounts.change_user_registration(%User{})
 
-    {:ok, assign_form(socket, changeset), temporary_assigns: [form: nil]}
+    {:ok, assign_form(assign(socket, :client_ip, RequestIp.from_socket(socket)), changeset),
+     temporary_assigns: [form: nil]}
   end
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
-    case Accounts.register_user(user_params) do
-      {:ok, user} ->
-        {:ok, _} =
-          Accounts.deliver_login_instructions(
-            user,
-            &url(~p"/users/log-in/#{&1}")
-          )
+    ip = socket.assigns.client_ip
 
+    with :ok <- RateLimit.check(:register_ip, ip),
+         {:ok, user} <- Accounts.register_user(user_params) do
+      {:ok, _} =
+        Accounts.deliver_login_instructions(
+          user,
+          &url(~p"/users/log-in/#{&1}")
+        )
+
+      {:noreply,
+       socket
+       |> put_flash(
+         :info,
+         "An email was sent to #{user.email}, please access it to confirm your account."
+       )
+       |> push_navigate(to: ~p"/users/log-in")}
+    else
+      {:error, :rate_limited} ->
         {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "An email was sent to #{user.email}, please access it to confirm your account."
-         )
-         |> push_navigate(to: ~p"/users/log-in")}
+         put_flash(socket, :error, "Too many attempts. Please wait a few minutes and try again.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}

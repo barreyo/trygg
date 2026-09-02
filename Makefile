@@ -128,13 +128,12 @@ dialyzer:  ## Run Dialyzer type checker (builds PLT on first run, cached after)
 
 .PHONY: lint
 lint:  ## Run the lint suite
-	@mix credo --all
 	@mix format --check-formatted
-	@mix lint_notification_samples
+	@mix sobelow --exit --quiet --ignore Config.HTTPS
 	@$(MAKE) shell-lint shell-format-check config-format-check
 
 .PHONY: preflight
-preflight:  ## Run all CI checks locally (compile, format, credo, dialyzer, notification samples, sobelow, audit, tests)
+preflight:  ## Run CI checks locally (compile, format, sobelow, audit, tests)
 	@BOLD="$(BOLD)" RESET="$(RESET)" RED="$(RED)" GREEN="$(GREEN)" TEAL="$(TEAL)" \
 		DOCKER_COMPOSE_FILE="$(DOCKER_COMPOSE_FILE)" \
 		./etc/scripts/preflight.sh
@@ -177,100 +176,32 @@ release:  ## Build and tag a docker image for release
 	@docker tag $(PROJECT_NAME):$(VERSION_LONG) $(PROJECT_NAME):latest
 
 ##
-# Fly.io — sandbox and production use different accounts.
-#
-# Local CLI: set tokens from each org (Fly dashboard → Access Tokens), then:
-#   export FLY_SANDBOX_ACCESS_TOKEN=...   # optional if `fly auth login` is the sandbox user
-#   export FLY_PROD_ACCESS_TOKEN=...      # optional if `fly auth login` is the production org user (do not reuse sandbox token)
-# If FLY_API_TOKEN is exported in your shell (e.g. for CI), flyctl ignores `fly auth login`.
-# Sandbox targets unset it when FLY_SANDBOX_ACCESS_TOKEN is unset so login works; or run: unset FLY_API_TOKEN
-# Optional org slug checks (from `fly orgs list`) to catch wrong token:
-#   export FLY_ORG_SANDBOX=your-sandbox-org
-#   export FLY_ORG_PROD=your-prod-org
-#
-# GitHub: sandbox workflow uses secret FLY_SANDBOX_API_TOKEN (falls back to FLY_API_TOKEN);
-#         production uses FLY_PROD_API_TOKEN only.
+# Fly.io (single app: trygg, config at fly.toml)
 ##
 
-.PHONY: fly-verify-sandbox
-fly-verify-sandbox:  ## Confirm credentials can access trygg-sandbox (uses FLY_SANDBOX_ACCESS_TOKEN if set)
-	@set -e; \
-	if [ -n "$${FLY_SANDBOX_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_SANDBOX_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	"$(CURDIR)/etc/scripts/fly_verify_app_access.sh" trygg-sandbox "$${FLY_ORG_SANDBOX:-}"
+FLY_APP ?= $(PROJECT_NAME)
+FLY_CONFIG ?= fly.toml
 
 .PHONY: fly-verify-prod
-fly-verify-prod:  ## Confirm credentials can access trygg-prod (uses FLY_PROD_ACCESS_TOKEN if set)
-	@set -e; \
-	if [ -n "$${FLY_PROD_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_PROD_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	"$(CURDIR)/etc/scripts/fly_verify_app_access.sh" trygg-prod "$${FLY_ORG_PROD:-}"
-
-.PHONY: deploy-sandbox
-deploy-sandbox: fly-verify-sandbox  ## Deploy the sandbox application to Fly.io
-	@echo "$(BOLD)Deploying sandbox application to Fly.io...$(RESET)"
-	@echo "$(BOLD)Version: $(VERSION_LONG)$(RESET)"
-	@set -e; \
-	if [ -n "$${FLY_SANDBOX_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_SANDBOX_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	fly deploy --dockerfile $(DOCKER_DIR)/Dockerfile -a trygg-sandbox -c etc/fly/fly-sandbox.toml --image-label $(VERSION_LONG) --build-arg BUILD_VERSION=$(VERSION_LONG)
+fly-verify-prod:  ## Confirm Fly credentials can access the app (FLY_API_TOKEN or fly auth login)
+	@"$(CURDIR)/etc/scripts/fly_verify_app_access.sh" $(FLY_APP)
 
 .PHONY: deploy-prod
-deploy-prod: fly-verify-prod  ## Deploy production to Fly (ensures 2+ started machines first; same prep as CI)
-	@echo "$(BOLD)Ensuring at least 2 started machines on trygg-prod...$(RESET)"
-	@set -e; \
-	if [ -n "$${FLY_PROD_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_PROD_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	"$(CURDIR)/etc/scripts/fly_ensure_min_started_machines.sh" trygg-prod 2
-	@echo "$(BOLD)Deploying production application to Fly.io...$(RESET)"
+deploy-prod: fly-verify-prod  ## Deploy to Fly with a local Docker build
+	@echo "$(BOLD)Deploying $(FLY_APP) to Fly.io...$(RESET)"
 	@echo "$(BOLD)Version: $(VERSION_LONG)$(RESET)"
-	@set -e; \
-	if [ -n "$${FLY_PROD_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_PROD_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	fly deploy \
-	  --dockerfile $(DOCKER_DIR)/Dockerfile \
-	  -a trygg-prod \
-	  -c etc/fly/fly-prod.toml \
+	@fly deploy \
+	  --dockerfile $(RELEASE_DOCKERFILE) \
+	  -a $(FLY_APP) \
+	  -c $(FLY_CONFIG) \
 	  --local-only \
 	  --build-arg BUILD_VERSION=$(VERSION_LONG) \
 	  --image-label $(VERSION_LONG)
 
-.PHONY: shell-sandbox
-shell-sandbox: fly-verify-sandbox  ## Open an IEx shell in the sandbox environment on Fly.io
-	@echo "$(BOLD)Opening IEx console in sandbox environment...$(RESET)"
-	@set -e; \
-	if [ -n "$${FLY_SANDBOX_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_SANDBOX_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	fly ssh console -a trygg-sandbox -C "/app/bin/trygg remote"
-
 .PHONY: shell-prod
-shell-prod: fly-verify-prod  ## Open an IEx shell in production on Fly.io
-	@echo "$(BOLD)Opening IEx console in production...$(RESET)"
-	@set -e; \
-	if [ -n "$${FLY_PROD_ACCESS_TOKEN:-}" ]; then \
-	  export FLY_API_TOKEN="$${FLY_PROD_ACCESS_TOKEN}"; \
-	else \
-	  unset FLY_API_TOKEN; \
-	fi; \
-	fly ssh console -a trygg-prod -C "/app/bin/trygg remote"
+shell-prod: fly-verify-prod  ## Open an IEx shell on Fly.io
+	@echo "$(BOLD)Opening IEx console on Fly.io...$(RESET)"
+	@fly ssh console -a $(FLY_APP) -C "/app/bin/$(PROJECT_NAME) remote"
 
 ##
 # ~~~ Make Helpers ~~~

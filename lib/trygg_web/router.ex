@@ -9,7 +9,14 @@ defmodule TryggWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {TryggWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" =>
+        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+      "permissions-policy" => "camera=(), microphone=(), geolocation=()",
+      "referrer-policy" => "strict-origin-when-cross-origin"
+    }
+
     plug :fetch_current_scope_for_user
   end
 

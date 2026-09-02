@@ -15,7 +15,8 @@ defmodule TryggWeb.UserAuth do
   @remember_me_options [
     sign: true,
     max_age: @max_cookie_age_in_days * 24 * 60 * 60,
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: Mix.env() == :prod
   ]
 
   # When a request arrives with a session token older than this, a fresh token

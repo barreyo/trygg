@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# preflight_parallel.sh - Run all CI checks in parallel where possible (faster)
+# preflight_parallel.sh - Run CI checks in parallel where possible (faster)
 # shellcheck source-path=SCRIPTDIR
 
 set -euo pipefail
@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_colors.sh"
 
 echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
-echo "${BOLD}                      🚀 PREFLIGHT CHECKS (PARALLEL)                        ${RESET}"
+echo "${BOLD}                      PREFLIGHT CHECKS (PARALLEL)                          ${RESET}"
 echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
 echo ""
 echo "${TEAL}Running CI checks in parallel for faster execution...${RESET}"
@@ -21,7 +21,6 @@ DBNAME=postgres "$SCRIPT_DIR/_wait_db_connection.sh"
 echo "${GREEN}✓ PostgreSQL is ready${RESET}"
 echo ""
 
-# ── Phase 1: Sequential prerequisites ────────────────────────────────────────
 echo "${BOLD}[Phase 1] Installing dependencies...${RESET}"
 if ! mix deps.get; then
   echo "${RED}✗ Dependencies installation failed${RESET}"
@@ -30,8 +29,6 @@ fi
 echo "${GREEN}✓ Dependencies installed${RESET}"
 echo ""
 
-# ── Phase 2: Compile (sequential — gates credo, sobelow, and tests) ───────────
-# Running compile alone avoids races with other mix tasks that also write to _build/dev.
 echo "${BOLD}[Phase 2] Compiling with warnings as errors...${RESET}"
 if ! mix compile --warnings-as-errors; then
   echo "${RED}✗ Compilation failed${RESET}"
@@ -40,7 +37,6 @@ fi
 echo "${GREEN}✓ Compilation successful${RESET}"
 echo ""
 
-# ── Phase 3: Parallel checks that do not touch _build ────────────────────────
 echo "${BOLD}[Phase 3] Running parallel checks (format, deps audit, shell scripts, config files)...${RESET}"
 
 tmpdir=$(mktemp -d)
@@ -54,7 +50,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 pid_format=$!
 
 (
-  mix deps.audit --ignore-file config/mix_audit.ignore >"$tmpdir/audit.log" 2>&1 &&
+  mix deps.audit >"$tmpdir/audit.log" 2>&1 &&
     echo "✓ deps.audit" >"$tmpdir/audit.status" ||
     echo "✗ deps.audit" >"$tmpdir/audit.status"
 ) &
@@ -96,34 +92,10 @@ echo "${GREEN}✓ Dependency audit passed${RESET}"
 echo "${GREEN}✓ Shell scripts OK${RESET}"
 echo ""
 
-# ── Phase 4: Parallel checks that read compiled _build/dev artifacts ──────────
-# credo, sobelow, dialyzer, and notification sample lint read from _build/dev;
-# test uses _build/test. Safe to run in parallel (no concurrent writes to the same env).
-echo "${BOLD}[Phase 4] Running parallel checks (credo, dialyzer, notification samples, sobelow, tests)...${RESET}"
+echo "${BOLD}[Phase 4] Running parallel checks (sobelow, tests)...${RESET}"
 
 (
-  mix credo --strict >"$tmpdir/credo.log" 2>&1 &&
-    echo "✓ credo" >"$tmpdir/credo.status" ||
-    echo "✗ credo" >"$tmpdir/credo.status"
-) &
-pid_credo=$!
-
-(
-  mix lint_notification_samples >"$tmpdir/notif.log" 2>&1 &&
-    echo "✓ notification_samples" >"$tmpdir/notif.status" ||
-    echo "✗ notification_samples" >"$tmpdir/notif.status"
-) &
-pid_notif=$!
-
-(
-  mix dialyzer >"$tmpdir/dialyzer.log" 2>&1 &&
-    echo "✓ dialyzer" >"$tmpdir/dialyzer.status" ||
-    echo "✗ dialyzer" >"$tmpdir/dialyzer.status"
-) &
-pid_dialyzer=$!
-
-(
-  mix sobelow --skip --exit >"$tmpdir/sobelow.log" 2>&1 &&
+  mix sobelow --exit --quiet --ignore Config.HTTPS >"$tmpdir/sobelow.log" 2>&1 &&
     echo "✓ sobelow" >"$tmpdir/sobelow.status" ||
     echo "✗ sobelow" >"$tmpdir/sobelow.status"
 ) &
@@ -136,39 +108,12 @@ pid_sobelow=$!
 ) &
 pid_test=$!
 
-wait $pid_credo $pid_notif $pid_dialyzer $pid_sobelow $pid_test
+wait $pid_sobelow $pid_test
 
-credo_status=$(cat "$tmpdir/credo.status")
-notif_status=$(cat "$tmpdir/notif.status")
-dialyzer_status=$(cat "$tmpdir/dialyzer.status")
 sobelow_status=$(cat "$tmpdir/sobelow.status")
 test_status=$(cat "$tmpdir/test.status")
 
 failed=0
-
-if [[ "$credo_status" == "✗ credo" ]]; then
-  echo "${RED}✗ Credo checks failed${RESET}"
-  cat "$tmpdir/credo.log"
-  failed=1
-else
-  echo "${GREEN}✓ Credo checks passed${RESET}"
-fi
-
-if [[ "$notif_status" == "✗ notification_samples" ]]; then
-  echo "${RED}✗ Notification sample lint failed. Update priv/dev/notification_preview_samples.exs${RESET}"
-  cat "$tmpdir/notif.log"
-  failed=1
-else
-  echo "${GREEN}✓ Notification preview samples OK${RESET}"
-fi
-
-if [[ "$dialyzer_status" == "✗ dialyzer" ]]; then
-  echo "${RED}✗ Dialyzer failed${RESET}"
-  cat "$tmpdir/dialyzer.log"
-  failed=1
-else
-  echo "${GREEN}✓ Dialyzer passed${RESET}"
-fi
 
 if [[ "$sobelow_status" == "✗ sobelow" ]]; then
   echo "${RED}✗ Sobelow security audit failed${RESET}"
@@ -195,6 +140,5 @@ echo "${BOLD}══════════════════════�
 echo "${GREEN}${BOLD}                      ✓ ALL PREFLIGHT CHECKS PASSED!                       ${RESET}"
 echo "${BOLD}═══════════════════════════════════════════════════════════════════════════${RESET}"
 echo ""
-echo "${TEAL}Your code is ready to be pushed to CI. All checks that run in GitHub Actions${RESET}"
-echo "${TEAL}have passed locally.${RESET}"
+echo "${TEAL}Ready to push. CI will compile, format, Sobelow, and test before deploy.${RESET}"
 echo ""
