@@ -49,6 +49,22 @@ defmodule TryggWeb.ReportsLiveTest do
     assert has_element?(lv, "#change-day-night")
   end
 
+  test "download PDF link points at the PDF route with the current window", %{
+    conn: conn,
+    child: child
+  } do
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
+
+    assert has_element?(lv, ~s(#download-pdf[href="/c/#{child.id}/reports.pdf?window=7"]))
+    assert has_element?(lv, "#download-pdf[download]", "Download PDF report")
+
+    lv |> element("#trend-period-30") |> render_click()
+    assert has_element?(lv, ~s(#download-pdf[href="/c/#{child.id}/reports.pdf?window=30"]))
+
+    lv |> element("#view-today") |> render_click()
+    assert has_element?(lv, ~s(#download-pdf[href="/c/#{child.id}/reports.pdf?window=30"]))
+  end
+
   test "view buttons switch between trends, today, and week", %{conn: conn, child: child} do
     {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
 
@@ -266,9 +282,40 @@ defmodule TryggWeb.ReportsLiveTest do
 
       assert has_element?(lv, "#feeding-day-interval", "3h")
       assert has_element?(lv, "#feeding-per-day", "~")
+      assert has_element?(lv, "#feeding-per-feed", "~")
       assert has_element?(lv, "#feeding-volume-baseline", "usual")
       assert has_element?(lv, "#outlook-next-feed")
       refute has_element?(lv, "#feeding-sparse")
+    end
+
+    test "the feeding card shows the typical-for-age pattern as labelled context", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      # Fixture child is 20 days old → the "1 month" row: 6–8 feeds of 2–4 oz.
+      feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+
+      assert has_element?(lv, "#feeding-age-guide", "Typical for age")
+      assert has_element?(lv, "#feeding-age-guide", "6–8 feeds of 60–120 ml")
+      assert has_element?(lv, "#feeding-age-guide", "cues")
+      assert has_element?(lv, "#feeding-per-day", "typical 6–8")
+    end
+
+    test "no typical-for-age line without a birth date", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, child} = Trygg.Families.update_child(scope, child, %{birth_date: nil})
+      feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+
+      assert has_element?(lv, "#trend-feeding")
+      refute has_element?(lv, "#feeding-age-guide")
     end
 
     test "diapers build a baseline and today's count", %{conn: conn, scope: scope, child: child} do

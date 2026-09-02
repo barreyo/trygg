@@ -28,8 +28,67 @@ defmodule TryggWeb.UserLive.LoginTest do
 
       assert html =~ "If your email is in our system"
 
-      assert Trygg.Repo.get_by!(Trygg.Accounts.UserToken, user_id: user.id).context ==
-               "login"
+      contexts =
+        Trygg.Repo.all(Trygg.Accounts.UserToken)
+        |> Enum.filter(&(&1.user_id == user.id))
+        |> Enum.map(& &1.context)
+        |> Enum.sort()
+
+      assert contexts == ["login", "login_code"]
+    end
+
+    test "shows the code step after requesting a link", %{conn: conn} do
+      user = user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      {:ok, lv, html} =
+        form(lv, "#login_form_magic", user: %{email: user.email})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/users/log-in")
+
+      assert html =~ user.email
+      assert has_element?(lv, "#login_form_code")
+      assert has_element?(lv, "#login_form_code input[name='user[email]'][value='#{user.email}']")
+      refute has_element?(lv, "#login_form_magic")
+
+      # Back to the email step, prefilled.
+      lv |> element("#login_start_over") |> render_click()
+      assert has_element?(lv, "#login_form_magic input[value='#{user.email}']")
+      refute has_element?(lv, "#login_form_code")
+    end
+
+    test "logs in with the emailed code", %{conn: conn} do
+      user = user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      {:ok, lv, _html} =
+        form(lv, "#login_form_magic", user: %{email: user.email})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/users/log-in")
+
+      # The LiveView submit only issued a link+code; grab the code the same way
+      # a user would, from the latest email.
+      code = extract_login_code(user)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/users/log-in", %{"user" => %{"email" => user.email, "code" => code}})
+
+      assert redirected_to(conn) == ~p"/"
+      assert get_session(conn, :user_token)
+      assert has_element?(lv, "#login_form_code")
+    end
+
+    test "returns to the code step after a wrong code", %{conn: conn} do
+      user = user_fixture()
+
+      conn =
+        post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email, "code" => "000000"}})
+
+      {:ok, lv, html} = live(recycle(conn), ~p"/users/log-in")
+      assert html =~ "invalid or has expired"
+      assert has_element?(lv, "#login_form_code")
     end
 
     test "does not disclose if user is registered", %{conn: conn} do

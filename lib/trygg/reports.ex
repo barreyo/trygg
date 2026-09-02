@@ -92,6 +92,28 @@ defmodule Trygg.Reports do
   end
 
   @doc """
+  Everything the printable PDF report needs: the `summary/4` for `window`,
+  the last seven local days for the calendar, and the child's full growth
+  history with latest weight/height. Requires `:viewer`.
+  """
+  def export(%Scope{} = scope, %Child{} = child, window, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+
+    %{
+      window: window,
+      today: today,
+      generated_at: now,
+      summary: summary(scope, child, window, now),
+      week: days(scope, child, Date.add(today, -6), today, now),
+      measurements: Growth.list_measurements(scope, child),
+      latest_weight: Growth.latest_weight(scope, child),
+      latest_height: Growth.latest_height(scope, child)
+    }
+  end
+
+  @doc """
   The slice of `summary/4` the Home screen needs: today's sleep prediction and
   wake pressure, the next-feed estimate, hydration status and the alert list.
   Built from the last #{@outlook_window} days.

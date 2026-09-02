@@ -29,7 +29,7 @@ defmodule TryggWeb.LogComponents do
 
   attr :status, :string,
     default: nil,
-    doc: "short call-out rendered in the card's tone colour, e.g. \"40m overdue\""
+    doc: "short call-out rendered in the card's tone colour, e.g. \"40m later than usual\""
 
   attr :badge, :string, default: nil
   attr :badge_label, :string, default: nil

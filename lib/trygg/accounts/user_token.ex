@@ -9,6 +9,12 @@ defmodule Trygg.Accounts.UserToken do
   # It is very important to keep the magic link token expiry short,
   # since someone with access to the email may take over the account.
   @magic_link_validity_in_minutes 15
+  # Short numeric code sent alongside the magic link. iOS opens email links in
+  # Safari, never in a home screen web app, so the code is the only way to
+  # sign in *inside* the installed app. The keyspace is small, so validity is
+  # short, it is single use, and attempts are rate limited per email.
+  @login_code_digits 6
+  @login_code_context "login_code"
   @change_email_validity_in_days 7
   # Sessions are intentionally very long-lived: this is a shared household
   # tracker that people keep open on their phones and should not have to sign
@@ -97,6 +103,67 @@ defmodule Trygg.Accounts.UserToken do
        sent_to: sent_to,
        user_id: user.id
      }}
+  end
+
+  @doc """
+  Builds a short numeric login code and its stored (hashed) counterpart.
+
+  The hash covers the user id as well as the code, so identical codes issued
+  to different users never collide on the `(context, token)` unique index and
+  a code can only ever be redeemed together with the email it was sent to.
+  """
+  def build_login_code(user) do
+    code = random_login_code()
+
+    {code,
+     %UserToken{
+       token: hash_login_code(user, code),
+       context: @login_code_context,
+       sent_to: user.email,
+       user_id: user.id
+     }}
+  end
+
+  @doc "Number of digits in a login code."
+  def login_code_digits, do: @login_code_digits
+
+  @doc "Context string under which login codes are stored."
+  def login_code_context, do: @login_code_context
+
+  defp random_login_code do
+    # 8 random bytes reduced mod 10^digits: the modulo bias is on the order of
+    # 10^6 / 2^64, which is irrelevant here.
+    max = Integer.pow(10, @login_code_digits)
+
+    :crypto.strong_rand_bytes(8)
+    |> :binary.decode_unsigned()
+    |> rem(max)
+    |> Integer.to_string()
+    |> String.pad_leading(@login_code_digits, "0")
+  end
+
+  defp hash_login_code(user, code) do
+    :crypto.hash(@hash_algorithm, "#{user.id}:#{code}")
+  end
+
+  @doc """
+  Returns the lookup query for a login code entered by the given user.
+
+  If found, the query returns a tuple of the form `{user, token}`. The code is
+  valid for the same window as the magic link it was sent with.
+  """
+  def verify_login_code_query(user, code) when is_binary(code) do
+    hashed = hash_login_code(user, code)
+
+    query =
+      from token in by_token_and_context_query(hashed, @login_code_context),
+        join: user in assoc(token, :user),
+        where: token.user_id == ^user.id,
+        where: token.inserted_at > ago(^@magic_link_validity_in_minutes, "minute"),
+        where: token.sent_to == user.email,
+        select: {user, token}
+
+    {:ok, query}
   end
 
   @doc """

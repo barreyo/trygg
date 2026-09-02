@@ -1,8 +1,10 @@
 defmodule Trygg.Reports.Feeding do
   @moduledoc """
   Bottle-feeding rhythm over a window of `%Trygg.Reports.Day{}`: intervals by
-  day and night, daily volume, a next-feed estimate, a cluster-feeding note,
-  and an informational intake-per-kilo guide when a recent weight exists.
+  day and night, daily volume, volume per feed, a next-feed estimate, a
+  cluster-feeding note, an informational intake-per-kilo guide when a recent
+  weight exists, and the "typical for age" feeds/day and ml/feed from
+  `Trygg.Reports.Norms` as labelled population context.
 
   Pure: takes the child, the days (oldest first, today last), `now`, and an
   optional recent weight. Feeds logged within `@episode_gap` of each other are
@@ -40,6 +42,7 @@ defmodule Trygg.Reports.Feeding do
     per_day = Enum.map(days, &day_row/1)
     feed_days = Enum.filter(per_day, &(&1.count > 0))
     last = List.last(feeds)
+    today = today_date(child, days)
 
     by_period = %{
       day: interval_sample(intervals, :day, ready?),
@@ -47,18 +50,38 @@ defmodule Trygg.Reports.Feeding do
       overall: interval_sample(intervals, nil, ready?)
     }
 
+    per_feed_ml = episodes |> Enum.map(& &1.ml) |> Enum.filter(&(&1 > 0))
+
     %{
       ready?: ready?,
       min_intervals: @min_intervals,
       per_day: per_day,
       count: Stats.sample(Enum.map(feed_days, & &1.count), feed_days != []),
       ml: Stats.sample(Enum.map(feed_days, & &1.ml), feed_days != []),
+      per_feed: Stats.sample(per_feed_ml, length(per_feed_ml) >= @min_intervals),
       intervals: by_period,
       last_feed_at: last && last.at,
       next_feed: next_feed(child, last, by_period, now),
       cluster: cluster(feeds, now),
-      intake: intake(child, days, per_day, Keyword.get(opts, :weight))
+      intake: intake(child, today, per_day, Keyword.get(opts, :weight)),
+      typical: typical(child, today)
     }
+  end
+
+  defp today_date(child, days) do
+    case List.last(days) do
+      %Day{date: d} -> d
+      _ -> Child.local_today(child)
+    end
+  end
+
+  # Population "typical for age" pattern, labelled as such so it is never
+  # mistaken for the baby's own rhythm.
+  defp typical(child, today) do
+    case Norms.typical_feeds(Norms.age_days(child, today)) do
+      nil -> nil
+      typical -> Map.put(typical, :source, :age_prior)
+    end
   end
 
   ## Episodes & intervals -------------------------------------------------
@@ -188,16 +211,10 @@ defmodule Trygg.Reports.Feeding do
 
   ## Intake guide ----------------------------------------------------------
 
-  defp intake(_child, _days, _per_day, nil), do: nil
+  defp intake(_child, _today, _per_day, nil), do: nil
 
-  defp intake(%Child{} = child, days, per_day, %{grams: grams, date: %Date{} = weight_date})
+  defp intake(%Child{} = child, today, per_day, %{grams: grams, date: %Date{} = weight_date})
        when is_number(grams) and grams > 0 do
-    today =
-      case List.last(days) do
-        %Day{date: d} -> d
-        _ -> Child.local_today(child)
-      end
-
     age_days = Norms.age_days(child, today)
     guide = Norms.intake_ml_per_kg(age_days)
     weight_fresh? = Date.diff(today, weight_date) <= @weight_max_age_days
@@ -236,5 +253,5 @@ defmodule Trygg.Reports.Feeding do
     end
   end
 
-  defp intake(_child, _days, _per_day, _weight), do: nil
+  defp intake(_child, _today, _per_day, _weight), do: nil
 end

@@ -89,6 +89,7 @@ defmodule TryggWeb.UserLive.Registration do
          :info,
          "An email was sent to #{user.email}, please access it to confirm your account."
        )
+       |> put_flash(:email, user.email)
        |> push_navigate(to: ~p"/users/log-in")}
     else
       {:error, :rate_limited} ->

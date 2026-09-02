@@ -46,6 +46,17 @@ defmodule TryggWeb.ReportsLive do
         </.button>
       </div>
 
+      <.button
+        id="download-pdf"
+        href={~p"/c/#{@current_child}/reports.pdf?#{[window: @window]}"}
+        download
+        variant="outline"
+        size="sm"
+        class="w-full min-h-11 mt-3"
+      >
+        <.icon name="hero-arrow-down-tray" class="size-5" /> Download PDF report
+      </.button>
+
       <div
         id="day-night-def"
         class="mt-3 flex items-center justify-between gap-2 rounded-box border border-base-300 bg-base-200/40 px-3 py-2"
@@ -489,23 +500,46 @@ defmodule TryggWeb.ReportsLive do
         <p :if={!@feeding.ready?} id="feeding-sparse" class="opacity-60 text-sm text-center py-2">
           Log a few more bottles and the rhythm will show up here.
         </p>
-        <div :if={@feeding.ready?} class="grid grid-cols-3 gap-2 text-center text-sm">
+        <div
+          :if={@feeding.ready?}
+          class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-sm"
+        >
           <div id="feeding-day-interval" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{interval_label(@feeding.intervals.day)}</div>
-            <div class="opacity-60 text-xs">by day</div>
+            <div class="opacity-60 text-xs">between feeds, day</div>
           </div>
           <div
             id="feeding-night-interval"
             class="rounded-box bg-base-200 border border-base-300 py-2"
           >
             <div class="font-semibold tabular-nums">{interval_label(@feeding.intervals.night)}</div>
-            <div class="opacity-60 text-xs">by night</div>
+            <div class="opacity-60 text-xs">between feeds, night</div>
           </div>
           <div id="feeding-per-day" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{count_label(@feeding.count)}</div>
             <div class="opacity-60 text-xs">feeds / day</div>
+            <div :if={@feeding.typical} class="opacity-60 text-xs tabular-nums">
+              typical {range_label(@feeding.typical.feeds_per_day)}
+            </div>
+          </div>
+          <div id="feeding-per-feed" class="rounded-box bg-base-200 border border-base-300 py-2">
+            <div class="font-semibold tabular-nums">
+              {volume_label(@feeding.per_feed.median, @unit_system)}
+            </div>
+            <div class="opacity-60 text-xs">per feed</div>
+            <div
+              :if={@feeding.typical && @feeding.typical.ml_per_feed}
+              class="opacity-60 text-xs tabular-nums"
+            >
+              typical {volume_range_label(@feeding.typical.ml_per_feed, @unit_system)}
+            </div>
           </div>
         </div>
+        <p :if={@feeding.typical} id="feeding-age-guide" class="text-xs opacity-70 leading-snug">
+          <span class="font-medium">Typical for age:</span>
+          {typical_feeds_copy(@feeding.typical, @unit_system)} Babies vary — feed on their cues, not
+          the clock; wet diapers and steady weight gain are the real check.
+        </p>
         <.count_bar_chart
           id="feeding-volume"
           series={@series}
@@ -547,6 +581,25 @@ defmodule TryggWeb.ReportsLive do
 
   defp count_label(%{median: nil}), do: "—"
   defp count_label(%{median: med}), do: "~#{round(med)}"
+
+  defp volume_label(nil, _units), do: "—"
+  defp volume_label(ml, units), do: "~#{Units.format(ml, :volume, units)}"
+
+  defp range_label({lo, hi}), do: "#{lo}–#{hi}"
+
+  # "150–180 ml" / "5–6 oz": one unit suffix for the whole range.
+  defp volume_range_label({lo, hi}, units) do
+    "#{axis_volume(lo, units)}–#{axis_volume(hi, units)} #{Units.unit_label(:volume, units)}"
+  end
+
+  defp typical_feeds_copy(%{feeds_per_day: feeds, ml_per_feed: nil}, _units) do
+    "about #{range_label(feeds)} feeds of formula or solids a day (CDC)."
+  end
+
+  defp typical_feeds_copy(%{feeds_per_day: feeds, ml_per_feed: ml}, units) do
+    "about #{range_label(feeds)} feeds of #{volume_range_label(ml, units)} a day " <>
+      "(Johns Hopkins / CDC)."
+  end
 
   defp intake_status_copy(%{status: :within, guide_per_kg: {lo, hi}}),
     do: "within the #{lo}–#{hi} ml/kg guide for their age."
@@ -684,45 +737,6 @@ defmodule TryggWeb.ReportsLive do
   end
 
   defp trim_num(n), do: n
-
-  attr :id, :string, required: true
-  attr :title, :string, required: true
-  attr :hint, :string, default: nil
-  attr :empty, :string, required: true
-  attr :rows, :list, required: true
-  attr :label_fn, :any, required: true
-
-  defp stat_table(assigns) do
-    ~H"""
-    <div id={@id} class="rounded-box border border-base-300 overflow-hidden">
-      <div class="bg-base-200/40 px-3 py-2">
-        <h3 class="font-semibold text-sm">{@title}</h3>
-        <p :if={@hint} class="text-xs opacity-60 mt-0.5">{@hint}</p>
-      </div>
-      <p :if={@rows == []} class="opacity-60 text-sm py-8 text-center px-3">{@empty}</p>
-      <div :if={@rows != []} class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Typical</th>
-              <th>Varies by</th>
-              <th>Days</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- @rows}>
-              <td>{@label_fn.(row)}</td>
-              <td class="tabular-nums">{format_duration(row.median)}</td>
-              <td class="tabular-nums">{format_duration(row.iqr)}</td>
-              <td class="tabular-nums opacity-60">{row.n}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    """
-  end
 
   attr :form, :any, required: true
 
@@ -1147,6 +1161,9 @@ defmodule TryggWeb.ReportsLive do
   defp wake_window_label(%{ordinal: 1}), do: "After morning"
   defp wake_window_label(%{ordinal: n}), do: "After nap #{n - 1}"
 
-  defp in_label(seconds) when is_integer(seconds) and seconds < 0, do: "overdue"
+  defp in_label(seconds) when is_integer(seconds) and seconds < -60,
+    do: "#{format_duration(-seconds)} past usual"
+
+  defp in_label(seconds) when is_integer(seconds) and seconds < 60, do: "about now"
   defp in_label(seconds) when is_integer(seconds), do: "in #{format_duration(seconds)}"
 end

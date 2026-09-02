@@ -217,20 +217,57 @@ defmodule Trygg.Accounts do
   """
   def login_user_by_magic_link(token) do
     {:ok, query} = UserToken.verify_magic_link_token_query(token)
+    finish_login(Repo.one(query))
+  end
 
-    case Repo.one(query) do
-      {%User{confirmed_at: nil} = user, _token} ->
-        user
-        |> User.confirm_changeset()
-        |> update_user_and_delete_all_tokens()
+  @doc """
+  Logs the user in with the numeric code from the login email.
 
-      {user, token} ->
-        Repo.delete!(token)
-        {:ok, {user, []}}
-
-      nil ->
-        {:error, :not_found}
+  Same semantics as `login_user_by_magic_link/1`: the code is single use and
+  redeeming it also invalidates the magic link it was sent with (and vice
+  versa). The code is matched against the user with the given email only, so a
+  guessed code is useless without also knowing the address it was sent to.
+  """
+  def login_user_by_code(email, code) when is_binary(email) and is_binary(code) do
+    with %User{} = user <- get_user_by_email(email),
+         {:ok, code} <- normalize_login_code(code),
+         {:ok, query} <- UserToken.verify_login_code_query(user, code) do
+      finish_login(Repo.one(query))
+    else
+      _ -> {:error, :not_found}
     end
+  end
+
+  # Accepts what people actually type: "123 456", "123-456", trailing space.
+  defp normalize_login_code(code) do
+    digits = String.replace(code, ~r/\D/, "")
+
+    if String.length(digits) == UserToken.login_code_digits() do
+      {:ok, digits}
+    else
+      :error
+    end
+  end
+
+  # Shared tail of magic-link and code logins. Unconfirmed users get confirmed
+  # and *all* their tokens dropped; confirmed users only lose their pending
+  # login tokens (link + code), never their other device sessions.
+  defp finish_login({%User{confirmed_at: nil} = user, _token}) do
+    user
+    |> User.confirm_changeset()
+    |> update_user_and_delete_all_tokens()
+  end
+
+  defp finish_login({%User{} = user, _token}) do
+    Repo.delete_all(pending_login_tokens_query(user))
+    {:ok, {user, []}}
+  end
+
+  defp finish_login(nil), do: {:error, :not_found}
+
+  defp pending_login_tokens_query(user) do
+    contexts = ["login", UserToken.login_code_context()]
+    from t in UserToken, where: t.user_id == ^user.id and t.context in ^contexts
   end
 
   @doc ~S"""
@@ -251,13 +288,27 @@ defmodule Trygg.Accounts do
   end
 
   @doc """
-  Delivers the magic link login instructions to the given user.
+  Delivers the login email to the given user: a magic link plus a short code
+  that can be typed into an installed (home screen) app where the link can't
+  be opened.
+
+  Only the most recent code is valid; issuing a new one revokes earlier ones.
   """
   def deliver_login_instructions(%User{} = user, magic_link_url_fun)
       when is_function(magic_link_url_fun, 1) do
     {encoded_token, user_token} = UserToken.build_email_token(user, "login")
-    Repo.insert!(user_token)
-    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token))
+    {code, code_token} = UserToken.build_login_code(user)
+    code_context = UserToken.login_code_context()
+
+    {:ok, _} =
+      Repo.transact(fn ->
+        Repo.delete_all(from(t in UserToken, where: [user_id: ^user.id, context: ^code_context]))
+        Repo.insert!(user_token)
+        Repo.insert!(code_token)
+        {:ok, :sent}
+      end)
+
+    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token), code)
   end
 
   @doc """

@@ -963,9 +963,11 @@ defmodule TryggWeb.DashboardLive do
 
   # Feed card. The neutral `sub` says what comes next; the tone-coloured
   # `status` only appears when something needs attention (a cluster in
-  # progress, or a feed that is due / overdue).
+  # progress, or a feed running later than the baby's own rhythm). The
+  # estimate comes from their pattern, not a schedule, so the copy says
+  # "usual", never "overdue" or "missed".
   @due_soon_seconds 15 * 60
-  @overdue_seconds -30 * 60
+  @late_seconds -30 * 60
 
   defp feed_sub(nil, _outlook, _units), do: "no feeds yet"
 
@@ -994,16 +996,16 @@ defmodule TryggWeb.DashboardLive do
     end
   end
 
-  defp due_status(s) when s <= @overdue_seconds, do: "#{format_duration(-s)} overdue"
-  defp due_status(s) when s < @due_soon_seconds, do: "due about now"
+  defp due_status(s) when s <= @late_seconds, do: "#{format_duration(-s)} later than usual"
+  defp due_status(s) when s < @due_soon_seconds, do: "usually fed around now"
   defp due_status(_), do: nil
 
-  defp feed_tone(%{next_feed: %{in_seconds: s}}) when is_integer(s) and s <= @overdue_seconds,
+  defp feed_tone(%{next_feed: %{in_seconds: s}}) when is_integer(s) and s <= @late_seconds,
     do: "warning"
 
   defp feed_tone(_), do: "base"
 
-  defp due_label(seconds) when seconds < -60, do: "#{format_duration(-seconds)} overdue"
+  defp due_label(seconds) when seconds < -60, do: "#{format_duration(-seconds)} past usual"
   defp due_label(seconds) when seconds < 60, do: "about now"
   defp due_label(seconds), do: "in #{format_duration(seconds)}"
 

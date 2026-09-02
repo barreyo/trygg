@@ -8,13 +8,18 @@
       {assigns[:page_title]}
     </.live_title>
 
-    <link rel="manifest" href={~p"/manifest.webmanifest"} />
+    <%!-- Literal path on purpose: `~p` would resolve to the digested
+         `/manifest-<hash>.webmanifest` in prod, which Plug.Static's `:only`
+         exact-match list rejects (404). Installed apps also key on a stable
+         manifest URL. --%>
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Trygg" />
-    <link rel="apple-touch-icon" href={~p"/images/icon-192.png"} />
+    <link rel="apple-touch-icon" sizes="180x180" href={~p"/images/icon-180.png"} />
 
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>

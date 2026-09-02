@@ -89,7 +89,18 @@ config :trygg, Trygg.RateLimit,
   enabled: true,
   login_ip: [limit: 10, window_ms: 900_000],
   login_email: [limit: 5, window_ms: 900_000],
+  # Wrong-code attempts per email. Codes are 6 digits, so this caps a
+  # brute-force at 5 guesses per 15-minute code lifetime.
+  login_code: [limit: 5, window_ms: 900_000],
   register_ip: [limit: 5, window_ms: 900_000]
+
+# Reports PDF export. `on_demand` launches Chrome per print job (and shuts it
+# down afterwards) so environments without a browser still boot. Production
+# adds `no_sandbox` and the Chromium path in config/runtime.exs.
+config :trygg, ChromicPDF,
+  on_demand: true,
+  session_pool: [timeout: 20_000],
+  chrome_args: "--disable-dev-shm-usage"
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

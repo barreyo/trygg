@@ -26,6 +26,23 @@ defmodule Trygg.Reports.NormsTest do
     assert Norms.intake_ml_per_kg(400) == nil
   end
 
+  test "typical feeds follow the first-year formula table" do
+    assert %{feeds_per_day: {8, 12}, ml_per_feed: {30, 60}} = Norms.typical_feeds(3)
+    assert %{feeds_per_day: {6, 8}, ml_per_feed: {60, 120}} = Norms.typical_feeds(30)
+    assert %{feeds_per_day: {5, 6}, ml_per_feed: {150, 180}} = Norms.typical_feeds(60)
+    assert %{feeds_per_day: {5, 6}, ml_per_feed: {180, 210}} = Norms.typical_feeds(120)
+    assert %{feeds_per_day: {5, 6}, ml_per_feed: nil} = Norms.typical_feeds(250)
+    assert Norms.typical_feeds(400) == nil
+    assert Norms.typical_feeds(nil) == nil
+  end
+
+  test "calories are estimated at 0.67 kcal per ml of bottle volume" do
+    assert Norms.kcal_per_ml() == 0.67
+    assert_in_delta Norms.estimated_kcal(600), 402.0, 0.01
+    assert Norms.estimated_kcal(nil) == nil
+    assert Norms.kcal_note() =~ "0.67 kcal/ml"
+  end
+
   test "wet diaper floor ramps over the first five days of life" do
     assert Norms.min_wet_diapers(0) == 1
     assert Norms.min_wet_diapers(3) == 4

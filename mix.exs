@@ -74,6 +74,8 @@ defmodule Trygg.MixProject do
       # IANA time-zone database (pure Elixir, compiled in) so per-child local
       # time is DST-correct year round.
       {:tz, "~> 0.28"},
+      # HTML → PDF via headless Chrome for the Reports PDF export.
+      {:chromic_pdf, "~> 1.17"},
       {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]

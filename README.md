@@ -21,6 +21,12 @@ your email, click the link. Sessions last a year, so you sign in once. In
 development the email lands in the
 [mailbox preview](http://localhost:4000/dev/mailbox).
 
+The Reports tab's "Download PDF report" renders through headless Chrome
+([ChromicPDF](https://hexdocs.pm/chromic_pdf)), so install Google Chrome or
+Chromium locally; it's auto-detected on macOS and Linux. Chrome is started per
+print job, so nothing else needs it. The production image installs Alpine's
+`chromium` package. The end-to-end PDF test is opt-in: `mix test --include chrome`.
+
 ## Production email
 
 Outbound mail goes through [Resend](https://resend.com). Because login is
@@ -89,7 +95,8 @@ medical advice" note.
 | Insight | Where | How | Basis |
 | --- | --- | --- | --- |
 | Next nap, wake pressure | Home, Reports → Trends | Personal median wake window per nap ordinal over the last 14 days, shown with its IQR range; age-band prior when history is thin | No validated wake-window table exists — published charts disagree by 2×, so the child's own pattern wins |
-| Next feed, feeds/day, volume | Home, Trends | Feeds < 30 min apart merge into one episode; median interval split by the child's day/night; cluster note at ≥ 3 feeds in 2 h | Descriptive, personal baseline |
+| Next feed, feeds/day, volume | Home, Trends | Feeds < 30 min apart merge into one episode; median interval split by the child's day/night; cluster note at ≥ 3 feeds in 2 h. A late feed is framed as "later than usual", never "overdue" — the estimate is the child's rhythm, not a schedule | Descriptive, personal baseline; responsive-feeding guidance (AAP, Johns Hopkins) |
+| Typical for age | Trends | Feeds/day and ml/feed by age band shown beside the child's own numbers, always labelled "typical for age" | Johns Hopkins / Stanford Children's "Feeding Guide for the First Year"; CDC formula-feeding guidance |
 | Intake guide | Trends | 3-day average vs 150–180 / 120–150 / 100–120 ml/kg/day by age, needs a weight ≤ 14 days old; informational only | AAP / HealthyChildren formula guidance |
 | Hydration | Home, Trends | Wet diapers per day vs the child's 7-day median and same-time-of-day pace; floors: < 6 wet/day, ≥ 6 dry hours (newborn day-of-life ramp) | AAP dehydration signs |
 | Sleep shift | Home, Trends → Changes | Last 3 complete days vs the 14 before, robust z (median/MAD) with absolute floors on night wakings, night stretch, total sleep, naps | Change detection, not prediction; population data show no age-pinned regressions |

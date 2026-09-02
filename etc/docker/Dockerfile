@@ -48,12 +48,15 @@ RUN mix release
 # ===============================================
 FROM alpine:3.22@sha256:55ae5d250caebc548793f321534bc6a8ef1d116f334f18f4ada1b2daad3251b2 AS app
 
+# chromium + a basic Latin font render the Reports PDF export (ChromicPDF).
 RUN apk add --no-cache \
     libstdc++ \
     openssl \
     ncurses-libs \
     ca-certificates \
-    tini
+    tini \
+    chromium \
+    ttf-dejavu
 
 RUN adduser -D app && mkdir -p /app && chown app /app
 
@@ -68,7 +71,8 @@ ENV PORT=4000 \
     LANG=C.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
-    PHX_SERVER=true
+    PHX_SERVER=true \
+    CHROME_EXECUTABLE=/usr/bin/chromium-browser
 
 USER app
 

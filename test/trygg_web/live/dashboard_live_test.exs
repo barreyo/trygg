@@ -642,10 +642,10 @@ defmodule TryggWeb.DashboardLiveTest do
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#glance-feed", "Next ≈")
-      refute has_element?(lv, "#glance-feed", "overdue")
+      refute has_element?(lv, "#glance-feed", "later than usual")
     end
 
-    test "a feed well past its usual time shows an overdue status", %{
+    test "a feed well past its usual time is framed against their rhythm, not a schedule", %{
       conn: conn,
       scope: scope,
       child: child
@@ -654,7 +654,8 @@ defmodule TryggWeb.DashboardLiveTest do
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#glance-feed", "Next ≈")
-      assert has_element?(lv, "#glance-feed", "overdue")
+      assert has_element?(lv, "#glance-feed", "later than usual")
+      refute has_element?(lv, "#glance-feed", "overdue")
     end
 
     test "six dry hours with recent activity raises a hydration alert", %{

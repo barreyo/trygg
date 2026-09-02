@@ -54,6 +54,26 @@ defmodule Trygg.Reports.FeedingTest do
     assert summary.next_feed.range.label =~ "16:00"
   end
 
+  test "reports volume per feeding episode" do
+    now = at(@today, ~T[12:30:00])
+    summary = Feeding.summarize(child(), regular_days(4, now: now, ml: 120), now)
+
+    assert summary.per_feed.median == 120.0
+    assert summary.per_feed.n == 14
+  end
+
+  test "typical-for-age pattern is labelled as an age prior and absent without a birth date" do
+    now = at(@today, ~T[12:30:00])
+    days = regular_days(4, now: now)
+
+    assert Feeding.summarize(child(), days, now).typical == nil
+
+    child = child(%{birth_date: Date.add(@today, -60)})
+
+    assert %{feeds_per_day: {5, 6}, ml_per_feed: {150, 180}, source: :age_prior} =
+             Feeding.summarize(child, days, now).typical
+  end
+
   test "feeds within 30 minutes count as one episode" do
     now = at(@today, ~T[13:00:00])
     dates = dates_ending(@today, 3)

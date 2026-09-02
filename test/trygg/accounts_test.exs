@@ -274,6 +274,66 @@ defmodule Trygg.AccountsTest do
     end
   end
 
+  describe "login_user_by_code/2" do
+    test "confirms an unconfirmed user and expires tokens" do
+      user = unconfirmed_user_fixture()
+      code = extract_login_code(user)
+
+      assert {:ok, {user, [_, _]}} = Accounts.login_user_by_code(user.email, code)
+      assert user.confirmed_at
+    end
+
+    test "logs a confirmed user in once and revokes the paired magic link" do
+      user = user_fixture()
+
+      magic_token =
+        extract_user_token(fn url -> Accounts.deliver_login_instructions(user, url) end)
+
+      # The second email supersedes the first code but not the first link.
+      code = extract_login_code(user)
+
+      assert {:ok, {^user, []}} = Accounts.login_user_by_code(user.email, code)
+      assert {:error, :not_found} = Accounts.login_user_by_code(user.email, code)
+      refute Accounts.get_user_by_magic_link_token(magic_token)
+    end
+
+    test "tolerates spaces and dashes in the typed code" do
+      user = user_fixture()
+      code = extract_login_code(user)
+      spaced = String.slice(code, 0, 3) <> " " <> String.slice(code, 3, 3)
+
+      assert {:ok, {^user, []}} = Accounts.login_user_by_code(user.email, spaced)
+    end
+
+    test "rejects the wrong code, the wrong email and a superseded code" do
+      user = user_fixture()
+      other = user_fixture()
+      old_code = extract_login_code(user)
+      code = extract_login_code(user)
+
+      wrong = if code == "000000", do: "000001", else: "000000"
+      assert {:error, :not_found} = Accounts.login_user_by_code(user.email, wrong)
+      assert {:error, :not_found} = Accounts.login_user_by_code(other.email, code)
+      assert {:error, :not_found} = Accounts.login_user_by_code("nobody@example.com", code)
+      assert {:error, :not_found} = Accounts.login_user_by_code(user.email, "12345")
+      assert {:error, :not_found} = Accounts.login_user_by_code(user.email, old_code)
+      assert {:ok, _} = Accounts.login_user_by_code(user.email, code)
+    end
+
+    test "rejects an expired code" do
+      user = user_fixture()
+      code = extract_login_code(user)
+
+      {_, nil} =
+        Repo.update_all(
+          from(t in UserToken, where: t.context == "login_code"),
+          set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -16, :minute)]
+        )
+
+      assert {:error, :not_found} = Accounts.login_user_by_code(user.email, code)
+    end
+  end
+
   describe "delete_user_session_token/1" do
     test "deletes the token" do
       user = user_fixture()
@@ -299,6 +359,15 @@ defmodule Trygg.AccountsTest do
       assert user_token.user_id == user.id
       assert user_token.sent_to == user.email
       assert user_token.context == "login"
+    end
+
+    test "stores a hashed login code alongside the link", %{user: user} do
+      code = extract_login_code(user)
+      assert String.match?(code, ~r/^\d{6}$/)
+
+      assert code_token = Repo.get_by(UserToken, user_id: user.id, context: "login_code")
+      assert code_token.sent_to == user.email
+      assert code_token.token == :crypto.hash(:sha256, "#{user.id}:#{code}")
     end
   end
 end

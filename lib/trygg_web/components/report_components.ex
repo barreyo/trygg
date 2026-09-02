@@ -200,6 +200,7 @@ defmodule TryggWeb.ReportComponents do
   attr :days, :list, required: true
   attr :child, Child, required: true
   attr :today_date, Date, required: true
+  attr :static, :boolean, default: false, doc: "no tap targets (print)"
 
   def week_calendar(assigns) do
     plot = plot_week(assigns.days, assigns.child, assigns.today_date)
@@ -236,8 +237,8 @@ defmodule TryggWeb.ReportComponents do
       <g
         :for={col <- @plot.cols}
         id={"week-col-#{col.iso}"}
-        class="cursor-pointer"
-        phx-click="open_day"
+        class={[!@static && "cursor-pointer"]}
+        phx-click={!@static && "open_day"}
         phx-value-date={col.iso}
       >
         <rect
@@ -329,6 +330,7 @@ defmodule TryggWeb.ReportComponents do
   attr :slope_label, :string, default: nil
   attr :selected, :string, default: nil
   attr :caption, :string, default: nil
+  attr :static, :boolean, default: false, doc: "no tap targets or hint caption (print)"
 
   def sleep_bar_chart(assigns) do
     chart = plot_bars(assigns.series, assigns.selected)
@@ -387,6 +389,7 @@ defmodule TryggWeb.ReportComponents do
             class="fill-base-content/20"
           />
           <rect
+            :if={!@static}
             id={"sleep-bar-#{bar.iso}"}
             x={bar.hit_x}
             y={@chart.top}
@@ -419,7 +422,7 @@ defmodule TryggWeb.ReportComponents do
         </text>
       </svg>
       <p
-        :if={!@chart.empty?}
+        :if={!@static and !@chart.empty?}
         id={"#{@id}-caption"}
         class={[
           "text-sm text-center mt-1 tabular-nums min-h-5",
@@ -663,6 +666,234 @@ defmodule TryggWeb.ReportComponents do
     }
   end
 
+  ## Wake / bedtime clock chart --------------------------------------------
+
+  @doc """
+  Morning wake and bedtime by day as clock times. `series` is the
+  `totals.per_day` list from `Trygg.Reports.Insights` (`wake_minutes` /
+  `bed_minutes` are minutes from local midnight; bedtimes after midnight run
+  past 1440 so the line doesn't wrap).
+  """
+  attr :id, :string, required: true
+  attr :series, :list, required: true
+
+  def clock_chart(assigns) do
+    chart = plot_clock(assigns.series)
+    assigns = assign(assigns, :chart, chart)
+
+    ~H"""
+    <div id={@id}>
+      <p :if={@chart.empty?} class="opacity-60 text-sm py-6 text-center">
+        No wake or bedtimes to chart yet.
+      </p>
+      <svg
+        :if={!@chart.empty?}
+        viewBox={"0 0 #{@chart.width} #{@chart.height}"}
+        class="w-full h-44 select-none"
+        role="img"
+        aria-label="Morning wake and bedtime by day"
+      >
+        <line
+          :for={tick <- @chart.y_ticks}
+          x1={@chart.left}
+          y1={tick.y}
+          x2={@chart.right}
+          y2={tick.y}
+          class="stroke-base-content/12"
+          stroke-width="1"
+        />
+        <text
+          :for={tick <- @chart.y_ticks}
+          x={@chart.left - 4}
+          y={tick.y + 3}
+          text-anchor="end"
+          class="fill-base-content/55"
+          font-size="8"
+        >
+          {tick.label}
+        </text>
+        <polyline
+          :if={@chart.wake_line}
+          fill="none"
+          class="stroke-accent"
+          stroke-width="1.5"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+          points={@chart.wake_line}
+        />
+        <polyline
+          :if={@chart.bed_line}
+          fill="none"
+          class="stroke-primary"
+          stroke-width="1.5"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+          points={@chart.bed_line}
+        />
+        <g :for={pt <- @chart.wake_points} id={"#{@id}-wake-#{pt.iso}"}>
+          <circle cx={pt.x} cy={pt.y} r="2.5" class="fill-accent" />
+          <title>{pt.caption}</title>
+        </g>
+        <g :for={pt <- @chart.bed_points} id={"#{@id}-bed-#{pt.iso}"}>
+          <circle cx={pt.x} cy={pt.y} r="2.5" class="fill-primary" />
+          <title>{pt.caption}</title>
+        </g>
+        <text
+          :for={label <- @chart.x_labels}
+          x={label.x}
+          y={@chart.bottom + 14}
+          text-anchor="middle"
+          class="fill-base-content/55"
+          font-size="8"
+        >
+          {label.label}
+        </text>
+      </svg>
+      <div
+        :if={!@chart.empty?}
+        id={"#{@id}-legend"}
+        class="flex items-center justify-center gap-4 text-xs mt-2"
+      >
+        <span class="flex items-center gap-1.5">
+          <span class="size-2.5 rounded-full bg-accent" aria-hidden="true"></span> Morning wake
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="size-2.5 rounded-full bg-primary" aria-hidden="true"></span> Bedtime
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp plot_clock(series) do
+    wake = for d <- series, is_number(d[:wake_minutes]), do: {d.date, d.wake_minutes}
+    bed = for d <- series, is_number(d[:bed_minutes]), do: {d.date, d.bed_minutes}
+
+    if wake == [] and bed == [] do
+      %{empty?: true}
+    else
+      n = max(length(series), 1)
+      values = Enum.map(wake ++ bed, &elem(&1, 1))
+      # Snap the axis to whole hours with an hour of headroom either side.
+      y_min = ((Enum.min(values) / 60) |> Float.floor() |> trunc()) * 60 - 60
+      y_max = ((Enum.max(values) / 60) |> Float.ceil() |> trunc()) * 60 + 60
+      y_max = if y_max - y_min < 240, do: y_min + 240, else: y_max
+      plot_h = @chart_bottom - @chart_top
+      span = @chart_right - @chart_left
+      slot = span / n
+      y = fn mins -> @chart_bottom - (mins - y_min) / (y_max - y_min) * plot_h end
+
+      index = series |> Enum.with_index() |> Map.new(fn {d, i} -> {d.date, i} end)
+      x = fn date -> @chart_left + Map.fetch!(index, date) * slot + slot / 2 end
+
+      point = fn {date, mins}, kind ->
+        %{
+          iso: Date.to_iso8601(date),
+          x: x.(date),
+          y: y.(mins),
+          caption: "#{Calendar.strftime(date, "%a %-d %b")} · #{kind} #{clock_label(mins)}"
+        }
+      end
+
+      wake_points = Enum.map(wake, &point.(&1, "Woke"))
+      bed_points = Enum.map(bed, &point.(&1, "Bed"))
+
+      hour_step = if y_max - y_min > 12 * 60, do: 180, else: 60
+
+      y_ticks =
+        y_min
+        |> Stream.iterate(&(&1 + hour_step))
+        |> Stream.take_while(&(&1 <= y_max))
+        |> Enum.map(fn mins -> %{y: y.(mins), label: clock_label(mins)} end)
+
+      x_labels =
+        if n <= 7 do
+          Enum.map(series, fn d ->
+            %{x: x.(d.date), label: Calendar.strftime(d.date, "%-d")}
+          end)
+        else
+          [0, div(n - 1, 2), n - 1]
+          |> Enum.uniq()
+          |> Enum.map(fn i ->
+            d = Enum.at(series, i)
+            %{x: x.(d.date), label: Calendar.strftime(d.date, "%-d %b")}
+          end)
+        end
+
+      %{
+        empty?: false,
+        width: @chart_width,
+        height: @chart_height,
+        left: @chart_left,
+        right: @chart_right,
+        top: @chart_top,
+        bottom: @chart_bottom,
+        y_ticks: y_ticks,
+        x_labels: x_labels,
+        wake_points: wake_points,
+        bed_points: bed_points,
+        wake_line: points_line(wake_points),
+        bed_line: points_line(bed_points)
+      }
+    end
+  end
+
+  defp points_line(points) when length(points) < 2, do: nil
+
+  defp points_line(points) do
+    Enum.map_join(points, " ", fn p -> "#{fmt(p.x)},#{fmt(p.y)}" end)
+  end
+
+  defp clock_label(minutes) when is_number(minutes) do
+    minutes = minutes |> round() |> rem(24 * 60)
+    "#{pad2(div(minutes, 60))}:#{pad2(rem(minutes, 60))}"
+  end
+
+  ## Stat table -------------------------------------------------------------
+
+  @doc """
+  Typical / spread / sample-size table for ordinal stats such as wake windows
+  or naps. `rows` carry `median`, `iqr` and `n`; `label_fn` names each row.
+  """
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :hint, :string, default: nil
+  attr :empty, :string, required: true
+  attr :rows, :list, required: true
+  attr :label_fn, :any, required: true
+
+  def stat_table(assigns) do
+    ~H"""
+    <div id={@id} class="rounded-box border border-base-300 overflow-hidden">
+      <div class="bg-base-200/40 px-3 py-2">
+        <h3 class="font-semibold text-sm">{@title}</h3>
+        <p :if={@hint} class="text-xs opacity-60 mt-0.5">{@hint}</p>
+      </div>
+      <p :if={@rows == []} class="opacity-60 text-sm py-8 text-center px-3">{@empty}</p>
+      <div :if={@rows != []} class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Typical</th>
+              <th>Varies by</th>
+              <th>Days</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- @rows}>
+              <td>{@label_fn.(row)}</td>
+              <td class="tabular-nums">{LogComponents.format_duration(row.median)}</td>
+              <td class="tabular-nums">{LogComponents.format_duration(row.iqr)}</td>
+              <td class="tabular-nums opacity-60">{row.n}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
   defp nice_step(max_y) when max_y <= 6, do: 1
   defp nice_step(max_y) when max_y <= 12, do: 2
   defp nice_step(max_y) when max_y <= 30, do: 5
@@ -681,6 +912,7 @@ defmodule TryggWeb.ReportComponents do
   attr :bedtime, :map, default: nil
   attr :selected, :string, default: nil
   attr :caption, :string, default: nil
+  attr :static, :boolean, default: false, doc: "no tap targets or hint caption (print)"
 
   def heat_strip(assigns) do
     plot =
@@ -776,8 +1008,8 @@ defmodule TryggWeb.ReportComponents do
           y={@plot.strip_top}
           width={bin.w}
           height={@plot.strip_h}
-          class="fill-transparent cursor-pointer"
-          phx-click="select_heat"
+          class={["fill-transparent", !@static && "cursor-pointer"]}
+          phx-click={!@static && "select_heat"}
           phx-value-index={bin.index}
         >
           <title>{bin.title}</title>
@@ -805,7 +1037,7 @@ defmodule TryggWeb.ReportComponents do
         </g>
       </svg>
       <p
-        :if={@plot}
+        :if={@plot && !@static}
         id={"#{@id}-caption"}
         class={[
           "text-sm text-center mt-2 tabular-nums min-h-5",

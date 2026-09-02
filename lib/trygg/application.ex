@@ -13,6 +13,8 @@ defmodule Trygg.Application do
       Trygg.RateLimit,
       {DNSCluster, query: Application.get_env(:trygg, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Trygg.PubSub},
+      # Configured `on_demand`, so Chrome only starts when a PDF is requested.
+      {ChromicPDF, Application.get_env(:trygg, ChromicPDF, [])},
       # Start to serve requests, typically the last entry
       TryggWeb.Endpoint
     ]

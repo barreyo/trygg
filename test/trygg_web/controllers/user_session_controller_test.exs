@@ -78,6 +78,45 @@ defmodule TryggWeb.UserSessionControllerTest do
     end
   end
 
+  describe "POST /users/log-in - login code" do
+    test "logs the user in", %{conn: conn, user: user} do
+      code = extract_login_code(user)
+
+      conn =
+        post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email, "code" => code}})
+
+      assert get_session(conn, :user_token)
+      assert conn.resp_cookies["_trygg_web_user_remember_me"]
+      assert redirected_to(conn) == ~p"/"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "logged in"
+    end
+
+    test "confirms an unconfirmed user", %{conn: conn, unconfirmed_user: user} do
+      code = extract_login_code(user)
+
+      conn =
+        post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email, "code" => code}})
+
+      assert get_session(conn, :user_token)
+      assert Accounts.get_user!(user.id).confirmed_at
+    end
+
+    test "sends the user back to the code step when the code is wrong", %{
+      conn: conn,
+      user: user
+    } do
+      _code = extract_login_code(user)
+
+      conn =
+        post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email, "code" => "000000"}})
+
+      refute get_session(conn, :user_token)
+      assert redirected_to(conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "invalid or has expired"
+      assert Phoenix.Flash.get(conn.assigns.flash, :email) == user.email
+    end
+  end
+
   describe "DELETE /users/log-out" do
     test "logs the user out", %{conn: conn, user: user} do
       conn = conn |> log_in_user(user) |> delete(~p"/users/log-out")

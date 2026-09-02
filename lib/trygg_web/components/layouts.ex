@@ -95,6 +95,7 @@ defmodule TryggWeb.Layouts do
         "flex-1 mx-auto max-w-md w-full px-4 py-4",
         if(@current_child, do: "pb-28", else: "pb-8")
       ]}>
+        <.install_prompt :if={@current_scope && @current_scope.user} />
         {render_slot(@inner_block)}
       </main>
 
@@ -104,6 +105,53 @@ defmodule TryggWeb.Layouts do
       <.bottom_nav :if={@current_child} current_child={@current_child} />
 
       <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  # Rendered hidden; the InstallPrompt hook decides which variant (if any) to
+  # show based on platform, install state and a localStorage dismissal.
+  defp install_prompt(assigns) do
+    ~H"""
+    <div
+      id="install-prompt"
+      phx-hook="InstallPrompt"
+      phx-update="ignore"
+      hidden
+      class="mb-4 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+    >
+      <.icon name="hero-device-phone-mobile" class="size-5 shrink-0 mt-0.5 text-primary" />
+      <div class="flex-1 min-w-0 space-y-2">
+        <div data-install-ios hidden>
+          <p class="font-medium">Add Trygg to your Home Screen</p>
+          <p class="opacity-70">
+            Tap <.icon name="hero-arrow-up-on-square" class="size-4 inline-block align-text-bottom" />
+            Share, then <span class="font-medium">Add to Home Screen</span>
+            to open it like an app.
+          </p>
+        </div>
+        <div data-install-android hidden class="flex items-center justify-between gap-3">
+          <p class="font-medium">Install Trygg as an app</p>
+          <.button
+            id="install-prompt-install"
+            type="button"
+            variant="primary"
+            size="sm"
+            data-install-action="install"
+          >
+            Install
+          </.button>
+        </div>
+      </div>
+      <button
+        id="install-prompt-dismiss"
+        type="button"
+        class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
+        aria-label="Dismiss"
+        data-install-action="dismiss"
+      >
+        <.icon name="hero-x-mark" class="size-4" />
+      </button>
     </div>
     """
   end

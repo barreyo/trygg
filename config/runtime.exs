@@ -106,4 +106,14 @@ if config_env() == :prod do
     api_key: resend_api_key
 
   config :trygg, :email_from, System.get_env("MAIL_FROM") || "Trygg <onboarding@resend.dev>"
+
+  # Reports PDF export. The release runs as a non-root user on Alpine, where
+  # Chrome's sandbox can't start; the HTML we print is our own, so disabling
+  # it is fine. CHROME_EXECUTABLE is set in the Dockerfile.
+  config :trygg, ChromicPDF,
+    on_demand: true,
+    no_sandbox: true,
+    session_pool: [timeout: 20_000],
+    chrome_args: "--disable-dev-shm-usage",
+    chrome_executable: System.get_env("CHROME_EXECUTABLE") || "/usr/bin/chromium-browser"
 end

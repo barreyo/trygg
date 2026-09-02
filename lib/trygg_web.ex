@@ -18,7 +18,7 @@ defmodule TryggWeb do
   """
 
   def static_paths,
-    do: ~w(assets fonts images favicon.ico robots.txt manifest.webmanifest sw.js)
+    do: ~w(assets fonts images favicon.ico robots.txt manifest.webmanifest sw.js offline.html)
 
   def router do
     quote do
@@ -89,6 +89,7 @@ defmodule TryggWeb do
       import TryggWeb.CoreComponents
       import TryggWeb.LogComponents
       import TryggWeb.ReportComponents
+      import TryggWeb.GrowthComponents, only: [trend_chart: 1]
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

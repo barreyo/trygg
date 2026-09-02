@@ -73,6 +73,27 @@ defmodule Trygg.Reports.InsightsTest do
     assert hd(summary.totals.per_day).awake + hd(summary.totals.per_day).total == 86_400
   end
 
+  test "per_day carries wake and bedtime as minutes from local midnight" do
+    days =
+      for {date, wake} <- [
+            {~D[2026-03-01], ~T[07:00:00]},
+            {~D[2026-03-02], ~T[07:10:00]},
+            {~D[2026-03-03], ~T[06:50:00]}
+          ] do
+        typical_day(date, wake: wake, id: date.day * 10)
+      end
+
+    today = List.last(days)
+    summary = Insights.summarize(child(), days, today, ~U[2026-03-04 12:00:00Z])
+
+    assert Enum.map(summary.totals.per_day, & &1.wake_minutes) == [420, 430, 410]
+    assert Enum.map(summary.totals.per_day, & &1.bed_minutes) == [1200, 1200, 1200]
+
+    empty = Day.build(child(), ~D[2026-03-04], [], ~U[2026-03-04 12:00:00Z])
+    summary = Insights.summarize(child(), [empty], empty, ~U[2026-03-04 12:00:00Z])
+    assert [%{wake_minutes: nil, bed_minutes: nil}] = summary.totals.per_day
+  end
+
   test "treats a bedtime after midnight as evening + 24h" do
     days =
       for date <- [~D[2026-03-01], ~D[2026-03-02], ~D[2026-03-03]] do

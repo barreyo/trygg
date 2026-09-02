@@ -25,12 +25,13 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/trygg"
 import topbar from "../vendor/topbar"
 import Timer from "./hooks/timer"
+import InstallPrompt from "./hooks/install_prompt"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Timer},
+  hooks: {...colocatedHooks, Timer, InstallPrompt},
 })
 
 // Show progress bar on live navigation and form submits

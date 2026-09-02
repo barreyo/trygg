@@ -51,6 +51,10 @@ defmodule TryggWeb.Router do
   scope "/", TryggWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    # Plain controller (not a LiveView): streams the Reports tab as a PDF.
+    # Same session auth as the LiveViews; the child is membership-scoped.
+    get "/c/:id/reports.pdf", ReportPdfController, :show
+
     live_session :require_authenticated_user,
       on_mount: [
         {TryggWeb.UserAuth, :require_authenticated},

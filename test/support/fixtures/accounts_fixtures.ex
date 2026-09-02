@@ -57,6 +57,14 @@ defmodule Trygg.AccountsFixtures do
     token
   end
 
+  @doc "Sends the login email and returns the numeric code from it."
+  def extract_login_code(user) do
+    {:ok, email} = Accounts.deliver_login_instructions(user, &"[TOKEN]#{&1}[TOKEN]")
+    digits = Accounts.UserToken.login_code_digits()
+    [_, code] = Regex.run(~r/code is:\s+(\d{#{digits}})/, email.text_body)
+    code
+  end
+
   def override_token_authenticated_at(token, authenticated_at) when is_binary(token) do
     Trygg.Repo.update_all(
       from(t in Accounts.UserToken,

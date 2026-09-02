@@ -5,8 +5,13 @@
 // Digested CSS/JS (`app-<hash>.css`) are cached on first successful fetch —
 // do not precache `/assets/css/app.css` / `/assets/js/app.js`; those paths
 // 404 in production after `mix phx.digest`.
-const CACHE = "trygg-shell-v3"
-const SHELL = ["/", "/manifest.webmanifest"]
+//
+// `/` is deliberately not precached: for a signed-out visitor it redirects to
+// the login page, whose CSRF token is bound to a session that will be gone by
+// the time the cached copy is served. A static offline page is the fallback.
+const CACHE = "trygg-shell-v4"
+const OFFLINE = "/offline.html"
+const SHELL = [OFFLINE, "/manifest.webmanifest"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()))
@@ -29,7 +34,7 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/health") return
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")))
+    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE)))
     return
   }
 

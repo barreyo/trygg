@@ -37,7 +37,7 @@ defmodule Trygg.Reports.Insights do
     sleep_days = Enum.count(days, &(&1.total_sleep_seconds > 0))
     ready? = sleep_days >= @min_sample
 
-    totals = totals(days, ready?)
+    totals = totals(child, days, ready?)
     nap_stats = nap_stats(days, ready?)
     wake_stats = wake_stats(days, ready?)
     morning = clock_stat(child, Enum.map(days, & &1.morning_wake), ready?, false)
@@ -75,7 +75,7 @@ defmodule Trygg.Reports.Insights do
 
   ## Totals / trends ------------------------------------------------------
 
-  defp totals(days, ready?) do
+  defp totals(child, days, ready?) do
     series =
       days
       |> Enum.with_index()
@@ -92,7 +92,9 @@ defmodule Trygg.Reports.Insights do
           night: d.night_sleep_seconds,
           overnight: d.overnight_sleep_seconds,
           awake: max(span - d.total_sleep_seconds, 0),
-          rolling: rolling
+          rolling: rolling,
+          wake_minutes: d.morning_wake && minutes_from_midnight(child, d.morning_wake, false),
+          bed_minutes: d.bedtime && minutes_from_midnight(child, d.bedtime, true)
         }
       end)
 
