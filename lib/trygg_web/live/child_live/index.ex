@@ -7,7 +7,7 @@ defmodule TryggWeb.ChildLive.Index do
   @impl true
   def render(%{live_action: :index} = assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} title="Children">
+    <Layouts.app flash={@flash} current_scope={@current_scope} title="Children" back={~p"/"}>
       <:actions>
         <.button variant="primary" size="sm" navigate={~p"/children/new"}>
           <.icon name="hero-plus" class="size-4" /> Add
@@ -22,13 +22,17 @@ defmodule TryggWeb.ChildLive.Index do
         </.button>
       </div>
 
-      <ul class="space-y-3">
-        <li :for={child <- @children}>
+      <ul id="children-list" class="space-y-3">
+        <li
+          :for={child <- @children}
+          id={"child-#{child.id}"}
+          class="flex items-stretch rounded-box border border-base-300 bg-base-200 overflow-hidden"
+        >
           <.link
             navigate={~p"/c/#{child}"}
-            class="flex items-center gap-3 rounded-box border border-base-300 bg-base-200 p-4 hover:bg-base-300 hover:border-base-content/20 transition-colors"
+            class="flex-1 min-w-0 flex items-center gap-3 p-4 hover:bg-base-300 transition-colors"
           >
-            <div class="size-11 rounded-full bg-primary/15 text-primary grid place-items-center font-semibold">
+            <div class="size-11 rounded-full bg-primary/15 text-primary grid place-items-center font-semibold shrink-0">
               {String.first(child.name)}
             </div>
             <div class="flex-1 min-w-0">
@@ -36,7 +40,15 @@ defmodule TryggWeb.ChildLive.Index do
               <div class="text-sm opacity-60">{age_line(child)}</div>
             </div>
             <span class="badge badge-ghost badge-sm">{child.role}</span>
-            <.icon name="hero-chevron-right" class="size-5 opacity-40" />
+          </.link>
+          <.link
+            :if={child.role == :owner}
+            id={"edit-child-#{child.id}"}
+            navigate={~p"/children/#{child}/edit"}
+            class="flex items-center px-4 border-l border-base-300 hover:bg-base-300 transition-colors"
+            aria-label={"Edit #{child.name}"}
+          >
+            <.icon name="hero-pencil-square" class="size-5 opacity-60" />
           </.link>
         </li>
       </ul>
@@ -49,8 +61,8 @@ defmodule TryggWeb.ChildLive.Index do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      title={if @live_action == :new, do: "Add child", else: "Edit child"}
-      back={~p"/children"}
+      title={if @live_action == :new, do: "Add child", else: "Edit #{@child.name}"}
+      back={cancel_path(@live_action, @child)}
     >
       <.form
         for={@form}
@@ -87,7 +99,7 @@ defmodule TryggWeb.ChildLive.Index do
 
         <div class="flex gap-2 pt-2">
           <.button variant="primary" phx-disable-with="Saving…" class="flex-1">Save</.button>
-          <.button variant="ghost" navigate={~p"/children"}>Cancel</.button>
+          <.button variant="ghost" navigate={cancel_path(@live_action, @child)}>Cancel</.button>
         </div>
 
         <.button
@@ -138,10 +150,20 @@ defmodule TryggWeb.ChildLive.Index do
   defp apply_action(socket, :edit, %{"id" => id}) do
     child = Families.get_child!(socket.assigns.current_scope, id)
 
-    socket
-    |> assign(:child, child)
-    |> assign(:form, to_form(Families.change_child(child)))
+    if child.role == :owner do
+      socket
+      |> assign(:child, child)
+      |> assign(:form, to_form(Families.change_child(child)))
+    else
+      socket
+      |> put_flash(:error, "Only #{child.name}'s owners can edit their details.")
+      |> push_navigate(to: ~p"/c/#{child}")
+    end
   end
+
+  # Where Back / Cancel lead: a new child hasn't got a page yet, an existing one does.
+  defp cancel_path(:edit, %Child{id: id} = child) when not is_nil(id), do: ~p"/c/#{child}"
+  defp cancel_path(_action, _child), do: ~p"/children"
 
   @impl true
   def handle_event("validate", %{"child" => params}, socket) do

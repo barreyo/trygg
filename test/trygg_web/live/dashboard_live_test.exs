@@ -70,6 +70,63 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert html =~ "Measurement units"
     end
+
+    test "carries the account-level actions", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#app-menu-account[href='/users/settings']", "Account")
+      assert has_element?(lv, "#app-menu-log-out[data-method=delete]", "Log out")
+    end
+
+    test "lets an owner edit the child and manage sharing", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#app-menu-sharing[href='#{~p"/c/#{child}/caregivers"}']")
+
+      {:ok, _edit_lv, html} =
+        lv
+        |> element("#app-menu-edit-child")
+        |> render_click()
+        |> follow_redirect(conn, ~p"/children/#{child}/edit")
+
+      assert html =~ "Edit #{child.name}"
+    end
+
+    test "hides editing from non-owners", %{conn: conn} do
+      %{child: child, member: member} = shared_child_fixture(:caregiver)
+      conn = log_in_user(conn, member)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#app-menu-sharing")
+      refute has_element?(lv, "#app-menu-edit-child")
+    end
+  end
+
+  describe "bottom tab bar" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "shows the child's tabs on child pages", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Home")
+      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
+      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/vitals"}']", "Vitals")
+      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
+    end
+
+    test "is replaced by a back arrow on account-level pages", %{conn: conn} do
+      for path <- [~p"/preferences", ~p"/children", ~p"/users/settings"] do
+        {:ok, lv, _html} = live(conn, path)
+
+        refute has_element?(lv, "#bottom-nav")
+        assert has_element?(lv, "header a[aria-label=Back][href='/']")
+        assert has_element?(lv, "#app-menu")
+      end
+    end
   end
 
   describe "child switcher" do

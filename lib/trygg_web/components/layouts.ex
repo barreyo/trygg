@@ -87,47 +87,44 @@ defmodule TryggWeb.Layouts do
             children={@children}
             child_switch_to={@child_switch_to}
           />
-          <.app_menu :if={@current_scope && @current_scope.user} />
+          <.app_menu :if={@current_scope && @current_scope.user} current_child={@current_child} />
         </div>
       </header>
 
-      <main class="flex-1 mx-auto max-w-md w-full px-4 py-4 pb-28">
+      <main class={[
+        "flex-1 mx-auto max-w-md w-full px-4 py-4",
+        if(@current_child, do: "pb-28", else: "pb-8")
+      ]}>
         {render_slot(@inner_block)}
       </main>
 
-      <.bottom_nav :if={@current_scope && @current_scope.user} current_child={@current_child} />
+      <%!-- The tab bar is child-scoped. Account-level pages (children, preferences,
+           account) are secondary screens reached from the ⋮ menu and exited via
+           the back arrow, so they don't show a tab bar. --%>
+      <.bottom_nav :if={@current_child} current_child={@current_child} />
 
       <.flash_group flash={@flash} />
     </div>
     """
   end
 
-  attr :current_child, :map, default: nil
+  attr :current_child, :map, required: true
 
   defp bottom_nav(assigns) do
     ~H"""
-    <nav class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)]">
+    <nav
+      id="bottom-nav"
+      class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)]"
+    >
       <div class="mx-auto max-w-md grid grid-cols-4 text-center text-xs">
-        <%= if @current_child do %>
-          <.nav_item navigate={~p"/c/#{@current_child}"} icon="hero-home" label="Home" />
-          <.nav_item navigate={~p"/c/#{@current_child}/log"} icon="hero-list-bullet" label="Log" />
-          <.nav_item navigate={~p"/c/#{@current_child}/vitals"} icon="hero-heart" label="Vitals" />
-          <.nav_item
-            navigate={~p"/c/#{@current_child}/reports"}
-            icon="hero-chart-bar"
-            label="Reports"
-          />
-        <% else %>
-          <.nav_item navigate={~p"/"} icon="hero-home" label="Children" />
-          <.nav_item navigate={~p"/preferences"} icon="hero-adjustments-horizontal" label="Units" />
-          <.nav_item navigate={~p"/users/settings"} icon="hero-cog-6-tooth" label="Account" />
-          <.nav_item
-            href={~p"/users/log-out"}
-            method="delete"
-            icon="hero-arrow-left-start-on-rectangle"
-            label="Log out"
-          />
-        <% end %>
+        <.nav_item navigate={~p"/c/#{@current_child}"} icon="hero-home" label="Home" />
+        <.nav_item navigate={~p"/c/#{@current_child}/log"} icon="hero-list-bullet" label="Log" />
+        <.nav_item navigate={~p"/c/#{@current_child}/vitals"} icon="hero-heart" label="Vitals" />
+        <.nav_item
+          navigate={~p"/c/#{@current_child}/reports"}
+          icon="hero-chart-bar"
+          label="Reports"
+        />
       </div>
     </nav>
     """
@@ -321,6 +318,11 @@ defmodule TryggWeb.Layouts do
     end
   end
 
+  attr :current_child, :map, default: nil
+
+  # On child pages the menu opens with that child's own actions (edit / sharing),
+  # followed by the account-level ones. Editing is owner-only, matching
+  # `Families.update_child/3`.
   defp app_menu(assigns) do
     ~H"""
     <div id="app-menu" class="dropdown dropdown-end">
@@ -334,8 +336,21 @@ defmodule TryggWeb.Layouts do
       >
         <.icon name="hero-ellipsis-vertical" class="size-5" />
       </.button>
-      <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-40 w-52 p-2 shadow">
-        <li>
+      <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-40 w-56 p-2 shadow">
+        <%= if @current_child do %>
+          <li class="menu-title truncate">{@current_child.name}</li>
+          <li :if={@current_child.role == :owner}>
+            <.link id="app-menu-edit-child" navigate={~p"/children/#{@current_child}/edit"}>
+              <.icon name="hero-pencil-square" class="size-4" /> Edit details
+            </.link>
+          </li>
+          <li>
+            <.link id="app-menu-sharing" navigate={~p"/c/#{@current_child}/caregivers"}>
+              <.icon name="hero-user-group" class="size-4" /> Sharing
+            </.link>
+          </li>
+        <% end %>
+        <li class={@current_child && "border-t border-base-300 mt-1 pt-1"}>
           <.link id="app-menu-children" navigate={~p"/children"}>
             <.icon name="hero-users" class="size-4" /> Children
           </.link>
@@ -343,6 +358,16 @@ defmodule TryggWeb.Layouts do
         <li>
           <.link id="app-menu-preferences" navigate={~p"/preferences"}>
             <.icon name="hero-adjustments-horizontal" class="size-4" /> Preferences
+          </.link>
+        </li>
+        <li>
+          <.link id="app-menu-account" navigate={~p"/users/settings"}>
+            <.icon name="hero-cog-6-tooth" class="size-4" /> Account
+          </.link>
+        </li>
+        <li class="border-t border-base-300 mt-1 pt-1">
+          <.link id="app-menu-log-out" href={~p"/users/log-out"} method="delete">
+            <.icon name="hero-arrow-left-start-on-rectangle" class="size-4" /> Log out
           </.link>
         </li>
       </ul>

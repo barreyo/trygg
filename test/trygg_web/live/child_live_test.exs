@@ -65,4 +65,39 @@ defmodule TryggWeb.ChildLiveTest do
 
     assert Families.get_child!(scope, child.id).name == "Renamed"
   end
+
+  test "owners can reach the edit form from the list", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    {:ok, lv, _html} = live(conn, ~p"/children")
+
+    {:ok, _edit_lv, html} =
+      lv
+      |> element("#edit-child-#{child.id}")
+      |> render_click()
+      |> follow_redirect(conn, ~p"/children/#{child}/edit")
+
+    assert html =~ "Edit #{child.name}"
+  end
+
+  test "the edit form leads back to the child's page", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+
+    assert has_element?(lv, "header a[aria-label=Back][href='#{~p"/c/#{child}"}']")
+    assert has_element?(lv, "#child-form a[href='#{~p"/c/#{child}"}']", "Cancel")
+  end
+
+  test "caregivers can't edit a child they don't own", %{conn: conn} do
+    %{child: child, member: member} = shared_child_fixture(:caregiver)
+    conn = log_in_user(conn, member)
+
+    {:ok, lv, _html} = live(conn, ~p"/children")
+    refute has_element?(lv, "#edit-child-#{child.id}")
+
+    assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+             live(conn, ~p"/children/#{child}/edit")
+
+    assert path == ~p"/c/#{child}"
+    assert flash["error"] =~ "owners can edit"
+  end
 end
