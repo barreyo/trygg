@@ -60,6 +60,8 @@ defmodule TryggWeb.ReportPdfHTML do
   end
 
   @doc "The compiled Tailwind stylesheet, or an empty string when assets aren't built."
+  # sobelow_skip ["Traversal.FileModule"]
+  # `path` is built from the hardcoded `@css_path`, not from any request input.
   def app_css do
     path = Application.app_dir(:trygg, @css_path)
 

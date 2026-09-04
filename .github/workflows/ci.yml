@@ -61,7 +61,7 @@ jobs:
         run: mix format --check-formatted
 
       - name: Security (Sobelow)
-        run: mix sobelow --exit --quiet --ignore Config.HTTPS
+        run: mix sobelow --exit --quiet --skip --ignore Config.HTTPS
 
       - name: Tests
         run: mix test
