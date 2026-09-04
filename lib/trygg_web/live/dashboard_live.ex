@@ -531,6 +531,7 @@ defmodule TryggWeb.DashboardLive do
       flash={@flash}
       current_scope={@current_scope}
       current_child={@current_child}
+      current_tab={:home}
       title={@current_child.name}
       subtitle={Child.age_label(@current_child)}
       children={@children}
