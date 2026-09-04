@@ -178,24 +178,28 @@ defmodule TryggWeb.Layouts do
         <.nav_item
           navigate={~p"/c/#{@current_child}"}
           icon="hero-home"
+          active_icon="hero-home-solid"
           label="Home"
           active={@current_tab == :home}
         />
         <.nav_item
           navigate={~p"/c/#{@current_child}/log"}
           icon="hero-list-bullet"
+          active_icon="hero-list-bullet-solid"
           label="Log"
           active={@current_tab == :log}
         />
         <.nav_item
           navigate={~p"/c/#{@current_child}/vitals"}
           icon="hero-heart"
+          active_icon="hero-heart-solid"
           label="Vitals"
           active={@current_tab == :vitals}
         />
         <.nav_item
           navigate={~p"/c/#{@current_child}/reports"}
           icon="hero-chart-bar"
+          active_icon="hero-chart-bar-solid"
           label="Reports"
           active={@current_tab == :reports}
         />
@@ -205,6 +209,7 @@ defmodule TryggWeb.Layouts do
   end
 
   attr :icon, :string, required: true
+  attr :active_icon, :string, required: true
   attr :label, :string, required: true
   attr :active, :boolean, default: false
   attr :rest, :global, include: ~w(navigate href method)
@@ -225,7 +230,7 @@ defmodule TryggWeb.Layouts do
         class="absolute top-0 h-0.5 w-8 rounded-full bg-primary"
         aria-hidden="true"
       />
-      <.icon name={if @active, do: "#{@icon}-solid", else: @icon} class="size-6" />
+      <.icon name={if @active, do: @active_icon, else: @icon} class="size-6" />
       <span class={@active && "font-semibold"}>{@label}</span>
     </.link>
     """
