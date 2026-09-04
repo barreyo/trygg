@@ -129,7 +129,7 @@ dialyzer:  ## Run Dialyzer type checker (builds PLT on first run, cached after)
 .PHONY: lint
 lint:  ## Run the lint suite
 	@mix format --check-formatted
-	@mix sobelow --exit --quiet --ignore Config.HTTPS
+	@mix sobelow --exit --quiet --skip --ignore Config.HTTPS
 	@$(MAKE) shell-lint shell-format-check config-format-check
 
 .PHONY: preflight

@@ -31,6 +31,11 @@ defmodule TryggWeb.Layouts do
 
   attr :current_child, :map, default: nil, doc: "the active child, when on a child-scoped page"
 
+  attr :current_tab, :atom,
+    default: nil,
+    values: [nil, :home, :log, :vitals, :reports],
+    doc: "which bottom tab (if any) to highlight as active"
+
   attr :children, :list,
     default: [],
     doc: "children the user can switch between; the switcher shows when there are two or more"
@@ -102,7 +107,11 @@ defmodule TryggWeb.Layouts do
       <%!-- The tab bar is child-scoped. Account-level pages (children, preferences,
            account) are secondary screens reached from the ⋮ menu and exited via
            the back arrow, so they don't show a tab bar. --%>
-      <.bottom_nav :if={@current_child} current_child={@current_child} />
+      <.bottom_nav
+        :if={@current_child}
+        current_child={@current_child}
+        current_tab={@current_tab}
+      />
 
       <.flash_group flash={@flash} />
     </div>
@@ -157,6 +166,7 @@ defmodule TryggWeb.Layouts do
   end
 
   attr :current_child, :map, required: true
+  attr :current_tab, :atom, default: nil
 
   defp bottom_nav(assigns) do
     ~H"""
@@ -165,13 +175,33 @@ defmodule TryggWeb.Layouts do
       class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)]"
     >
       <div class="mx-auto max-w-md grid grid-cols-4 text-center text-xs">
-        <.nav_item navigate={~p"/c/#{@current_child}"} icon="hero-home" label="Home" />
-        <.nav_item navigate={~p"/c/#{@current_child}/log"} icon="hero-list-bullet" label="Log" />
-        <.nav_item navigate={~p"/c/#{@current_child}/vitals"} icon="hero-heart" label="Vitals" />
+        <.nav_item
+          navigate={~p"/c/#{@current_child}"}
+          icon="hero-home"
+          active_icon="hero-home-solid"
+          label="Home"
+          active={@current_tab == :home}
+        />
+        <.nav_item
+          navigate={~p"/c/#{@current_child}/log"}
+          icon="hero-list-bullet"
+          active_icon="hero-list-bullet-solid"
+          label="Log"
+          active={@current_tab == :log}
+        />
+        <.nav_item
+          navigate={~p"/c/#{@current_child}/vitals"}
+          icon="hero-heart"
+          active_icon="hero-heart-solid"
+          label="Vitals"
+          active={@current_tab == :vitals}
+        />
         <.nav_item
           navigate={~p"/c/#{@current_child}/reports"}
           icon="hero-chart-bar"
+          active_icon="hero-chart-bar-solid"
           label="Reports"
+          active={@current_tab == :reports}
         />
       </div>
     </nav>
@@ -179,17 +209,29 @@ defmodule TryggWeb.Layouts do
   end
 
   attr :icon, :string, required: true
+  attr :active_icon, :string, required: true
   attr :label, :string, required: true
+  attr :active, :boolean, default: false
   attr :rest, :global, include: ~w(navigate href method)
 
   defp nav_item(assigns) do
     ~H"""
     <.link
       {@rest}
-      class="flex flex-col items-center gap-1 py-2.5 hover:bg-base-300 active:bg-base-300 transition-colors"
+      aria-current={@active && "page"}
+      class={[
+        "relative flex flex-col items-center gap-1 py-2.5 transition-colors",
+        "hover:bg-base-300 active:bg-base-300",
+        if(@active, do: "text-primary", else: "text-base-content/60")
+      ]}
     >
-      <.icon name={@icon} class="size-6" />
-      <span>{@label}</span>
+      <span
+        :if={@active}
+        class="absolute top-0 h-0.5 w-8 rounded-full bg-primary"
+        aria-hidden="true"
+      />
+      <.icon name={if @active, do: @active_icon, else: @icon} class="size-6" />
+      <span class={@active && "font-semibold"}>{@label}</span>
     </.link>
     """
   end
