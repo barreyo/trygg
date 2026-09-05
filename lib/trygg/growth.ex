@@ -13,6 +13,7 @@ defmodule Trygg.Growth do
   alias Trygg.Accounts.Scope
   alias Trygg.Families
   alias Trygg.Families.Child
+  alias Trygg.Growth.CheckReminder
   alias Trygg.Growth.Measurement
 
   @doc """
@@ -39,6 +40,34 @@ defmodule Trygg.Growth do
   """
   def velocity(%Scope{} = scope, %Child{} = child) do
     Trygg.Growth.Velocity.summarize(child, list_measurements(scope, child))
+  end
+
+  @doc """
+  The child's weight-check status for the current user, honouring their
+  `weight_reminder_days` preference (CDC well-child schedule by default, a
+  fixed cadence, or off). Returns the `Trygg.Growth.CheckReminder` status map
+  when a check is currently due, otherwise `nil`. Requires `:viewer`.
+  """
+  def weight_check_reminder(%Scope{} = scope, %Child{} = child, today \\ nil) do
+    Families.authorize!(scope, child, :viewer)
+
+    case Trygg.Accounts.User.weight_reminder_setting(scope.user) do
+      :off ->
+        nil
+
+      setting ->
+        today = today || Child.local_today(child)
+
+        {interval, source} =
+          if match?({:every, _}, setting),
+            do: {elem(setting, 1), :custom},
+            else: {nil, :recommended}
+
+        case CheckReminder.evaluate(child, latest_weight(scope, child), today, interval) do
+          %{due?: true} = status -> Map.put(status, :source, source)
+          _ -> nil
+        end
+    end
   end
 
   @doc "The most recent measurement that includes a height."

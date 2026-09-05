@@ -31,6 +31,10 @@ config :logger, level: :warning
 
 config :trygg, Trygg.RateLimit, enabled: false
 
+# Oban runs no queues or cron in test; assert with `Oban.Testing` or call
+# `Trygg.Growth.WeightReminders.run/0` directly.
+config :trygg, Oban, testing: :manual
+
 # Log photos land in a throwaway tmp dir during the test run.
 config :trygg, Trygg.Storage,
   adapter: Trygg.Storage.Local,

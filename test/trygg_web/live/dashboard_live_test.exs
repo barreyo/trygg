@@ -736,6 +736,68 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "weight-check reminder" do
+    import Trygg.GrowthFixtures
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      # 400 days old -> a 90-day check interval applies.
+      child =
+        child_fixture(scope, %{timezone: "Etc/UTC", birth_date: Date.add(Date.utc_today(), -400)})
+
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    test "banners when the last weight is stale", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -120)})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#weight-check-reminder", "Time for a weight check")
+      assert has_element?(lv, "#weight-check-reminder a", "Log it in Vitals")
+    end
+
+    test "no banner when a recent weight is on file", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.utc_today()})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, "#weight-check-reminder")
+    end
+
+    test "banners when no weight has ever been logged", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#weight-check-reminder", "No weight logged yet")
+    end
+
+    test "respects a shorter custom cadence", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -20)})
+
+      # 20 days stale is under the 90-day CDC interval — no banner yet.
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#weight-check-reminder")
+
+      {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 7})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#weight-check-reminder", "You asked to be reminded every 7 days")
+    end
+
+    test "no banner when the caregiver turned reminders off", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -300)})
+      {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 0})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, "#weight-check-reminder")
+    end
+  end
+
   describe "photos" do
     setup %{conn: conn} do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})

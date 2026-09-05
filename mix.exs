@@ -64,6 +64,7 @@ defmodule Trygg.MixProject do
        compile: false,
        depth: 1},
       {:swoosh, "~> 1.16"},
+      {:oban, "~> 2.19"},
       {:req, "~> 0.5"},
       # AWS SigV4 request signing for Req — used to talk to Tigris (S3-compatible)
       # object storage on Fly for user-uploaded log photos.

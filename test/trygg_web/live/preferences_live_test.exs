@@ -66,4 +66,45 @@ defmodule TryggWeb.PreferencesLiveTest do
       assert get(conn, ~p"/preferences") |> html_response(200) =~ ~s(data-user-theme="dark")
     end
   end
+
+  describe "weight-check reminders" do
+    test "shows the cadence options, recommended by default", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      assert has_element?(lv, "#reminder-options")
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='7']")
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='0']")
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value=''][checked]")
+    end
+
+    test "picking a cadence persists it", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      lv
+      |> form("#preferences-form", user: %{weight_reminder_days: "14"})
+      |> render_change()
+
+      assert Accounts.get_user!(user.id).weight_reminder_days == 14
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='14'][checked]")
+    end
+
+    test "choosing Recommended clears a previously set cadence", %{conn: conn, user: user} do
+      {:ok, _} = Accounts.update_user_settings(user, %{"weight_reminder_days" => 7})
+
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      lv
+      |> form("#preferences-form", user: %{weight_reminder_days: ""})
+      |> render_change()
+
+      assert Accounts.get_user!(user.id).weight_reminder_days == nil
+    end
+
+    test "rejects an out-of-range cadence", %{user: user} do
+      assert {:error, %Ecto.Changeset{}} =
+               Accounts.update_user_settings(user, %{"weight_reminder_days" => 9999})
+
+      assert Accounts.get_user!(user.id).weight_reminder_days == nil
+    end
+  end
 end

@@ -1,7 +1,7 @@
 defmodule TryggWeb.DashboardLive do
   use TryggWeb, :live_view
 
-  alias Trygg.{Families, Log, Reports}
+  alias Trygg.{Families, Growth, Log, Reports}
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
@@ -541,6 +541,7 @@ defmodule TryggWeb.DashboardLive do
     socket
     |> assign(:summary, Log.summary(scope, child))
     |> assign(:outlook, Reports.outlook(scope, child))
+    |> assign(:weight_reminder, Growth.weight_check_reminder(scope, child))
   end
 
   defp refresh_entries(socket) do
@@ -632,6 +633,27 @@ defmodule TryggWeb.DashboardLive do
             </.button>
           </:controls>
         </.timer_banner>
+      </div>
+
+      <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
+      <div
+        :if={@weight_reminder}
+        id="weight-check-reminder"
+        class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
+      >
+        <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
+          <p class="text-xs opacity-70 mt-0.5 leading-snug">
+            {weight_reminder_detail(@weight_reminder)}
+          </p>
+          <.link
+            navigate={~p"/c/#{@current_child}/vitals"}
+            class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+          >
+            Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
+          </.link>
+        </div>
       </div>
 
       <%!-- At a glance --%>
@@ -1236,4 +1258,28 @@ defmodule TryggWeb.DashboardLive do
   defp trim(f) when is_float(f) do
     if f == Float.round(f), do: trunc(f), else: Float.round(f, 1)
   end
+
+  # Copy for the home weight-check banner. `never_measured?` means we're
+  # anchored on the birth date, not a prior reading; `source` says whether the
+  # cadence is the CDC schedule or this caregiver's own setting.
+  defp weight_reminder_detail(%{never_measured?: true} = r) do
+    "No weight logged yet. #{cadence_clause(r)}"
+  end
+
+  defp weight_reminder_detail(%{days_since: since} = r) do
+    "Last weight was #{humanize_days(since)} ago. #{cadence_clause(r)}"
+  end
+
+  defp cadence_clause(%{source: :custom, interval_days: interval}) do
+    "You asked to be reminded every #{humanize_days(interval)}."
+  end
+
+  defp cadence_clause(%{interval_days: interval}) do
+    "The CDC well-child schedule suggests one about every #{humanize_days(interval)} at this age."
+  end
+
+  defp humanize_days(days) when days >= 60, do: "#{round(days / 30)} months"
+  defp humanize_days(days) when days >= 14, do: "#{div(days + 3, 7)} weeks"
+  defp humanize_days(1), do: "1 day"
+  defp humanize_days(days), do: "#{days} days"
 end

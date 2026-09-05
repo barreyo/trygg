@@ -138,6 +138,36 @@ defmodule Trygg.Reports.Norms do
     end
   end
 
+  @doc """
+  The longest gap, in days, that routine growth monitoring should leave
+  between weight checks at the child's age.
+
+  Weight (and length) are measured at every well-child visit. The CDC points
+  parents at the AAP/Bright Futures periodicity schedule, which recommends
+  visits at 3–5 days, by 1 month, then at 2, 4, 6, 9, 12, 15, 18, 24 and 30
+  months, and once a year after that. Each bracket below is roughly the
+  widest gap between two neighbouring visits in that span, smoothed to keep
+  the nudge gentle rather than clinical. Age unknown falls back to a
+  conservative 90 days.
+  """
+  def weight_check_interval_days(nil), do: 90
+
+  def weight_check_interval_days(age_days) when is_integer(age_days) do
+    cond do
+      # birth → 3–5 days → 1 month
+      age_days < 30 -> 21
+      # 1 → 2 → 4 months
+      age_days < 120 -> 42
+      # 4 → 6 → 9 → 12 months
+      age_days < 365 -> 90
+      # 12 → 15 → 18 → 24 months
+      age_days < 730 -> 120
+      # 24 → 30 → 36 months, easing to annual
+      age_days < 1825 -> 182
+      true -> 365
+    end
+  end
+
   @doc "Percent of birth weight lost in week one that is worth mentioning."
   def newborn_loss_flag_pct, do: 10.0
 
