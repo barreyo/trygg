@@ -22,6 +22,19 @@ config :trygg, TryggWeb.Endpoint,
     ]
   ]
 
+# Background jobs. Same plugins as config/config.exs plus the `Cron` plugin,
+# which enqueues the weight-check reminder scan every 6 hours; per-caregiver
+# cadence is decided inside the job (their `weight_reminder_days` preference,
+# or the CDC well-child interval). A `plugins:` list replaces rather than
+# merges, so the base three are repeated here.
+config :trygg, Oban,
+  plugins: [
+    {Oban.Lifeline, rescue_after: :timer.minutes(30)},
+    {Oban.Pruner, max_age: {7, :days}},
+    Oban.Reindexer,
+    {Oban.Cron, crontab: [{"0 */6 * * *", Trygg.Growth.WeightReminderWorker}]}
+  ]
+
 # Configures Swoosh API Client
 config :swoosh, api_client: Swoosh.ApiClient.Req
 

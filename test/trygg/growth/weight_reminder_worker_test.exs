@@ -20,4 +20,36 @@ defmodule Trygg.Growth.WeightReminderWorkerTest do
 
     assert_receive {:email, %{subject: "Time to check " <> _}}
   end
+
+  test "is safe to retry: a second run after a send does not re-notify" do
+    %{owner_scope: owner, child: child} = shared_child_fixture(:caregiver)
+
+    {:ok, child} =
+      Families.update_child(owner, child, %{birth_date: Date.add(Date.utc_today(), -400)})
+
+    measurement_fixture(owner, child, %{"measured_on" => Date.add(Date.utc_today(), -200)})
+    drain_emails()
+
+    assert :ok = perform_job(WeightReminderWorker, %{})
+    sent = drain_emails()
+    assert sent != []
+    assert Enum.all?(sent, &match?("Time to check " <> _, &1.subject))
+
+    # Oban would retry the job after a mid-scan crash; the notification-log
+    # dedupe means the replay sends nothing.
+    assert :ok = perform_job(WeightReminderWorker, %{})
+    assert drain_emails() == []
+  end
+
+  defp drain_emails(acc \\ []) do
+    receive do
+      {:email, email} -> drain_emails([email | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
+  test "declares a bounded timeout" do
+    assert WeightReminderWorker.timeout(%Oban.Job{}) == :timer.minutes(5)
+  end
 end
