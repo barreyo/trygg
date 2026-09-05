@@ -58,6 +58,12 @@ defmodule TryggWeb.Router do
     # Streams a log entry's attached photo. Membership-scoped like the log itself.
     get "/c/:id/log/:entry_id/photo", PhotoController, :show
 
+    # Web Push subscription registration for the installed PWA. Not a LiveView
+    # event: the service-worker/PushManager flow that calls these isn't bound
+    # to a live socket.
+    post "/push/subscriptions", PushSubscriptionController, :create
+    delete "/push/subscriptions", PushSubscriptionController, :delete
+
     live_session :require_authenticated_user,
       on_mount: [
         {TryggWeb.UserAuth, :require_authenticated},

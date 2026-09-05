@@ -59,6 +59,18 @@ defmodule TryggWeb.PreferencesLiveTest do
     end
   end
 
+  describe "notifications" do
+    test "renders the push opt-in widget wired to the hook and VAPID key", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/preferences")
+
+      assert html =~ ~s(id="push-notifications")
+      assert html =~ ~s(phx-hook="PushNotifications")
+      # The dev/test VAPID public key is handed to the client for subscribe().
+      assert html =~ "data-vapid-key=\"#{Trygg.Push.vapid_public_key()}\""
+      assert html =~ ~s(data-push-action="enable")
+    end
+  end
+
   describe "root layout" do
     test "signed-in user's explicit theme is rendered on <html>", %{conn: conn, user: user} do
       {:ok, _} = Accounts.update_user_settings(user, %{theme: :dark})

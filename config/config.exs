@@ -113,6 +113,25 @@ config :trygg, Oban,
      ]}
   ]
 
+# Web Push (installed-PWA notifications). `sender` is the delivery adapter
+# (`Trygg.Push.Sender.Test` in test). Push also needs a VAPID keypair — set
+# below for dev/test, from env in config/runtime.exs for prod — and is a
+# no-op whenever that keypair is missing.
+config :trygg, Trygg.Push,
+  enabled: true,
+  sender: Trygg.Push.Sender.WebPush
+
+# VAPID identity for Web Push. Generate a real keypair with
+# `mix generate.vapid.keys`; production overrides these from the
+# VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT env vars
+# (see config/runtime.exs). The keys here are a throwaway pair, fine for
+# local dev and tests only.
+config :web_push_elixir,
+  vapid_public_key:
+    "BPXt7ShXQP2Dix2YKNI0kWwYuNOhyKdYbCwQsBOpKTGlo2QNTcXpb91ZtLvpZJoKZMOVWMjiLhza3W2teg7NW_8",
+  vapid_private_key: "N0s4TQIKC5at8fWxDKKCfW4ueE0Lyq0iIQN5EFK-NF8",
+  vapid_subject: "mailto:hello@johanbackman.com"
+
 # Reports PDF export. `on_demand` launches Chrome per print job (and shuts it
 # down afterwards) so environments without a browser still boot. Production
 # adds `no_sandbox` and the Chromium path in config/runtime.exs.

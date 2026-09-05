@@ -2,6 +2,7 @@ defmodule TryggWeb.PreferencesLive do
   use TryggWeb, :live_view
 
   alias Trygg.Accounts
+  alias Trygg.Push
 
   @reminder_options [
     {"", "Recommended schedule", "follows the CDC well-child visit spacing for their age"},
@@ -133,6 +134,54 @@ defmodule TryggWeb.PreferencesLive do
           </label>
         </div>
       </.form>
+
+      <div class="pt-6">
+        <.header>
+          Notifications
+          <:subtitle>
+            A gentle heads-up on this device — like a weight check coming due — even when Trygg isn't open.
+          </:subtitle>
+        </.header>
+      </div>
+
+      <div
+        :if={@vapid_public_key}
+        id="push-notifications"
+        phx-hook="PushNotifications"
+        phx-update="ignore"
+        data-vapid-key={@vapid_public_key}
+        class="mt-4 rounded-box border border-base-300 bg-base-200 p-4 space-y-3"
+      >
+        <p data-push-status class="text-sm opacity-80">Checking this device…</p>
+
+        <.button
+          type="button"
+          data-push-action="enable"
+          variant="primary"
+          size="sm"
+          hidden
+        >
+          Turn on notifications
+        </.button>
+
+        <.button
+          type="button"
+          data-push-action="disable"
+          variant="outline"
+          size="sm"
+          hidden
+        >
+          Turn off on this device
+        </.button>
+
+        <p data-push-unsupported hidden class="text-sm opacity-80">
+          This browser can't show notifications yet. On an iPhone or iPad, add Trygg to your Home Screen first, then come back here.
+        </p>
+      </div>
+
+      <p :if={!@vapid_public_key} class="mt-4 text-sm opacity-70">
+        Notifications aren't set up on this server yet.
+      </p>
     </Layouts.app>
     """
   end
@@ -141,7 +190,10 @@ defmodule TryggWeb.PreferencesLive do
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
 
-    {:ok, assign(socket, :form, to_form(Accounts.change_user_settings(user)))}
+    {:ok,
+     socket
+     |> assign(:form, to_form(Accounts.change_user_settings(user)))
+     |> assign(:vapid_public_key, Push.vapid_public_key())}
   end
 
   @impl true
