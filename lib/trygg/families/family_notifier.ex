@@ -43,4 +43,38 @@ defmodule Trygg.Families.FamilyNotifier do
     ==============================
     """)
   end
+
+  @doc """
+  Nudges a caregiver that a child's routine weight check is overdue. `status`
+  is a `Trygg.Growth.CheckReminder` map.
+  """
+  def deliver_weight_check_reminder(recipient, child, status, url) do
+    history =
+      if status.last_measured_on do
+        "The last weight for #{child.name} was logged on " <>
+          "#{Calendar.strftime(status.last_measured_on, "%Y-%m-%d")}, #{status.days_since} days ago."
+      else
+        "No weight has been logged for #{child.name} yet."
+      end
+
+    deliver(recipient, "Time to check #{child.name}'s weight", """
+
+    ==============================
+
+    Hi,
+
+    #{history}
+
+    The CDC's well-child schedule suggests a weight check about every
+    #{status.interval_days} days at #{child.name}'s age. Next time you have a
+    chance, add the latest weight here:
+
+    #{url}
+
+    This is a routine reminder, not medical advice — talk to your pediatrician
+    if you have any concerns.
+
+    ==============================
+    """)
+  end
 end

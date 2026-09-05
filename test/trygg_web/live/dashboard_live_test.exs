@@ -731,4 +731,40 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#glance-sleep", "for age")
     end
   end
+
+  describe "weight-check reminder" do
+    import Trygg.GrowthFixtures
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      # 400 days old -> a 90-day check interval applies.
+      child =
+        child_fixture(scope, %{timezone: "Etc/UTC", birth_date: Date.add(Date.utc_today(), -400)})
+
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    test "banners when the last weight is stale", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -120)})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#weight-check-reminder", "Time for a weight check")
+      assert has_element?(lv, "#weight-check-reminder a", "Log it in Vitals")
+    end
+
+    test "no banner when a recent weight is on file", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.utc_today()})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, "#weight-check-reminder")
+    end
+
+    test "banners when no weight has ever been logged", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#weight-check-reminder", "No weight logged yet")
+    end
+  end
 end

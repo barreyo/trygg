@@ -31,6 +31,9 @@ config :logger, level: :warning
 
 config :trygg, Trygg.RateLimit, enabled: false
 
+# The reminder scheduler's timer is off in test; exercise it via `run/0`.
+config :trygg, Trygg.Growth.ReminderScheduler, enabled: false
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 
