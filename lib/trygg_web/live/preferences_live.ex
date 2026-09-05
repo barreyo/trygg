@@ -13,7 +13,7 @@ defmodule TryggWeb.PreferencesLive do
       </.header>
 
       <.form for={@form} id="preferences-form" phx-change="save" class="mt-4 space-y-3">
-        <label class={unit_class(@form[:unit_system].value, :metric)}>
+        <label class={option_class(@form[:unit_system].value, :metric)}>
           <input
             type="radio"
             name="user[unit_system]"
@@ -27,7 +27,7 @@ defmodule TryggWeb.PreferencesLive do
           </span>
         </label>
 
-        <label class={unit_class(@form[:unit_system].value, :imperial)}>
+        <label class={option_class(@form[:unit_system].value, :imperial)}>
           <input
             type="radio"
             name="user[unit_system]"
@@ -38,6 +38,55 @@ defmodule TryggWeb.PreferencesLive do
           <span class="flex-1">
             <span class="font-medium block">Imperial</span>
             <span class="text-sm opacity-70">ounces, pounds, inches</span>
+          </span>
+        </label>
+
+        <div class="pt-6">
+          <.header>
+            Appearance
+            <:subtitle>Choose a light or dark look, or follow your device.</:subtitle>
+          </.header>
+        </div>
+
+        <label class={option_class(@form[:theme].value, :system)}>
+          <input
+            type="radio"
+            name="user[theme]"
+            value="system"
+            class="radio radio-primary"
+            checked={to_string(@form[:theme].value) == "system"}
+          />
+          <span class="flex-1">
+            <span class="font-medium block">System</span>
+            <span class="text-sm opacity-70">Match your device's light or dark setting</span>
+          </span>
+        </label>
+
+        <label class={option_class(@form[:theme].value, :light)}>
+          <input
+            type="radio"
+            name="user[theme]"
+            value="light"
+            class="radio radio-primary"
+            checked={to_string(@form[:theme].value) == "light"}
+          />
+          <span class="flex-1">
+            <span class="font-medium block">Light</span>
+            <span class="text-sm opacity-70">Always use the light theme</span>
+          </span>
+        </label>
+
+        <label class={option_class(@form[:theme].value, :dark)}>
+          <input
+            type="radio"
+            name="user[theme]"
+            value="dark"
+            class="radio radio-primary"
+            checked={to_string(@form[:theme].value) == "dark"}
+          />
+          <span class="flex-1">
+            <span class="font-medium block">Dark</span>
+            <span class="text-sm opacity-70">Always use the dark theme</span>
           </span>
         </label>
       </.form>
@@ -60,6 +109,7 @@ defmodule TryggWeb.PreferencesLive do
           |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
           |> assign(:form, to_form(Accounts.change_user_settings(user)))
           |> put_flash(:info, "Saved.")
+          |> push_event("set-theme", %{theme: to_string(user.theme)})
 
         {:noreply, socket}
 
@@ -68,7 +118,7 @@ defmodule TryggWeb.PreferencesLive do
     end
   end
 
-  defp unit_class(current, value) do
+  defp option_class(current, value) do
     [
       "flex items-center gap-3 rounded-box border p-4 cursor-pointer",
       if(to_string(current) == to_string(value),
