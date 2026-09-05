@@ -12,7 +12,13 @@ defmodule TryggWeb.PreferencesLive do
         <:subtitle>Applies only to what you see. Amounts are stored the same for everyone.</:subtitle>
       </.header>
 
-      <.form for={@form} id="preferences-form" phx-change="save" class="mt-4 space-y-3">
+      <.form
+        for={@form}
+        id="preferences-form"
+        phx-change="save"
+        phx-hook="Theme"
+        class="mt-4 space-y-3"
+      >
         <label class={option_class(@form[:unit_system].value, :metric)}>
           <input
             type="radio"
@@ -109,7 +115,6 @@ defmodule TryggWeb.PreferencesLive do
           |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
           |> assign(:form, to_form(Accounts.change_user_settings(user)))
           |> put_flash(:info, "Saved.")
-          |> push_event("set-theme", %{theme: to_string(user.theme)})
 
         {:noreply, socket}
 
