@@ -94,10 +94,19 @@ config :trygg, Trygg.RateLimit,
   login_code: [limit: 5, window_ms: 900_000],
   register_ip: [limit: 5, window_ms: 900_000]
 
-# Routine weight-check reminders. The scheduler scans children a few times a
-# day; the per-child email cadence is governed by the CDC well-child interval.
-# Disabled in test (call `Trygg.Growth.ReminderScheduler.run/0` directly).
-config :trygg, Trygg.Growth.ReminderScheduler, enabled: true
+# Background jobs. The Cron plugin enqueues the weight-check reminder scan a
+# few times a day; per-caregiver cadence is decided inside the job (their
+# `weight_reminder_days` preference, or the CDC well-child interval).
+config :trygg, Oban,
+  repo: Trygg.Repo,
+  queues: [reminders: 10],
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"0 */6 * * *", Trygg.Growth.WeightReminderWorker}
+     ]}
+  ]
 
 # Reports PDF export. `on_demand` launches Chrome per print job (and shuts it
 # down afterwards) so environments without a browser still boot. Production

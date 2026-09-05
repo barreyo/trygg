@@ -43,17 +43,30 @@ defmodule Trygg.Growth do
   end
 
   @doc """
-  The child's weight-check status per the CDC well-child cadence
-  (`Trygg.Growth.CheckReminder`). Returns the status map when a check is
-  currently due, otherwise `nil`. Requires `:viewer`.
+  The child's weight-check status for the current user, honouring their
+  `weight_reminder_days` preference (CDC well-child schedule by default, a
+  fixed cadence, or off). Returns the `Trygg.Growth.CheckReminder` status map
+  when a check is currently due, otherwise `nil`. Requires `:viewer`.
   """
   def weight_check_reminder(%Scope{} = scope, %Child{} = child, today \\ nil) do
     Families.authorize!(scope, child, :viewer)
-    today = today || Child.local_today(child)
 
-    case CheckReminder.evaluate(child, latest_weight(scope, child), today) do
-      %{due?: true} = status -> status
-      _ -> nil
+    case Trygg.Accounts.User.weight_reminder_setting(scope.user) do
+      :off ->
+        nil
+
+      setting ->
+        today = today || Child.local_today(child)
+
+        {interval, source} =
+          if match?({:every, _}, setting),
+            do: {elem(setting, 1), :custom},
+            else: {nil, :recommended}
+
+        case CheckReminder.evaluate(child, latest_weight(scope, child), today, interval) do
+          %{due?: true} = status -> Map.put(status, :source, source)
+          _ -> nil
+        end
     end
   end
 

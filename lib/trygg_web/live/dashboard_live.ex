@@ -1140,15 +1140,22 @@ defmodule TryggWeb.DashboardLive do
   end
 
   # Copy for the home weight-check banner. `never_measured?` means we're
-  # anchored on the birth date, not a prior reading.
-  defp weight_reminder_detail(%{never_measured?: true, interval_days: interval}) do
-    "No weight logged yet. The CDC well-child schedule suggests one about every " <>
-      "#{humanize_days(interval)} at this age."
+  # anchored on the birth date, not a prior reading; `source` says whether the
+  # cadence is the CDC schedule or this caregiver's own setting.
+  defp weight_reminder_detail(%{never_measured?: true} = r) do
+    "No weight logged yet. #{cadence_clause(r)}"
   end
 
-  defp weight_reminder_detail(%{days_since: since, interval_days: interval}) do
-    "Last weight was #{humanize_days(since)} ago. The CDC well-child schedule suggests one " <>
-      "about every #{humanize_days(interval)} at this age."
+  defp weight_reminder_detail(%{days_since: since} = r) do
+    "Last weight was #{humanize_days(since)} ago. #{cadence_clause(r)}"
+  end
+
+  defp cadence_clause(%{source: :custom, interval_days: interval}) do
+    "You asked to be reminded every #{humanize_days(interval)}."
+  end
+
+  defp cadence_clause(%{interval_days: interval}) do
+    "The CDC well-child schedule suggests one about every #{humanize_days(interval)} at this age."
   end
 
   defp humanize_days(days) when days >= 60, do: "#{round(days / 30)} months"

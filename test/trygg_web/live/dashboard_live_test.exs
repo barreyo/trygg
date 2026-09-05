@@ -766,5 +766,31 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert has_element?(lv, "#weight-check-reminder", "No weight logged yet")
     end
+
+    test "respects a shorter custom cadence", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -20)})
+
+      # 20 days stale is under the 90-day CDC interval — no banner yet.
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#weight-check-reminder")
+
+      {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 7})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#weight-check-reminder", "You asked to be reminded every 7 days")
+    end
+
+    test "no banner when the caregiver turned reminders off", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -300)})
+      {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 0})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, "#weight-check-reminder")
+    end
   end
 end

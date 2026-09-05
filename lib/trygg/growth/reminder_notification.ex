@@ -1,9 +1,9 @@
 defmodule Trygg.Growth.ReminderNotification do
   @moduledoc """
-  Bookkeeping row: the last time a child's caregivers were emailed that a
-  routine weight check was overdue. One row per child, kept so a restart or a
-  frequent scheduler tick can't re-send — a fresh reminder only goes out once
-  a full check interval has passed since the previous one.
+  Bookkeeping row: the last time a caregiver was emailed that a child's
+  routine weight check was overdue. One row per `{child, caregiver}`, kept so
+  a re-run can't re-send — a fresh reminder only goes out once that
+  caregiver's check interval has passed since the previous one.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -13,6 +13,7 @@ defmodule Trygg.Growth.ReminderNotification do
     field :last_measured_on, :date
 
     belongs_to :child, Trygg.Families.Child
+    belongs_to :user, Trygg.Accounts.User
 
     timestamps(type: :utc_datetime)
   end

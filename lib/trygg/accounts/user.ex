@@ -9,18 +9,35 @@ defmodule Trygg.Accounts.User do
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
     field :unit_system, Ecto.Enum, values: [:metric, :imperial], default: :metric
+    # How often this caregiver wants a "log a weight" nudge. `nil` follows the
+    # CDC well-child schedule; `0` turns reminders off; a positive integer is a
+    # fixed number of days without a logged weight.
+    field :weight_reminder_days, :integer
 
     timestamps(type: :utc_datetime)
   end
 
   @doc """
-  A changeset for the user's app preferences (measurement units, ...).
+  A changeset for the user's app preferences (measurement units, weight-check
+  reminder cadence, ...).
   """
   def settings_changeset(user, attrs) do
     user
-    |> cast(attrs, [:unit_system])
+    |> cast(attrs, [:unit_system, :weight_reminder_days])
     |> validate_required([:unit_system])
+    |> validate_number(:weight_reminder_days,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: 365
+    )
   end
+
+  @doc """
+  How this user wants weight-check reminders: `:recommended` (the CDC
+  well-child schedule), `:off`, or `{:every, days}`.
+  """
+  def weight_reminder_setting(%__MODULE__{weight_reminder_days: nil}), do: :recommended
+  def weight_reminder_setting(%__MODULE__{weight_reminder_days: 0}), do: :off
+  def weight_reminder_setting(%__MODULE__{weight_reminder_days: n}) when n > 0, do: {:every, n}
 
   @doc """
   A changeset for registering a user: their name plus the email address they

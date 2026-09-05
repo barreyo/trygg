@@ -31,8 +31,9 @@ config :logger, level: :warning
 
 config :trygg, Trygg.RateLimit, enabled: false
 
-# The reminder scheduler's timer is off in test; exercise it via `run/0`.
-config :trygg, Trygg.Growth.ReminderScheduler, enabled: false
+# Oban runs no queues or cron in test; assert with `Oban.Testing` or call
+# `Trygg.Growth.WeightReminders.run/0` directly.
+config :trygg, Oban, testing: :manual
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime

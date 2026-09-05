@@ -11,7 +11,7 @@ defmodule Trygg.Application do
       TryggWeb.Telemetry,
       Trygg.Repo,
       Trygg.RateLimit,
-      Trygg.Growth.ReminderScheduler,
+      {Oban, Application.fetch_env!(:trygg, Oban)},
       {DNSCluster, query: Application.get_env(:trygg, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Trygg.PubSub},
       # Configured `on_demand`, so Chrome only starts when a PDF is requested.

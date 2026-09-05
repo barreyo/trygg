@@ -73,4 +73,17 @@ defmodule Trygg.Growth.CheckReminderTest do
     assert status.interval_days == 90
     assert status.due?
   end
+
+  test "an interval override replaces the age-based interval" do
+    # 10-day-old weight on a child the CDC schedule would give 90 days
+    status = CheckReminder.evaluate(child(200), weight(10), @today, 7)
+
+    assert status.interval_days == 7
+    assert status.due?
+    assert status.overdue_days == 3
+  end
+
+  test "a nil override falls back to the CDC interval" do
+    assert CheckReminder.evaluate(child(200), weight(10), @today, nil).interval_days == 90
+  end
 end

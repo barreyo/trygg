@@ -26,14 +26,20 @@ defmodule Trygg.Growth.CheckReminder do
   @doc """
   Returns a status map, or `nil` when there is nothing to anchor on (no
   weight ever logged and no birth date on file).
+
+  `interval_override` forces a fixed number of days between checks (a
+  caregiver's `weight_reminder_days` preference); `nil` uses the age-based
+  CDC well-child interval.
   """
-  @spec evaluate(Child.t(), Measurement.t() | nil, Date.t()) :: t() | nil
-  def evaluate(%Child{} = child, latest_weight, %Date{} = today) do
+  @spec evaluate(Child.t(), Measurement.t() | nil, Date.t(), pos_integer() | nil) :: t() | nil
+  def evaluate(%Child{} = child, latest_weight, %Date{} = today, interval_override \\ nil) do
     last_on = measured_on(child, latest_weight)
     anchor = last_on || child.birth_date
 
     if anchor && not Date.after?(anchor, today) do
-      interval = Norms.weight_check_interval_days(Norms.age_days(child, today))
+      interval =
+        interval_override || Norms.weight_check_interval_days(Norms.age_days(child, today))
+
       days_since = Date.diff(today, anchor)
 
       %{
