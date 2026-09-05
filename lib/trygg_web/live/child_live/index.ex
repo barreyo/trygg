@@ -72,8 +72,63 @@ defmodule TryggWeb.ChildLive.Index do
         class="space-y-4 mt-2"
       >
         <.input field={@form[:name]} label="Name" required autocomplete="off" />
-        <.input field={@form[:birth_date]} type="date" label="Birth date" />
-        <.input field={@form[:birth_time]} type="time" label="Birth time (optional)" />
+
+        <div :if={status_choice?(assigns)} class="join w-full">
+          <button
+            :for={{value, label} <- [{"born", "Already born"}, {"expecting", "Expecting"}]}
+            type="button"
+            phx-click="set_status"
+            phx-value-status={value}
+            aria-pressed={to_string(@status == String.to_existing_atom(value))}
+            class={[
+              "join-item btn flex-1",
+              @status == String.to_existing_atom(value) && "btn-primary"
+            ]}
+          >
+            {label}
+          </button>
+        </div>
+
+        <%= if @status == :expecting do %>
+          <.input
+            field={@form[:expected_birth_date]}
+            type="date"
+            label="Due date"
+            required
+          />
+          <p :if={not entering_demo?(assigns)} class="text-xs opacity-60 -mt-2">
+            You can set everything up and start tracking now. It's all practice until {@form[:name].value ||
+              "the baby"} arrives — then the practice log clears.
+          </p>
+          <p :if={entering_demo?(assigns)} class="text-xs text-warning -mt-2">
+            Switching {@child.name} to practice mode clears their birth date. Anything
+            logged so far becomes practice data and is removed when you next confirm the
+            birth.
+          </p>
+        <% else %>
+          <.input field={@form[:birth_date]} type="date" label="Birth date" />
+          <.input field={@form[:birth_time]} type="time" label="Birth time (optional)" />
+          <p
+            :if={@live_action == :edit and Child.expecting?(@child)}
+            class="text-xs text-warning -mt-2"
+          >
+            Saving with a birth date marks {@child.name} as born and clears the practice
+            entries you've added.
+          </p>
+        <% end %>
+
+        <.button
+          :if={@live_action == :edit and Child.expecting?(@child) and @status == :expecting}
+          type="button"
+          variant="primary"
+          size="sm"
+          phx-click="set_status"
+          phx-value-status="born"
+          class="w-full"
+        >
+          🎉 {@child.name} has arrived
+        </.button>
+
         <.input
           field={@form[:sex]}
           type="select"
@@ -98,7 +153,14 @@ defmodule TryggWeb.ChildLive.Index do
         />
 
         <div class="flex gap-2 pt-2">
-          <.button variant="primary" phx-disable-with="Saving…" class="flex-1">Save</.button>
+          <.button
+            variant="primary"
+            phx-disable-with="Saving…"
+            class="flex-1"
+            data-confirm={save_confirm(assigns)}
+          >
+            Save
+          </.button>
           <.button variant="ghost" navigate={cancel_path(@live_action, @child)}>Cancel</.button>
         </div>
 
@@ -144,22 +206,41 @@ defmodule TryggWeb.ChildLive.Index do
   defp apply_action(socket, :new, _params) do
     socket
     |> assign(:child, %Child{})
+    |> assign(:status, :born)
     |> assign(:form, to_form(Families.change_child(%Child{})))
   end
 
-  defp apply_action(socket, :edit, %{"id" => id}) do
+  defp apply_action(socket, :edit, %{"id" => id} = params) do
     child = Families.get_child!(socket.assigns.current_scope, id)
 
     if child.role == :owner do
+      # The "… has arrived" banner links here with ?arrived=1 to jump straight
+      # to confirming the birth date.
+      status =
+        if Child.expecting?(child) and params["arrived"] != "1", do: :expecting, else: :born
+
+      form = child |> Families.change_child(arrived_defaults(child, status)) |> to_form()
+
       socket
       |> assign(:child, child)
-      |> assign(:form, to_form(Families.change_child(child)))
+      |> assign(:status, status)
+      |> assign(:form, form)
     else
       socket
       |> put_flash(:error, "Only #{child.name}'s owners can edit their details.")
       |> push_navigate(to: ~p"/c/#{child}")
     end
   end
+
+  # When an expecting child is being marked born, pre-fill the birth date with
+  # their local today so the caregiver usually just taps Save.
+  defp arrived_defaults(child, :born) do
+    if Child.expecting?(child),
+      do: %{"birth_date" => Date.to_iso8601(Child.local_today(child))},
+      else: %{}
+  end
+
+  defp arrived_defaults(_child, _status), do: %{}
 
   # Where Back / Cancel lead: a new child hasn't got a page yet, an existing one does.
   defp cancel_path(:edit, %Child{id: id} = child) when not is_nil(id), do: ~p"/c/#{child}"
@@ -169,6 +250,18 @@ defmodule TryggWeb.ChildLive.Index do
   def handle_event("validate", %{"child" => params}, socket) do
     changeset = Families.change_child(socket.assigns.child, params) |> Map.put(:action, :validate)
     {:noreply, assign(socket, :form, to_form(changeset))}
+  end
+
+  def handle_event("set_status", %{"status" => status}, socket) do
+    status = String.to_existing_atom(status)
+
+    params =
+      Map.merge(current_form_params(socket), arrived_defaults(socket.assigns.child, status))
+
+    {:noreply,
+     socket
+     |> assign(:status, status)
+     |> assign(:form, to_form(Families.change_child(socket.assigns.child, params)))}
   end
 
   def handle_event("save", %{"child" => params}, socket) do
@@ -198,11 +291,25 @@ defmodule TryggWeb.ChildLive.Index do
   end
 
   defp save(socket, :edit, params) do
+    was_expecting? = Child.expecting?(socket.assigns.child)
+
     case Families.update_child(socket.assigns.current_scope, socket.assigns.child, params) do
       {:ok, child} ->
+        message =
+          cond do
+            was_expecting? and not Child.expecting?(child) ->
+              "#{child.name} is here! 🎉 Welcome to the world."
+
+            not was_expecting? and Child.expecting?(child) ->
+              "#{child.name} is back in practice mode."
+
+            true ->
+              "Saved."
+          end
+
         {:noreply,
          socket
-         |> put_flash(:info, "Saved.")
+         |> put_flash(:info, message)
          |> push_navigate(to: ~p"/c/#{child}")}
 
       {:error, changeset} ->
@@ -210,9 +317,51 @@ defmodule TryggWeb.ChildLive.Index do
     end
   end
 
-  defp age_line(%Child{birth_date: nil}), do: "—"
+  defp current_form_params(socket) do
+    case socket.assigns.form do
+      %{params: params} when is_map(params) -> params
+      _ -> %{}
+    end
+  end
 
-  defp age_line(%Child{birth_date: date}) do
+  # The "Already born / Expecting" segmented control shows on the new-child form
+  # and on every edit form, so an owner can move a child into or out of practice
+  # mode from the child's settings.
+  defp status_choice?(%{live_action: action}) when action in [:new, :edit], do: true
+  defp status_choice?(_assigns), do: false
+
+  # True while editing a currently-born child with the toggle flipped to
+  # "Expecting" — i.e. about to drop them back into practice mode.
+  defp entering_demo?(%{live_action: :edit, status: :expecting, child: %Child{id: id} = child})
+       when not is_nil(id),
+       do: not Child.expecting?(child)
+
+  defp entering_demo?(_assigns), do: false
+
+  defp save_confirm(%{live_action: :edit, status: :born, child: child}) do
+    if Child.expecting?(child),
+      do: "Mark #{child.name} as born? This clears every practice entry you've added.",
+      else: false
+  end
+
+  defp save_confirm(assigns) do
+    if entering_demo?(assigns),
+      do:
+        "Switch #{assigns.child.name} to practice mode? Their birth date is cleared and " <>
+          "everything logged so far becomes practice data — it's removed when you next " <>
+          "confirm the birth.",
+      else: false
+  end
+
+  defp age_line(%Child{} = child) do
+    cond do
+      Child.expecting?(child) -> Child.due_label(child)
+      is_nil(child.birth_date) -> "—"
+      true -> born_age_line(child.birth_date)
+    end
+  end
+
+  defp born_age_line(date) do
     days = Date.diff(Date.utc_today(), date)
 
     cond do

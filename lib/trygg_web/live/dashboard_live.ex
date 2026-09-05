@@ -66,6 +66,14 @@ defmodule TryggWeb.DashboardLive do
      |> refresh_summary()}
   end
 
+  def handle_info({:child_born, child}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_child, %{child | role: socket.assigns.role})
+     |> put_flash(:info, "#{child.name} is here! 🎉 Practice entries cleared.")
+     |> refresh()}
+  end
+
   def handle_info({:child_deleted, _child_id}, socket) do
     {:noreply,
      socket
@@ -586,7 +594,7 @@ defmodule TryggWeb.DashboardLive do
       current_child={@current_child}
       current_tab={:home}
       title={@current_child.name}
-      subtitle={Child.age_label(@current_child)}
+      subtitle={Child.caption(@current_child)}
       children={@children}
     >
       <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
