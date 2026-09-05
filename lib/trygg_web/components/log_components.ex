@@ -4,6 +4,7 @@ defmodule TryggWeb.LogComponents do
   """
   use Phoenix.Component
 
+  import Phoenix.LiveView, only: [consume_uploaded_entries: 3, cancel_upload: 3]
   import TryggWeb.CoreComponents, only: [icon: 1, button: 1, input: 1]
 
   alias Trygg.Accounts.Scope
@@ -139,62 +140,73 @@ defmodule TryggWeb.LogComponents do
   attr :tz, :string, default: "Etc/UTC", doc: "the child's IANA time zone, for the timestamp"
   attr :on_click, :any, default: nil
   attr :show_date, :boolean, default: false
+  attr :photo_src, :string, default: nil, doc: "URL for the entry's photo, when it has one"
   attr :rest, :global
 
   def entry_row(assigns) do
     ~H"""
     <div
       class={[
-        "flex items-center gap-3 py-2.5",
+        "py-2.5",
         @on_click && "cursor-pointer active:bg-base-200 -mx-2 px-2 rounded-lg"
       ]}
       phx-click={@on_click}
       {@rest}
     >
-      <div class={[
-        "size-9 rounded-full grid place-items-center shrink-0",
-        if(asleep_now?(@entry), do: "bg-primary/15 text-primary", else: "bg-base-200 opacity-70")
-      ]}>
-        <span
-          :if={@entry.type == :diaper}
-          class="text-base leading-none"
-          aria-hidden="true"
-        >
-          {diaper_emoji(@entry.data["kind"])}
-        </span>
-        <.icon
-          :if={@entry.type != :diaper}
-          name={entry_icon(@entry.type)}
-          class={"size-5 " <> if(asleep_now?(@entry), do: "motion-safe:animate-pulse", else: "")}
-        />
-      </div>
-      <div class="flex-1 min-w-0">
-        <%= if asleep_now?(@entry) do %>
-          <div class="font-semibold text-primary flex items-center gap-1 leading-tight">
-            Sleeping <span class="snooze" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
-          </div>
-        <% else %>
-          <div class="font-semibold leading-tight truncate">
-            {entry_title(@entry, @unit_system)}
-          </div>
-          <div
-            :if={entry_detail(@entry, @unit_system)}
-            class="mt-0.5 text-sm opacity-60 leading-tight truncate"
+      <div class="flex items-center gap-3">
+        <div class={[
+          "size-9 rounded-full grid place-items-center shrink-0",
+          if(asleep_now?(@entry), do: "bg-primary/15 text-primary", else: "bg-base-200 opacity-70")
+        ]}>
+          <span
+            :if={@entry.type == :diaper}
+            class="text-base leading-none"
+            aria-hidden="true"
           >
-            {entry_detail(@entry, @unit_system)}
+            {diaper_emoji(@entry.data["kind"])}
+          </span>
+          <.icon
+            :if={@entry.type != :diaper}
+            name={entry_icon(@entry.type)}
+            class={"size-5 " <> if(asleep_now?(@entry), do: "motion-safe:animate-pulse", else: "")}
+          />
+        </div>
+        <div class="flex-1 min-w-0">
+          <%= if asleep_now?(@entry) do %>
+            <div class="font-semibold text-primary flex items-center gap-1 leading-tight">
+              Sleeping <span class="snooze" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
+            </div>
+          <% else %>
+            <div class="font-semibold leading-tight truncate">
+              {entry_title(@entry, @unit_system)}
+            </div>
+            <div
+              :if={entry_detail(@entry, @unit_system)}
+              class="mt-0.5 text-sm opacity-60 leading-tight truncate"
+            >
+              {entry_detail(@entry, @unit_system)}
+            </div>
+          <% end %>
+        </div>
+        <div class="text-right shrink-0 leading-tight">
+          <div class="text-sm font-semibold tabular-nums opacity-90 whitespace-nowrap">
+            {if @show_date,
+              do: stamp(@entry.started_at, @tz),
+              else: clock(@entry.started_at, @tz)}
           </div>
-        <% end %>
-      </div>
-      <div class="text-right shrink-0 leading-tight">
-        <div class="text-sm font-semibold tabular-nums opacity-90 whitespace-nowrap">
-          {if @show_date,
-            do: stamp(@entry.started_at, @tz),
-            else: clock(@entry.started_at, @tz)}
-        </div>
-        <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-40 truncate max-w-24">
-          {User.capitalize_name(@entry.logged_by.first_name)}
+          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-40 truncate max-w-24">
+            {User.capitalize_name(@entry.logged_by.first_name)}
+          </div>
         </div>
       </div>
+
+      <img
+        :if={@photo_src}
+        src={@photo_src}
+        loading="lazy"
+        alt={"Photo attached to this #{entry_noun(@entry)}"}
+        class="mt-2 ml-12 h-40 w-full max-w-56 rounded-lg border border-base-300 bg-base-200 object-cover"
+      />
     </div>
     """
   end
@@ -360,6 +372,10 @@ defmodule TryggWeb.LogComponents do
   @doc """
   Applies the edit-sheet params to an entry. Returns `{:ok, entry}`,
   `{:error, %Ecto.Changeset{}}`, or `{:error, :invalid_time}`.
+
+  Photo changes are passed in `params`: `"photo_key"` / `"photo_content_type"`
+  (a freshly stored upload) replace the photo, and `"remove_photo" => "true"`
+  clears it. Absent those keys, the existing photo is left untouched.
   """
   def save_entry_edit(%Scope{} = scope, %Entry{} = entry, %Child{} = child, params) do
     case local_to_utc(child, params["started_at"]) do
@@ -375,21 +391,128 @@ defmodule TryggWeb.LogComponents do
             started_at
           end
 
-        Log.update_entry(scope, entry, %{
-          "type" => to_string(entry.type),
-          "started_at" => started_at,
-          "ended_at" => ended_at,
-          "note" => params["note"],
-          "data" => merge_amount(entry, params["amount"])
-        })
+        attrs =
+          %{
+            "type" => to_string(entry.type),
+            "started_at" => started_at,
+            "ended_at" => ended_at,
+            "note" => params["note"],
+            "data" => merge_amount(entry, params["amount"])
+          }
+          |> Map.merge(photo_attrs(params))
+
+        Log.update_entry(scope, entry, attrs)
 
       :error ->
         {:error, :invalid_time}
     end
   end
 
+  # New upload wins; otherwise an explicit "remove" clears both columns;
+  # otherwise leave the photo out of the update entirely.
+  defp photo_attrs(%{"photo_key" => key} = params) when is_binary(key) and key != "" do
+    %{"photo_key" => key, "photo_content_type" => params["photo_content_type"]}
+  end
+
+  defp photo_attrs(%{"remove_photo" => "true"}),
+    do: %{"photo_key" => nil, "photo_content_type" => nil}
+
+  defp photo_attrs(_params), do: %{}
+
+  @doc """
+  Consumes a pending `:photo` upload into stored bytes, returning attrs to
+  merge into a `Trygg.Log` create/update call (`"photo_key"` /
+  `"photo_content_type"`), or `%{}` when nothing is attached.
+  """
+  def consume_photo(socket, %Child{} = child) do
+    socket
+    |> consume_uploaded_entries(:photo, fn %{path: path}, entry ->
+      with {:ok, binary} <- File.read(path),
+           {:ok, attrs} <- Log.store_photo(child, binary, entry.client_type) do
+        {:ok, attrs}
+      else
+        _ -> {:postpone, %{}}
+      end
+    end)
+    |> case do
+      [%{"photo_key" => _} = attrs | _] -> attrs
+      _ -> %{}
+    end
+  end
+
+  @doc "Cancels any pending `:photo` upload so it can't leak into another form."
+  def clear_photo_upload(socket) do
+    Enum.reduce(socket.assigns.uploads.photo.entries, socket, fn entry, acc ->
+      cancel_upload(acc, :photo, entry.ref)
+    end)
+  end
+
+  @doc """
+  Turns an upload error atom (from `Phoenix.Component.upload_errors/2`) into a
+  short, human sentence.
+  """
+  def upload_error_to_string(:too_large), do: "That photo is too large (15 MB max)."
+  def upload_error_to_string(:too_many_files), do: "One photo at a time, please."
+  def upload_error_to_string(:not_accepted), do: "That file isn't an image we can show."
+  def upload_error_to_string(_), do: "That photo couldn't be added — try another."
+
+  @doc """
+  The photo picker shared by the log sheets and the edit modal: any current
+  photo with a "remove" toggle, a live preview of a pending upload, and the
+  file input itself.
+  """
+  attr :upload, Phoenix.LiveView.UploadConfig, required: true
+  attr :current_src, :string, default: nil, doc: "URL of the already-attached photo, if any"
+  attr :removable, :boolean, default: false, doc: "show the 'remove photo' toggle"
+
+  def photo_field(assigns) do
+    ~H"""
+    <div class="fieldset mb-2" phx-drop-target={@upload.ref}>
+      <span class="label mb-1">Photo <span class="opacity-50">(optional)</span></span>
+
+      <div :if={@current_src && @upload.entries == []} class="mb-2 space-y-1">
+        <img
+          src={@current_src}
+          alt="Attached photo"
+          class="h-36 w-full max-w-48 rounded-lg border border-base-300 object-cover"
+        />
+        <label :if={@removable} class="flex cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" name="entry[remove_photo]" value="true" class="checkbox checkbox-sm" />
+          <span>Remove photo</span>
+        </label>
+      </div>
+
+      <div :for={entry <- @upload.entries} class="mb-2 space-y-1">
+        <.live_img_preview
+          entry={entry}
+          class="h-36 w-full max-w-48 rounded-lg border border-base-300 object-cover"
+        />
+        <button
+          type="button"
+          phx-click="cancel_photo"
+          phx-value-ref={entry.ref}
+          class="text-sm text-error hover:underline"
+        >
+          Remove
+        </button>
+        <p :for={err <- upload_errors(@upload, entry)} class="text-xs text-error">
+          {upload_error_to_string(err)}
+        </p>
+      </div>
+
+      <.live_file_input upload={@upload} class="file-input file-input-bordered w-full" />
+
+      <p :for={err <- upload_errors(@upload)} class="text-xs text-error">
+        {upload_error_to_string(err)}
+      </p>
+    </div>
+    """
+  end
+
   attr :entry, Entry, required: true
   attr :form, :any, required: true
+  attr :upload, Phoenix.LiveView.UploadConfig, required: true
+  attr :photo_src, :string, default: nil
 
   def edit_modal(assigns) do
     ~H"""
@@ -403,7 +526,13 @@ defmodule TryggWeb.LogComponents do
       <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
         <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
 
-        <.form for={@form} id="edit-entry-form" phx-submit="save_edit" class="space-y-3">
+        <.form
+          for={@form}
+          id="edit-entry-form"
+          phx-change="validate_edit"
+          phx-submit="save_edit"
+          class="space-y-3"
+        >
           <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
           <.input
             :if={@entry.type == :sleep}
@@ -419,6 +548,8 @@ defmodule TryggWeb.LogComponents do
             label="Amount (ml)"
           />
           <.input field={@form[:note]} type="text" label="Note" />
+
+          <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
 
           <div class="flex gap-2 pt-1">
             <.button type="submit" variant="primary" class="flex-1">Save</.button>

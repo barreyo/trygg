@@ -31,6 +31,11 @@ config :logger, level: :warning
 
 config :trygg, Trygg.RateLimit, enabled: false
 
+# Log photos land in a throwaway tmp dir during the test run.
+config :trygg, Trygg.Storage,
+  adapter: Trygg.Storage.Local,
+  base_dir: Path.expand("../tmp/test_uploads", __DIR__)
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 
