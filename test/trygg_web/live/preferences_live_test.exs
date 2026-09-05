@@ -34,12 +34,17 @@ defmodule TryggWeb.PreferencesLiveTest do
       assert lv |> element(~s(input[name="user[theme]"][value="system"])) |> render() =~ "checked"
     end
 
-    test "saving persists the chosen theme and pushes it to the client", %{conn: conn, user: user} do
+    test "the form carries the client hook that applies the theme without a reload", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      assert lv |> element("#preferences-form") |> render() =~ ~s(phx-hook="Theme")
+    end
+
+    test "saving persists the chosen theme", %{conn: conn, user: user} do
       {:ok, lv, _html} = live(conn, ~p"/preferences")
 
       render_change(form(lv, "#preferences-form", user: %{theme: "dark"}))
 
-      assert_push_event(lv, "set-theme", %{theme: "dark"})
       assert Accounts.get_user!(user.id).theme == :dark
     end
 
@@ -50,7 +55,6 @@ defmodule TryggWeb.PreferencesLiveTest do
 
       render_change(form(lv, "#preferences-form", user: %{theme: "system"}))
 
-      assert_push_event(lv, "set-theme", %{theme: "system"})
       assert Accounts.get_user!(user.id).theme == :system
     end
   end
