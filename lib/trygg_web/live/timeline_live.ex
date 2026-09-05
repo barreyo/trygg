@@ -45,11 +45,18 @@ defmodule TryggWeb.TimelineLive do
           unit_system={@unit_system}
           tz={@current_child.timezone}
           show_date
+          photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
           on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
         />
       </div>
 
-      <.edit_modal :if={@editing} entry={@editing} form={@edit_form} />
+      <.edit_modal
+        :if={@editing}
+        entry={@editing}
+        form={@edit_form}
+        upload={@uploads.photo}
+        photo_src={@editing.photo_key && ~p"/c/#{@current_child}/log/#{@editing.id}/photo"}
+      />
     </Layouts.app>
     """
   end
@@ -65,6 +72,11 @@ defmodule TryggWeb.TimelineLive do
       |> assign(:filter, nil)
       |> assign(:editing, nil)
       |> assign(:edit_form, nil)
+      |> allow_upload(:photo,
+        accept: Log.photo_extensions(),
+        max_entries: 1,
+        max_file_size: Log.max_photo_bytes()
+      )
       |> load_entries()
 
     {:ok, socket}
@@ -75,6 +87,14 @@ defmodule TryggWeb.TimelineLive do
 
   def handle_info({:child_updated, child}, socket) do
     {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
+  end
+
+  def handle_info({:child_born, child}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_child, %{child | role: socket.assigns.role})
+     |> put_flash(:info, "#{child.name} is here! 🎉 Practice entries cleared.")
+     |> load_entries()}
   end
 
   def handle_info({:child_deleted, _child_id}, socket) do
@@ -128,14 +148,28 @@ defmodule TryggWeb.TimelineLive do
   def handle_event("edit", %{"id" => id}, socket) do
     entry = Log.get_entry!(socket.assigns.current_scope, id)
     params = entry_edit_params(entry, socket.assigns.current_child)
-    {:noreply, assign(socket, editing: entry, edit_form: to_form(params, as: :entry))}
+
+    {:noreply,
+     socket
+     |> clear_photo_upload()
+     |> assign(editing: entry, edit_form: to_form(params, as: :entry))}
   end
 
   def handle_event("cancel_edit", _params, socket) do
-    {:noreply, assign(socket, editing: nil, edit_form: nil)}
+    {:noreply, socket |> clear_photo_upload() |> assign(editing: nil, edit_form: nil)}
+  end
+
+  def handle_event("validate_edit", %{"entry" => params}, socket) do
+    {:noreply, assign(socket, :edit_form, to_form(params, as: :entry))}
+  end
+
+  def handle_event("cancel_photo", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :photo, ref)}
   end
 
   def handle_event("save_edit", %{"entry" => params}, socket) do
+    params = Map.merge(params, consume_photo(socket, socket.assigns.current_child))
+
     case save_entry_edit(
            socket.assigns.current_scope,
            socket.assigns.editing,

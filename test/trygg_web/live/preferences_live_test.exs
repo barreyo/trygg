@@ -1,5 +1,5 @@
 defmodule TryggWeb.PreferencesLiveTest do
-  use TryggWeb.ConnCase
+  use TryggWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
@@ -7,42 +7,104 @@ defmodule TryggWeb.PreferencesLiveTest do
 
   setup :register_and_log_in_user
 
-  test "shows the weight-check reminder options, recommended by default", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, ~p"/preferences")
+  describe "measurement units" do
+    test "saving switches the stored unit system", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
 
-    assert has_element?(lv, "#reminder-options")
-    assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='7']")
-    assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='0']")
-    assert has_element?(lv, "input[name='user[weight_reminder_days]'][value=''][checked]")
+      lv
+      |> form("#preferences-form", user: %{unit_system: "imperial"})
+      |> render_change()
+
+      assert Accounts.get_user!(user.id).unit_system == :imperial
+    end
   end
 
-  test "picking a cadence persists it", %{conn: conn, scope: scope} do
-    {:ok, lv, _html} = live(conn, ~p"/preferences")
+  describe "theme" do
+    test "renders a theme option per choice", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/preferences")
 
-    lv
-    |> form("#preferences-form", user: %{weight_reminder_days: "14"})
-    |> render_change()
+      assert html =~ ~s(name="user[theme]" value="system")
+      assert html =~ ~s(name="user[theme]" value="light")
+      assert html =~ ~s(name="user[theme]" value="dark")
+    end
 
-    assert Accounts.get_user!(scope.user.id).weight_reminder_days == 14
-    assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='14'][checked]")
+    test "defaults to system, checked", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      assert lv |> element(~s(input[name="user[theme]"][value="system"])) |> render() =~ "checked"
+    end
+
+    test "the form carries the client hook that applies the theme without a reload", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      assert lv |> element("#preferences-form") |> render() =~ ~s(phx-hook="Theme")
+    end
+
+    test "saving persists the chosen theme", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      render_change(form(lv, "#preferences-form", user: %{theme: "dark"}))
+
+      assert Accounts.get_user!(user.id).theme == :dark
+    end
+
+    test "saving system clears any prior override", %{conn: conn, user: user} do
+      {:ok, _} = Accounts.update_user_settings(user, %{theme: :dark})
+
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      render_change(form(lv, "#preferences-form", user: %{theme: "system"}))
+
+      assert Accounts.get_user!(user.id).theme == :system
+    end
   end
 
-  test "choosing Recommended clears a previously set cadence", %{conn: conn, scope: scope} do
-    {:ok, _} = Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 7})
+  describe "root layout" do
+    test "signed-in user's explicit theme is rendered on <html>", %{conn: conn, user: user} do
+      {:ok, _} = Accounts.update_user_settings(user, %{theme: :dark})
 
-    {:ok, lv, _html} = live(conn, ~p"/preferences")
-
-    lv
-    |> form("#preferences-form", user: %{weight_reminder_days: ""})
-    |> render_change()
-
-    assert Accounts.get_user!(scope.user.id).weight_reminder_days == nil
+      assert get(conn, ~p"/preferences") |> html_response(200) =~ ~s(data-user-theme="dark")
+    end
   end
 
-  test "rejects an out-of-range cadence", %{scope: scope} do
-    assert {:error, %Ecto.Changeset{}} =
-             Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 9999})
+  describe "weight-check reminders" do
+    test "shows the cadence options, recommended by default", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
 
-    assert Accounts.get_user!(scope.user.id).weight_reminder_days == nil
+      assert has_element?(lv, "#reminder-options")
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='7']")
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='0']")
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value=''][checked]")
+    end
+
+    test "picking a cadence persists it", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      lv
+      |> form("#preferences-form", user: %{weight_reminder_days: "14"})
+      |> render_change()
+
+      assert Accounts.get_user!(user.id).weight_reminder_days == 14
+      assert has_element?(lv, "input[name='user[weight_reminder_days]'][value='14'][checked]")
+    end
+
+    test "choosing Recommended clears a previously set cadence", %{conn: conn, user: user} do
+      {:ok, _} = Accounts.update_user_settings(user, %{"weight_reminder_days" => 7})
+
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      lv
+      |> form("#preferences-form", user: %{weight_reminder_days: ""})
+      |> render_change()
+
+      assert Accounts.get_user!(user.id).weight_reminder_days == nil
+    end
+
+    test "rejects an out-of-range cadence", %{user: user} do
+      assert {:error, %Ecto.Changeset{}} =
+               Accounts.update_user_settings(user, %{"weight_reminder_days" => 9999})
+
+      assert Accounts.get_user!(user.id).weight_reminder_days == nil
+    end
   end
 end

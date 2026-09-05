@@ -11,6 +11,9 @@ defmodule Trygg.Families.Child do
     field :name, :string
     field :birth_date, :date
     field :birth_time, :time
+    # Set while the child is still "expecting" — the due date. Cleared when a
+    # caregiver confirms the real `birth_date`. See `expecting?/1`.
+    field :expected_birth_date, :date
     field :sex, Ecto.Enum, values: @sexes, default: :unspecified
     field :timezone, :string, default: @default_timezone
     field :day_start, :time, default: ~T[08:00:00]
@@ -28,12 +31,22 @@ defmodule Trygg.Families.Child do
   @doc false
   def changeset(child, attrs) do
     child
-    |> cast(attrs, [:name, :birth_date, :birth_time, :sex, :timezone, :day_start, :night_start])
+    |> cast(attrs, [
+      :name,
+      :birth_date,
+      :birth_time,
+      :expected_birth_date,
+      :sex,
+      :timezone,
+      :day_start,
+      :night_start
+    ])
     |> update_change(:name, &String.trim/1)
     |> validate_required([:name, :timezone, :day_start, :night_start])
     |> validate_length(:name, min: 1, max: 80)
     |> validate_timezone()
     |> validate_birth_date()
+    |> validate_expected_birth_date()
     |> truncate_time(:day_start)
     |> truncate_time(:night_start)
     |> validate_day_night()
@@ -90,6 +103,27 @@ defmodule Trygg.Families.Child do
     end
   end
 
+  # The expected delivery date must be today or later — but only checked when it
+  # actually changes, so a child whose due date has quietly slipped into the
+  # past can still be edited (rename, timezone, …) while everyone waits.
+  defp validate_expected_birth_date(changeset) do
+    case get_change(changeset, :expected_birth_date) do
+      %Date{} = date ->
+        if Date.before?(date, Date.utc_today()) do
+          add_error(
+            changeset,
+            :expected_birth_date,
+            "has already passed — if the baby's here, mark them as born"
+          )
+        else
+          changeset
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
   @doc "The child's wall-clock `DateTime` right now, in its own time zone."
   def local_now(%__MODULE__{timezone: tz}), do: DateTime.now!(tz)
 
@@ -116,6 +150,40 @@ defmodule Trygg.Families.Child do
       {y, m, d} -> "#{y}y #{m}mo #{d}d"
       nil -> nil
     end
+  end
+
+  @doc """
+  Whether the child hasn't been born yet: an `expected_birth_date` is set and
+  no `birth_date` has been confirmed. While this is true the app runs in
+  "practice" mode and everything logged is cleared once the baby arrives.
+  """
+  def expecting?(%__MODULE__{birth_date: nil, expected_birth_date: %Date{}}), do: true
+  def expecting?(%__MODULE__{}), do: false
+
+  @doc ~S'A friendly "due in 3 weeks" / "due today" / "due 2 days ago" label, or `nil`.'
+  def due_label(%__MODULE__{expected_birth_date: %Date{} = due} = child) do
+    days = Date.diff(due, local_today(child))
+
+    cond do
+      days == 0 -> "due today"
+      days == 1 -> "due tomorrow"
+      days == -1 -> "due yesterday"
+      days < 0 -> "due #{overdue_phrase(-days)} ago"
+      days < 14 -> "due in #{days} days"
+      days < 60 -> "due in #{div(days + 3, 7)} weeks"
+      true -> "due in #{div(days, 30)} months"
+    end
+  end
+
+  def due_label(%__MODULE__{}), do: nil
+
+  defp overdue_phrase(days) when days < 14, do: "#{days} days"
+  defp overdue_phrase(days) when days < 60, do: "#{div(days + 3, 7)} weeks"
+  defp overdue_phrase(days), do: "#{div(days, 30)} months"
+
+  @doc "The best one-line caption for the child: their age, or their due date."
+  def caption(%__MODULE__{} = child) do
+    if expecting?(child), do: due_label(child), else: age_label(child)
   end
 
   # Whole years/months/days between two dates, borrowing from the larger unit

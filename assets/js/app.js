@@ -27,12 +27,13 @@ import topbar from "../vendor/topbar"
 import Timer from "./hooks/timer"
 import InstallPrompt from "./hooks/install_prompt"
 import DownloadPdf from "./hooks/download_pdf"
+import Theme from "./hooks/theme"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Timer, InstallPrompt, DownloadPdf},
+  hooks: {...colocatedHooks, Timer, InstallPrompt, DownloadPdf, Theme},
 })
 
 // Show progress bar on live navigation and form submits

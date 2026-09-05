@@ -17,6 +17,7 @@ defmodule Trygg.Log.Entry do
   @bottle_contents ~w(formula expressed donor)
   @diaper_kinds ~w(pee poo mixed)
   @sleep_locations ~w(bassinet crib contact stroller other)
+  @photo_content_types ~w(image/jpeg image/png image/webp image/gif)
 
   schema "log_entries" do
     field :type, Ecto.Enum, values: @types
@@ -24,6 +25,11 @@ defmodule Trygg.Log.Entry do
     field :ended_at, :utc_datetime
     field :data, :map, default: %{}
     field :note, :string
+
+    # An optional photo attached to the entry, stored via `Trygg.Storage`.
+    # `photo_key` is the storage key; `nil` means no photo.
+    field :photo_key, :string
+    field :photo_content_type, :string
 
     belongs_to :child, Trygg.Families.Child
     belongs_to :logged_by, Trygg.Accounts.User
@@ -34,10 +40,30 @@ defmodule Trygg.Log.Entry do
   @doc false
   def changeset(entry, attrs) do
     entry
-    |> cast(attrs, [:type, :started_at, :ended_at, :note])
+    |> cast(attrs, [:type, :started_at, :ended_at, :note, :photo_key, :photo_content_type])
     |> validate_required([:type, :started_at])
     |> validate_end_after_start()
+    |> validate_photo()
     |> put_data(attrs)
+  end
+
+  # A photo is all-or-nothing: keep both columns or neither, and only accept
+  # content types we can actually render in the feed.
+  defp validate_photo(changeset) do
+    case get_field(changeset, :photo_key) do
+      nil ->
+        put_change(changeset, :photo_content_type, nil)
+
+      "" ->
+        changeset |> put_change(:photo_key, nil) |> put_change(:photo_content_type, nil)
+
+      _key ->
+        changeset
+        |> validate_required([:photo_content_type])
+        |> validate_inclusion(:photo_content_type, @photo_content_types,
+          message: "isn't a supported image type"
+        )
+    end
   end
 
   defp validate_end_after_start(changeset) do
@@ -143,6 +169,10 @@ defmodule Trygg.Log.Entry do
   def running?(%__MODULE__{type: type, ended_at: nil}) when type in @timer_types, do: true
   def running?(%__MODULE__{}), do: false
 
+  @doc "Whether this entry has a photo attached."
+  def has_photo?(%__MODULE__{photo_key: key}) when is_binary(key) and key != "", do: true
+  def has_photo?(%__MODULE__{}), do: false
+
   @doc "Duration in seconds between start and end (or now, if still running)."
   def duration_seconds(%__MODULE__{started_at: start, ended_at: nil}) do
     DateTime.diff(DateTime.utc_now(), start, :second)
@@ -157,4 +187,5 @@ defmodule Trygg.Log.Entry do
   def sleep_locations, do: @sleep_locations
   def bottle_contents, do: @bottle_contents
   def diaper_kinds, do: @diaper_kinds
+  def photo_content_types, do: @photo_content_types
 end

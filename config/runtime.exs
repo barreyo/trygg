@@ -107,6 +107,30 @@ if config_env() == :prod do
 
   config :trygg, :email_from, System.get_env("MAIL_FROM") || "Trygg <onboarding@resend.dev>"
 
+  # ## Photo storage (Tigris on Fly)
+  #
+  # Tigris is S3-compatible object storage. `fly storage create` provisions a
+  # bucket and sets these as app secrets automatically:
+  #
+  #   * BUCKET_NAME            – the bucket
+  #   * AWS_ACCESS_KEY_ID      – access key
+  #   * AWS_SECRET_ACCESS_KEY  – secret key
+  #   * AWS_ENDPOINT_URL_S3    – https://fly.storage.tigris.dev
+  #   * AWS_REGION             – "auto"
+  #
+  # Without a bucket configured we fall back to the on-disk adapter from
+  # config/config.exs so the release still boots (photos just won't persist
+  # across machine restarts).
+  if bucket = System.get_env("BUCKET_NAME") do
+    config :trygg, Trygg.Storage,
+      adapter: Trygg.Storage.S3,
+      bucket: bucket,
+      endpoint_url: System.get_env("AWS_ENDPOINT_URL_S3") || "https://fly.storage.tigris.dev",
+      region: System.get_env("AWS_REGION") || "auto",
+      access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+      secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY")
+  end
+
   # Reports PDF export. The release runs as a non-root user on Alpine, where
   # Chrome's sandbox can't start; the HTML we print is our own, so disabling
   # it is fine. CHROME_EXECUTABLE is set in the Dockerfile.

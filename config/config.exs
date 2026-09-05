@@ -24,6 +24,11 @@ config :trygg,
   ecto_repos: [Trygg.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Photo storage. Dev/test write to disk (`priv/uploads`); production swaps in
+# the S3 adapter (Tigris on Fly) from config/runtime.exs when the bucket env
+# vars are set.
+config :trygg, Trygg.Storage, adapter: Trygg.Storage.Local
+
 # Use the bundled IANA time-zone database for all DateTime zone math.
 config :elixir, :time_zone_database, Tz.TimeZoneDatabase
 
