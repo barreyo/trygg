@@ -33,32 +33,45 @@
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
+    <%!-- Pre-paint theme bootstrap: must run before first paint to avoid a
+         flash, so it stays inline here rather than in app.js (which is
+         `defer`red). The live toggle lives in the `Theme` hook; keep the two
+         in sync. --%>
     <script>
       (() => {
-        const setTheme = (theme) => {
-          if (theme === "system" || !theme) {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
+        const root = document.documentElement;
+        // Signed in: `data-user-theme` is the server-stored choice and wins.
+        // Signed out: fall back to whatever this device last chose.
+        const serverTheme = root.dataset.userTheme;
+        let theme = "system";
+        try {
+          theme = serverTheme || localStorage.getItem("phx:theme") || "system";
+          // Mirror the server choice so it survives sign-out and carries to
+          // other tabs on this device.
+          if (serverTheme) {
+            if (theme === "system") {
+              localStorage.removeItem("phx:theme");
+            } else {
+              localStorage.setItem("phx:theme", theme);
+            }
           }
-        };
-        // When signed in, the server-stored preference wins and is mirrored to
-        // localStorage so it carries across devices. Signed out, fall back to
-        // whatever this device last chose.
-        const serverTheme = document.documentElement.dataset.userTheme;
-        if (serverTheme) {
-          setTheme(serverTheme);
-        } else {
-          setTheme(localStorage.getItem("phx:theme") || "system");
+        } catch (_e) {
+          theme = serverTheme || "system";
         }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-
-        window.addEventListener(
-          "phx:set-theme",
-          (e) => setTheme(e.detail?.theme || e.target.dataset.phxTheme)
-        );
+        if (theme === "system") {
+          root.removeAttribute("data-theme");
+        } else {
+          root.setAttribute("data-theme", theme);
+        }
+        window.addEventListener("storage", (e) => {
+          if (e.key !== "phx:theme") return;
+          const next = e.newValue || "system";
+          if (next === "system") {
+            root.removeAttribute("data-theme");
+          } else {
+            root.setAttribute("data-theme", next);
+          }
+        });
       })();
     </script>
   </head>
