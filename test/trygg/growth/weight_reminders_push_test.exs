@@ -10,6 +10,11 @@ defmodule Trygg.Growth.WeightRemindersPushTest do
   alias Trygg.Families
   alias Trygg.Growth.WeightReminders
 
+  # Push now fans out through `Trygg.Push.DeliveryWorker` jobs. Run the scan
+  # with Oban in `:inline` mode so those jobs execute in-process and the
+  # recording sender fires synchronously, keeping these assertions immediate.
+  defp run_scan, do: Oban.Testing.with_testing_mode(:inline, &WeightReminders.run/0)
+
   setup do
     Trygg.Push.Sender.Test.listen()
     prev = Application.get_env(:trygg, Trygg.Push)
@@ -45,7 +50,7 @@ defmodule Trygg.Growth.WeightRemindersPushTest do
     {:ok, _} = Trygg.Push.subscribe(owner.user, subscription("owner-device"))
     {:ok, _} = Trygg.Push.subscribe(member, subscription("member-device"))
 
-    assert WeightReminders.run() == 2
+    assert run_scan() == 2
 
     # Email still goes out to both.
     assert length(drain_emails()) == 2
@@ -77,7 +82,7 @@ defmodule Trygg.Growth.WeightRemindersPushTest do
     {:ok, _} = Trygg.Push.subscribe(owner.user, subscription("owner-device"))
     {:ok, _} = Trygg.Push.subscribe(member, subscription("member-device"))
 
-    assert WeightReminders.run() == 1
+    assert run_scan() == 1
 
     assert_received {:web_push, %{"endpoint" => "https://push.example.com/owner-device"}, _}
     refute_received {:web_push, _, _}
@@ -86,7 +91,7 @@ defmodule Trygg.Growth.WeightRemindersPushTest do
   test "no push attempt when the caregiver has no subscription" do
     overdue_child()
 
-    assert WeightReminders.run() == 2
+    assert run_scan() == 2
     assert drain_emails() != []
     refute_received {:web_push, _, _}
   end

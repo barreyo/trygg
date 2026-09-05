@@ -65,6 +65,9 @@ defmodule Trygg.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:oban, "~> 2.19"},
+      # Oban Web dashboard (queues, job history, failure rate) — mounted at
+      # /oban, dev-open and prod-gated behind HTTP Basic Auth (see router).
+      {:oban_web, "~> 2.11"},
       {:req, "~> 0.5"},
       # AWS SigV4 request signing for Req — used to talk to Tigris (S3-compatible)
       # object storage on Fly for user-uploaded log photos.

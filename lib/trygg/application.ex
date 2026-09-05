@@ -7,6 +7,12 @@ defmodule Trygg.Application do
 
   @impl true
   def start(_type, _args) do
+    # Structured logs for every Oban job/plugin lifecycle event. Job failures
+    # land as `error`-level `[Oban]` lines a log-based alert can match on.
+    # `encode: false` emits Logger metadata rather than a JSON blob, which
+    # reads better with our `$time $metadata[$level] $message` formatter.
+    Oban.Telemetry.attach_default_logger(encode: false)
+
     children = [
       TryggWeb.Telemetry,
       Trygg.Repo,

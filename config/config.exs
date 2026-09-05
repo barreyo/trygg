@@ -99,18 +99,29 @@ config :trygg, Trygg.RateLimit,
   login_code: [limit: 5, window_ms: 900_000],
   register_ip: [limit: 5, window_ms: 900_000]
 
-# Background jobs. The Cron plugin enqueues the weight-check reminder scan a
-# few times a day; per-caregiver cadence is decided inside the job (their
-# `weight_reminder_days` preference, or the CDC well-child interval).
+# Background jobs.
+#
+#   * `shutdown_grace_period` — how long a queue waits for in-flight jobs to
+#     finish on SIGTERM. Kept under fly.toml's `kill_timeout` (30s) with room
+#     to spare for endpoint + DB pool drain.
+#   * `Lifeline` — moves jobs stranded in `executing` (a Fly machine stopped
+#     by autoscaling, an OOM, a hard crash) back to `available` so they run
+#     again instead of hanging forever.
+#   * `Pruner` — trims completed/cancelled/discarded rows; 7 days keeps enough
+#     history to debug a bad run.
+#   * `Reindexer` — nightly `REINDEX CONCURRENTLY` on `oban_jobs` to release
+#     the index bloat that builds up from constant insert/complete/prune.
+#
+# The `Cron` plugin (weight-check reminder scan) is added in prod only, from
+# config/prod.exs — a long-lived dev machine shouldn't be firing the scan.
 config :trygg, Oban,
   repo: Trygg.Repo,
-  queues: [reminders: 10],
+  shutdown_grace_period: :timer.seconds(20),
+  queues: [reminders: 10, push: 20],
   plugins: [
-    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
-    {Oban.Plugins.Cron,
-     crontab: [
-       {"0 */6 * * *", Trygg.Growth.WeightReminderWorker}
-     ]}
+    {Oban.Lifeline, rescue_after: :timer.minutes(30)},
+    {Oban.Pruner, max_age: {7, :days}},
+    Oban.Reindexer
   ]
 
 # Web Push (installed-PWA notifications). `sender` is the delivery adapter

@@ -11,6 +11,11 @@ defmodule Trygg.Growth.WeightReminders do
 
   `Trygg.Growth.WeightReminderWorker` runs this on an Oban cron schedule;
   `run/0` is also safe to call directly (IEx, tests).
+
+  Idempotent by construction: each caregiver's send is written to
+  `growth_reminder_notifications` immediately after it goes out, so if the
+  scan crashes partway the Oban retry skips everyone already recorded and
+  only reaches the caregivers it missed.
   """
   import Ecto.Query
 

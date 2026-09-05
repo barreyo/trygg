@@ -1,6 +1,7 @@
 defmodule TryggWeb.Router do
   use TryggWeb, :router
 
+  import Oban.Web.Router
   import TryggWeb.UserAuth
 
   pipeline :browser do
@@ -28,6 +29,15 @@ defmodule TryggWeb.Router do
   # scope "/api", TryggWeb do
   #   pipe_through :api
   # end
+
+  # Oban Web dashboard. Open in dev (like LiveDashboard); in production it is
+  # behind HTTP Basic Auth and only mounted when OBAN_DASHBOARD_USER /
+  # OBAN_DASHBOARD_PASSWORD are set — see `TryggWeb.ObanDashboardAuth`.
+  scope "/" do
+    pipe_through [:browser, TryggWeb.ObanDashboardAuth]
+
+    oban_dashboard("/oban")
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:trygg, :dev_routes) do

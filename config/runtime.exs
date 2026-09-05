@@ -63,6 +63,14 @@ if config_env() == :prod do
 
   config :trygg, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Oban Web dashboard (/oban). Set both to expose it behind HTTP Basic Auth;
+  # leave either unset and the route 404s. Generate a password with
+  # `mix phx.gen.secret 32` and set them as release secrets:
+  #   fly secrets set OBAN_DASHBOARD_USER=... OBAN_DASHBOARD_PASSWORD=...
+  config :trygg, :oban_dashboard,
+    user: System.get_env("OBAN_DASHBOARD_USER"),
+    password: System.get_env("OBAN_DASHBOARD_PASSWORD")
+
   config :trygg, TryggWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     # Accept LiveView sockets from the request host (custom domain or *.fly.dev)

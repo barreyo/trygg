@@ -1,7 +1,8 @@
 defmodule Trygg.Push.Notifier do
   @moduledoc """
   Builds the Web Push payloads for app events and fans them out to a user's
-  devices via `Trygg.Push.deliver/2`.
+  devices via `Trygg.Push.enqueue/2` (one `Trygg.Push.DeliveryWorker` job
+  per device).
 
   The email/banner counterpart is `Trygg.Families.FamilyNotifier`. A weight
   reminder is one event on two channels: `Trygg.Growth.WeightReminders`
@@ -21,7 +22,7 @@ defmodule Trygg.Push.Notifier do
   @spec deliver_weight_check_reminder(Child.t(), map(), User.t()) :: :ok
   def deliver_weight_check_reminder(%Child{} = child, status, %User{} = user) do
     if Push.enabled?() do
-      Push.deliver(user, %{
+      Push.enqueue(user, %{
         title: "Time to check #{child.name}'s weight",
         body: body(child, status),
         url: "/c/#{child.id}/vitals",

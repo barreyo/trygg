@@ -18,6 +18,7 @@ defmodule Trygg.Push do
   require Logger
 
   alias Trygg.Accounts.User
+  alias Trygg.Push.DeliveryWorker
   alias Trygg.Push.Sender
   alias Trygg.Push.Subscription
   alias Trygg.Repo
@@ -123,14 +124,74 @@ defmodule Trygg.Push do
     end
   end
 
+  @doc """
+  Enqueues delivery of `payload` to each of `user`'s subscriptions as its own
+  `Trygg.Push.DeliveryWorker` job, so a dead or slow endpoint retries (or is
+  pruned) on its own without blocking the others or re-sending to the ones
+  that already succeeded.
+
+  Prefer this over `deliver/3` from request, LiveView, or job code that
+  shouldn't block on push-service HTTP. A quiet no-op (`:ok`) when push is
+  disabled or the user has no subscriptions.
+  """
+  @spec enqueue(User.t(), map()) :: :ok
+  def enqueue(%User{} = user, payload) when is_map(payload) do
+    if enabled?() do
+      args = payload_args(payload)
+
+      [user]
+      |> list_for_users()
+      |> Enum.map(&DeliveryWorker.new(%{subscription_id: &1.id, payload: args}))
+      |> Oban.insert_all()
+    end
+
+    :ok
+  end
+
+  @doc """
+  Delivers `payload` to a single subscription by id. Called by
+  `Trygg.Push.DeliveryWorker`.
+
+  Returns `:ok` when sent, when the subscription is already gone, or when the
+  push service reports it expired (the row is pruned). Returns
+  `{:error, reason}` on a transient failure so the job retries — retries are
+  scoped to this one subscription because a Web Push POST is not idempotent.
+  """
+  @spec deliver_one(integer(), map()) :: :ok | {:error, term()}
+  def deliver_one(subscription_id, payload) when is_map(payload) do
+    with true <- enabled?(),
+         %Subscription{} = sub <- Repo.get(Subscription, subscription_id) do
+      case Sender.impl().deliver(to_client_shape(sub), encode(payload)) do
+        {:ok, _} ->
+          :ok
+
+        {:error, :expired} ->
+          Repo.delete(sub)
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("web push to subscription #{sub.id} failed: #{inspect(reason)}")
+          {:error, reason}
+      end
+    else
+      false -> :ok
+      nil -> :ok
+    end
+  end
+
   defp to_client_shape(%Subscription{} = sub) do
     %{"endpoint" => sub.endpoint, "keys" => %{"p256dh" => sub.p256dh, "auth" => sub.auth}}
   end
 
-  defp encode(payload) do
+  # Trim to the delivery keys and stringify so the args round-trip through
+  # JSON unchanged between `enqueue/2` and the worker's `perform/1`.
+  defp payload_args(payload) do
     payload
-    |> Map.take([:title, :body, :url, :tag])
-    |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
-    |> Jason.encode!()
+    |> Map.new(fn {k, v} -> {to_string(k), v} end)
+    |> Map.take(~w(title body url tag))
   end
+
+  # Accepts atom- or string-keyed payloads (the synchronous path passes atoms,
+  # the worker path passes strings after the JSON round-trip).
+  defp encode(payload), do: payload |> payload_args() |> Jason.encode!()
 end
