@@ -1,7 +1,7 @@
 defmodule TryggWeb.DashboardLive do
   use TryggWeb, :live_view
 
-  alias Trygg.{Families, Growth, Log, Reports}
+  alias Trygg.{Families, Growth, Log, Push, Reports}
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
@@ -41,6 +41,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:editing, nil)
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
+      |> assign(:vapid_public_key, Push.vapid_public_key())
       |> allow_upload(:photo,
         accept: Log.photo_extensions(),
         max_entries: 1,
@@ -654,6 +655,54 @@ defmodule TryggWeb.DashboardLive do
             Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
           </.link>
         </div>
+      </div>
+
+      <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
+           PushPrompt hook reveals it only when the browser supports Web Push,
+           permission is still undecided, and the caregiver hasn't answered
+           before. Re-enabling later lives on Preferences. --%>
+      <div
+        :if={@vapid_public_key}
+        id="push-prompt"
+        phx-hook="PushPrompt"
+        phx-update="ignore"
+        hidden
+        data-vapid-key={@vapid_public_key}
+        class="mb-4 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+      >
+        <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
+        <div class="flex-1 min-w-0 space-y-2">
+          <p class="font-medium">Turn on notifications?</p>
+          <p class="opacity-70">
+            Get a gentle heads-up on this device — like a weight check coming due — even when Trygg is closed.
+          </p>
+          <div class="flex gap-2">
+            <.button
+              type="button"
+              variant="primary"
+              size="sm"
+              data-push-prompt-action="enable"
+            >
+              Turn on
+            </.button>
+            <.button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-push-prompt-action="dismiss"
+            >
+              Not now
+            </.button>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
+          aria-label="Dismiss"
+          data-push-prompt-action="dismiss"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
       </div>
 
       <%!-- At a glance --%>

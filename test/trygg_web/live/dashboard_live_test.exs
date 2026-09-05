@@ -878,4 +878,24 @@ defmodule TryggWeb.DashboardLiveTest do
       assert {:error, _} = Trygg.Storage.get(attrs["photo_key"])
     end
   end
+
+  describe "push notification prompt" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "renders the one-time opt-in nudge, hidden and wired to the hook + VAPID key",
+         %{conn: conn, child: child} do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#push-prompt[phx-hook='PushPrompt'][hidden]")
+
+      html = lv |> element("#push-prompt") |> render()
+      assert html =~ "data-vapid-key=\"#{Trygg.Push.vapid_public_key()}\""
+
+      assert has_element?(lv, "#push-prompt [data-push-prompt-action='enable']", "Turn on")
+      assert has_element?(lv, "#push-prompt [data-push-prompt-action='dismiss']")
+    end
+  end
 end
