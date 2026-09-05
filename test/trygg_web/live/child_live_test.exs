@@ -5,6 +5,7 @@ defmodule TryggWeb.ChildLiveTest do
   import Trygg.FamiliesFixtures
 
   alias Trygg.Families
+  alias Trygg.Families.Child
 
   setup :register_and_log_in_user
 
@@ -53,6 +54,70 @@ defmodule TryggWeb.ChildLiveTest do
 
     assert render(lv) =~ "Pipkin"
     refute render(lv) =~ child.name
+  end
+
+  test "can add a child that hasn't been born yet", %{conn: conn, scope: scope} do
+    {:ok, lv, _html} = live(conn, ~p"/children/new")
+
+    lv |> element("#child-form button[phx-value-status='expecting']") |> render_click()
+
+    due = Date.add(Date.utc_today(), 40)
+
+    {:error, {:live_redirect, %{to: path}}} =
+      lv
+      |> form("#child-form",
+        child: %{name: "Sprout", timezone: "Etc/UTC", expected_birth_date: Date.to_iso8601(due)}
+      )
+      |> render_submit()
+
+    assert [child] = Families.list_children(scope)
+    assert child.name == "Sprout"
+    assert child.expected_birth_date == due
+    assert Child.expecting?(child)
+    assert path == ~p"/c/#{child}"
+  end
+
+  test "the expecting dashboard shows the practice banner", %{conn: conn, scope: scope} do
+    {:ok, child} =
+      Families.create_child(scope, %{
+        name: "Bean",
+        timezone: "Etc/UTC",
+        expected_birth_date: Date.add(Date.utc_today(), 20)
+      })
+
+    {:ok, _lv, html} = live(conn, ~p"/c/#{child}")
+    assert html =~ "Expecting Bean"
+    assert html =~ "just practice"
+    assert html =~ "Bean has arrived"
+  end
+
+  test "marking an expecting child as arrived clears the practice log", %{
+    conn: conn,
+    scope: scope
+  } do
+    {:ok, child} =
+      Families.create_child(scope, %{
+        name: "Bean",
+        timezone: "Etc/UTC",
+        expected_birth_date: Date.add(Date.utc_today(), 20)
+      })
+
+    entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
+
+    {:ok, lv, html} = live(conn, ~p"/children/#{child}/edit?arrived=1")
+    assert html =~ "Birth date"
+
+    {:error, {:live_redirect, %{to: path}}} =
+      lv
+      |> form("#child-form", child: %{birth_date: Date.to_iso8601(Date.utc_today())})
+      |> render_submit()
+
+    assert path == ~p"/c/#{child}"
+
+    born = Families.get_child!(scope, child.id)
+    refute Child.expecting?(born)
+    assert born.birth_date == Date.utc_today()
+    assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) == nil
   end
 
   test "editing renames the child", %{conn: conn, scope: scope} do

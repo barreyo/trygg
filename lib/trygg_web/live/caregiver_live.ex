@@ -129,6 +129,10 @@ defmodule TryggWeb.CaregiverLive do
     {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
   end
 
+  def handle_info({:child_born, child}, socket) do
+    {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
+  end
+
   def handle_info({:child_deleted, _child_id}, socket) do
     {:noreply,
      socket

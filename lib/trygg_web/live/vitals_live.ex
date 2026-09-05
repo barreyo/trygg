@@ -472,6 +472,14 @@ defmodule TryggWeb.VitalsLive do
      |> load_measurements()}
   end
 
+  def handle_info({:child_born, child}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_child, %{child | role: socket.assigns.role})
+     |> put_flash(:info, "#{child.name} is here! 🎉 Practice entries cleared.")
+     |> load_measurements()}
+  end
+
   def handle_info({:child_deleted, _child_id}, socket) do
     {:noreply,
      socket
