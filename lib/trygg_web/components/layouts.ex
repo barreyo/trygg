@@ -101,6 +101,7 @@ defmodule TryggWeb.Layouts do
         if(@current_child, do: "pb-28", else: "pb-8")
       ]}>
         <.install_prompt :if={@current_scope && @current_scope.user} />
+        <.demo_banner :if={@current_child && Child.expecting?(@current_child)} child={@current_child} />
         {render_slot(@inner_block)}
       </main>
 
@@ -114,6 +115,35 @@ defmodule TryggWeb.Layouts do
       />
 
       <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  # Shown on every child screen while a child is still "expecting": the app is
+  # fully usable, but everything logged is practice and gets wiped once the baby
+  # arrives. Owners get a shortcut straight to confirming the birth date.
+  attr :child, :map, required: true
+
+  defp demo_banner(assigns) do
+    ~H"""
+    <div class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3 text-sm">
+      <.icon name="hero-sparkles" class="size-5 shrink-0 mt-0.5 text-warning" />
+      <div class="flex-1 min-w-0 space-y-2">
+        <p class="font-medium">
+          Expecting {@child.name} — {Child.due_label(@child)}
+        </p>
+        <p class="opacity-70">
+          Try everything out now. Anything you track is just practice and clears the moment {@child.name} arrives.
+        </p>
+        <.button
+          :if={@child.role == :owner}
+          size="sm"
+          variant="warning"
+          navigate={~p"/children/#{@child}/edit?#{[arrived: 1]}"}
+        >
+          {@child.name} has arrived
+        </.button>
+      </div>
     </div>
     """
   end
@@ -295,7 +325,7 @@ defmodule TryggWeb.Layouts do
 
   defp child_switcher(assigns) do
     assigns =
-      assign(assigns, :age, Child.age_label(assigns.current_child))
+      assign(assigns, :age, Child.caption(assigns.current_child))
 
     ~H"""
     <div
@@ -379,8 +409,8 @@ defmodule TryggWeb.Layouts do
           </span>
           <span class="flex-1 min-w-0 leading-tight">
             <span class="font-semibold truncate block">{c.name}</span>
-            <span :if={Child.age_label(c)} class="text-sm opacity-60 truncate block">
-              {Child.age_label(c)}
+            <span :if={Child.caption(c)} class="text-sm opacity-60 truncate block">
+              {Child.caption(c)}
             </span>
           </span>
           <.icon

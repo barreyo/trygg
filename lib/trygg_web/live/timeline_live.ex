@@ -77,6 +77,14 @@ defmodule TryggWeb.TimelineLive do
     {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
   end
 
+  def handle_info({:child_born, child}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_child, %{child | role: socket.assigns.role})
+     |> put_flash(:info, "#{child.name} is here! 🎉 Practice entries cleared.")
+     |> load_entries()}
+  end
+
   def handle_info({:child_deleted, _child_id}, socket) do
     {:noreply,
      socket

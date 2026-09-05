@@ -98,6 +98,66 @@ defmodule Trygg.FamiliesTest do
     end
   end
 
+  describe "expecting children" do
+    setup do
+      scope = user_scope_fixture()
+
+      {:ok, child} =
+        Families.create_child(
+          scope,
+          valid_child_attributes(%{
+            birth_date: nil,
+            expected_birth_date: Date.add(Date.utc_today(), 30)
+          })
+        )
+
+      %{scope: scope, child: child}
+    end
+
+    test "create_child with only a due date is 'expecting'", %{child: child} do
+      assert Child.expecting?(child)
+      assert child.birth_date == nil
+    end
+
+    test "confirming the birth date clears the practice log and broadcasts :child_born",
+         %{scope: scope, child: child} do
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
+      _measurement = Trygg.GrowthFixtures.measurement_fixture(scope, child)
+
+      Families.subscribe(child.id)
+
+      assert {:ok, born} =
+               Families.update_child(scope, child, %{birth_date: Date.utc_today()})
+
+      refute Child.expecting?(born)
+      assert born.expected_birth_date == nil
+
+      assert_receive {:child_born, %Child{} = broadcasted}
+      assert broadcasted.id == child.id
+      refute_receive {:child_updated, _}
+
+      assert Trygg.Log.list_entries(scope, born) == []
+      assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) == nil
+      assert Trygg.Growth.list_measurements(scope, born) == []
+    end
+
+    test "editing other fields while still expecting keeps the practice log", %{
+      scope: scope,
+      child: child
+    } do
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
+      Families.subscribe(child.id)
+
+      assert {:ok, updated} = Families.update_child(scope, child, %{name: "Peanut"})
+      assert Child.expecting?(updated)
+
+      assert_receive {:child_updated, %Child{name: "Peanut"}}
+      refute_receive {:child_born, _}
+
+      assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) != nil
+    end
+  end
+
   describe "members" do
     test "list_members requires membership and preloads users" do
       %{owner_scope: owner, child: child, member: member} = shared_child_fixture()

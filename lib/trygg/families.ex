@@ -106,16 +106,57 @@ defmodule Trygg.Families do
     end
   end
 
-  @doc "Updates a child. Requires the `:owner` role."
+  @doc """
+  Updates a child. Requires the `:owner` role.
+
+  When this is the update that ends an "expecting" child's wait — a real
+  `birth_date` gets confirmed — the practice log (entries and growth
+  measurements) is wiped in the same transaction and a `{:child_born, child}`
+  message is broadcast instead of the usual `{:child_updated, child}`.
+  """
   def update_child(%Scope{} = scope, %Child{} = child, attrs) do
     role = authorize!(scope, child, :owner)
+    was_expecting? = Child.expecting?(child)
 
-    with {:ok, updated} <- child |> Child.changeset(attrs) |> Repo.update() do
-      updated = %{updated | role: role}
-      broadcast(child.id, {:child_updated, updated})
+    result =
+      Repo.transact(fn ->
+        changeset = born_changeset(child, attrs, was_expecting?)
+
+        with {:ok, updated} <- Repo.update(changeset) do
+          born? = was_expecting? and not Child.expecting?(updated)
+          if born?, do: purge_practice_data(updated.id)
+          {:ok, {%{updated | role: role}, born?}}
+        end
+      end)
+
+    with {:ok, {updated, born?}} <- result do
+      if born?,
+        do: broadcast(child.id, {:child_born, updated}),
+        else: broadcast(child.id, {:child_updated, updated})
+
       broadcast_children_changed(child.id)
       {:ok, updated}
     end
+  end
+
+  # Once the baby is here the due date is meaningless — drop it so `expecting?/1`
+  # is a clean function of `birth_date` alone.
+  defp born_changeset(child, attrs, true = _was_expecting?) do
+    changeset = Child.changeset(child, attrs)
+
+    if Ecto.Changeset.get_field(changeset, :birth_date) do
+      Ecto.Changeset.put_change(changeset, :expected_birth_date, nil)
+    else
+      changeset
+    end
+  end
+
+  defp born_changeset(child, attrs, false = _was_expecting?), do: Child.changeset(child, attrs)
+
+  defp purge_practice_data(child_id) do
+    Repo.delete_all(from e in Trygg.Log.Entry, where: e.child_id == ^child_id)
+    Repo.delete_all(from m in Trygg.Growth.Measurement, where: m.child_id == ^child_id)
+    :ok
   end
 
   @doc "Deletes a child and everything logged for it. Requires the `:owner` role."
