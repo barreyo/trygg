@@ -96,9 +96,14 @@ defmodule TryggWeb.ChildLive.Index do
             label="Due date"
             required
           />
-          <p class="text-xs opacity-60 -mt-2">
+          <p :if={not entering_demo?(assigns)} class="text-xs opacity-60 -mt-2">
             You can set everything up and start tracking now. It's all practice until {@form[:name].value ||
               "the baby"} arrives — then the practice log clears.
+          </p>
+          <p :if={entering_demo?(assigns)} class="text-xs text-warning -mt-2">
+            Switching {@child.name} to practice mode clears their birth date. Anything
+            logged so far becomes practice data and is removed when you next confirm the
+            birth.
           </p>
         <% else %>
           <.input field={@form[:birth_date]} type="date" label="Birth date" />
@@ -152,10 +157,7 @@ defmodule TryggWeb.ChildLive.Index do
             variant="primary"
             phx-disable-with="Saving…"
             class="flex-1"
-            data-confirm={
-              @live_action == :edit and Child.expecting?(@child) and @status == :born and
-                "Mark #{@child.name} as born? This clears every practice entry you've added."
-            }
+            data-confirm={save_confirm(assigns)}
           >
             Save
           </.button>
@@ -294,9 +296,16 @@ defmodule TryggWeb.ChildLive.Index do
     case Families.update_child(socket.assigns.current_scope, socket.assigns.child, params) do
       {:ok, child} ->
         message =
-          if was_expecting? and not Child.expecting?(child),
-            do: "#{child.name} is here! 🎉 Welcome to the world.",
-            else: "Saved."
+          cond do
+            was_expecting? and not Child.expecting?(child) ->
+              "#{child.name} is here! 🎉 Welcome to the world."
+
+            not was_expecting? and Child.expecting?(child) ->
+              "#{child.name} is back in practice mode."
+
+            true ->
+              "Saved."
+          end
 
         {:noreply,
          socket
@@ -315,11 +324,34 @@ defmodule TryggWeb.ChildLive.Index do
     end
   end
 
-  # Shown on `:new` (choose either) and when marking an expecting child born
-  # (segmented control lets them slip back to "Expecting" if they mis-tapped).
-  defp status_choice?(%{live_action: :new}), do: true
-  defp status_choice?(%{live_action: :edit, child: child}), do: Child.expecting?(child)
+  # The "Already born / Expecting" segmented control shows on the new-child form
+  # and on every edit form, so an owner can move a child into or out of practice
+  # mode from the child's settings.
+  defp status_choice?(%{live_action: action}) when action in [:new, :edit], do: true
   defp status_choice?(_assigns), do: false
+
+  # True while editing a currently-born child with the toggle flipped to
+  # "Expecting" — i.e. about to drop them back into practice mode.
+  defp entering_demo?(%{live_action: :edit, status: :expecting, child: %Child{id: id} = child})
+       when not is_nil(id),
+       do: not Child.expecting?(child)
+
+  defp entering_demo?(_assigns), do: false
+
+  defp save_confirm(%{live_action: :edit, status: :born, child: child}) do
+    if Child.expecting?(child),
+      do: "Mark #{child.name} as born? This clears every practice entry you've added.",
+      else: false
+  end
+
+  defp save_confirm(assigns) do
+    if entering_demo?(assigns),
+      do:
+        "Switch #{assigns.child.name} to practice mode? Their birth date is cleared and " <>
+          "everything logged so far becomes practice data — it's removed when you next " <>
+          "confirm the birth.",
+      else: false
+  end
 
   defp age_line(%Child{} = child) do
     cond do

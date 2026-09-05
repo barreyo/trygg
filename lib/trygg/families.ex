@@ -109,10 +109,16 @@ defmodule Trygg.Families do
   @doc """
   Updates a child. Requires the `:owner` role.
 
-  When this is the update that ends an "expecting" child's wait — a real
-  `birth_date` gets confirmed — the practice log (entries and growth
-  measurements) is wiped in the same transaction and a `{:child_born, child}`
-  message is broadcast instead of the usual `{:child_updated, child}`.
+  Handles the "practice mode" transitions:
+
+    * confirming a real `birth_date` on an expecting child ends the wait — the
+      practice log (entries and growth measurements) is wiped in the same
+      transaction and `{:child_born, child}` is broadcast.
+    * setting an `expected_birth_date` on a born child puts them back into
+      practice mode — the birth date is cleared and everyone's screens pick up
+      the change via the usual `{:child_updated, child}`. Existing entries are
+      left in place; they become practice data and go when the birth is next
+      confirmed.
   """
   def update_child(%Scope{} = scope, %Child{} = child, attrs) do
     role = authorize!(scope, child, :owner)
@@ -120,7 +126,7 @@ defmodule Trygg.Families do
 
     result =
       Repo.transact(fn ->
-        changeset = born_changeset(child, attrs, was_expecting?)
+        changeset = reconcile_practice_mode(child, attrs, was_expecting?)
 
         with {:ok, updated} <- Repo.update(changeset) do
           born? = was_expecting? and not Child.expecting?(updated)
@@ -139,11 +145,12 @@ defmodule Trygg.Families do
     end
   end
 
-  # Once the baby is here the due date is meaningless — drop it so `expecting?/1`
-  # is a clean function of `birth_date` alone.
-  defp born_changeset(child, attrs, true = _was_expecting?) do
+  # Keep `birth_date` and `expected_birth_date` mutually exclusive so
+  # `expecting?/1` stays a clean function of `birth_date` alone.
+  defp reconcile_practice_mode(child, attrs, true = _was_expecting?) do
     changeset = Child.changeset(child, attrs)
 
+    # Confirming a birth date ends the wait — the due date is now meaningless.
     if Ecto.Changeset.get_field(changeset, :birth_date) do
       Ecto.Changeset.put_change(changeset, :expected_birth_date, nil)
     else
@@ -151,7 +158,19 @@ defmodule Trygg.Families do
     end
   end
 
-  defp born_changeset(child, attrs, false = _was_expecting?), do: Child.changeset(child, attrs)
+  defp reconcile_practice_mode(child, attrs, false = _was_expecting?) do
+    changeset = Child.changeset(child, attrs)
+
+    # Dropping a due date on a born child re-opens practice mode — clear the
+    # confirmed birth date (and time) so they read as "expecting" again.
+    if Ecto.Changeset.get_change(changeset, :expected_birth_date) do
+      changeset
+      |> Ecto.Changeset.put_change(:birth_date, nil)
+      |> Ecto.Changeset.put_change(:birth_time, nil)
+    else
+      changeset
+    end
+  end
 
   defp purge_practice_data(child_id) do
     Repo.delete_all(from e in Trygg.Log.Entry, where: e.child_id == ^child_id)
