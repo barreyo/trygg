@@ -185,6 +185,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
+      lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
 
       earlier =
@@ -206,6 +207,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "a future diaper time is rejected", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
+      lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
 
       later =
@@ -397,7 +399,8 @@ defmodule TryggWeb.DashboardLiveTest do
       started = now |> DateTime.add(-90, :minute) |> Calendar.strftime("%Y-%m-%dT%H:%M")
       ended = now |> DateTime.add(-15, :minute) |> Calendar.strftime("%Y-%m-%dT%H:%M")
 
-      lv |> element("button", "Add a sleep from earlier") |> render_click()
+      lv |> element("button", "Log from earlier") |> render_click()
+      lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
 
       lv
       |> form("#sleep-form",
@@ -419,7 +422,8 @@ defmodule TryggWeb.DashboardLiveTest do
       started = now |> Calendar.strftime("%Y-%m-%dT%H:%M")
       ended = now |> DateTime.add(-30, :minute) |> Calendar.strftime("%Y-%m-%dT%H:%M")
 
-      lv |> element("button", "Add a sleep from earlier") |> render_click()
+      lv |> element("button", "Log from earlier") |> render_click()
+      lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
 
       html =
         lv
