@@ -171,6 +171,22 @@ defmodule Trygg.Accounts do
     end
   end
 
+  @doc """
+  Remembers the child this caregiver is currently looking at (see
+  `users.last_child_id`), so `/` reopens it rather than the newest child.
+
+  Fire-and-forget UI state: a single primary-key `UPDATE`, no `updated_at` bump
+  and no `{:user_updated}` broadcast. No-ops when the value is unchanged.
+  """
+  def put_last_child(%User{last_child_id: same}, child_id) when same == child_id, do: :ok
+
+  def put_last_child(%User{id: user_id}, child_id) do
+    from(u in User, where: u.id == ^user_id)
+    |> Repo.update_all(set: [last_child_id: child_id])
+
+    :ok
+  end
+
   ## Session
 
   @doc """

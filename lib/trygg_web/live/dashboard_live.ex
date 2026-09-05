@@ -16,9 +16,9 @@ defmodule TryggWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, %{assigns: %{live_action: :index}} = socket) do
-    case Families.list_children(socket.assigns.current_scope) do
-      [] -> {:ok, push_navigate(socket, to: ~p"/children/new")}
-      [child | _] -> {:ok, push_navigate(socket, to: ~p"/c/#{child}")}
+    case resume_child(socket.assigns.current_scope) do
+      nil -> {:ok, push_navigate(socket, to: ~p"/children/new")}
+      child -> {:ok, push_navigate(socket, to: ~p"/c/#{child}")}
     end
   end
 
@@ -50,6 +50,18 @@ defmodule TryggWeb.DashboardLive do
       |> refresh()
 
     {:ok, socket}
+  end
+
+  # `/` has no child in the URL, so it reopens the one this caregiver was last
+  # looking at (`users.last_child_id`) as long as they still have access —
+  # otherwise their most recently added child. Without this, `/` (the PWA
+  # start_url, and the back-button target from a child-scoped screen) would
+  # silently jump the selection to whichever child was added last.
+  defp resume_child(scope) do
+    children = Families.list_children(scope)
+    last_id = scope.user.last_child_id
+
+    Enum.find(children, &(&1.id == last_id)) || List.first(children)
   end
 
   ## Realtime ---------------------------------------------------------------
