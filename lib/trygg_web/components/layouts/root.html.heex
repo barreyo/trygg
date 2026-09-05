@@ -1,5 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" class="[scrollbar-gutter:stable]">
+<html
+  lang="en"
+  class="[scrollbar-gutter:stable]"
+  data-user-theme={
+    case assigns[:current_scope] do
+      %{user: %{theme: theme}} when not is_nil(theme) -> to_string(theme)
+      _ -> nil
+    end
+  }
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -27,7 +36,7 @@
     <script>
       (() => {
         const setTheme = (theme) => {
-          if (theme === "system") {
+          if (theme === "system" || !theme) {
             localStorage.removeItem("phx:theme");
             document.documentElement.removeAttribute("data-theme");
           } else {
@@ -35,12 +44,21 @@
             document.documentElement.setAttribute("data-theme", theme);
           }
         };
-        if (!document.documentElement.hasAttribute("data-theme")) {
+        // When signed in, the server-stored preference wins and is mirrored to
+        // localStorage so it carries across devices. Signed out, fall back to
+        // whatever this device last chose.
+        const serverTheme = document.documentElement.dataset.userTheme;
+        if (serverTheme) {
+          setTheme(serverTheme);
+        } else {
           setTheme(localStorage.getItem("phx:theme") || "system");
         }
         window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
 
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+        window.addEventListener(
+          "phx:set-theme",
+          (e) => setTheme(e.detail?.theme || e.target.dataset.phxTheme)
+        );
       })();
     </script>
   </head>

@@ -9,17 +9,18 @@ defmodule Trygg.Accounts.User do
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
     field :unit_system, Ecto.Enum, values: [:metric, :imperial], default: :metric
+    field :theme, Ecto.Enum, values: [:system, :light, :dark], default: :system
 
     timestamps(type: :utc_datetime)
   end
 
   @doc """
-  A changeset for the user's app preferences (measurement units, ...).
+  A changeset for the user's app preferences (measurement units, theme, ...).
   """
   def settings_changeset(user, attrs) do
     user
-    |> cast(attrs, [:unit_system])
-    |> validate_required([:unit_system])
+    |> cast(attrs, [:unit_system, :theme])
+    |> validate_required([:unit_system, :theme])
   end
 
   @doc """
