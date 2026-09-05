@@ -35,6 +35,31 @@ defmodule TryggWeb.DashboardLiveTest do
       assert {:error, {:live_redirect, %{to: path}}} = live(conn, ~p"/")
       assert path == ~p"/c/#{child}"
     end
+
+    test "/ reopens the child the caregiver was last looking at", %{conn: conn, scope: scope} do
+      ada = child_fixture(scope, %{name: "Ada"})
+      ollie = child_fixture(scope, %{name: "Ollie"})
+
+      for pick <- [ollie, ada, ollie] do
+        {:ok, _lv, _html} = live(conn, ~p"/c/#{pick}")
+        assert {:error, {:live_redirect, %{to: path}}} = live(conn, ~p"/")
+        assert path == ~p"/c/#{pick}"
+      end
+    end
+
+    test "/ falls back to the newest child when the remembered one is gone", %{
+      conn: conn,
+      scope: scope
+    } do
+      gone = child_fixture(scope, %{name: "Gone"})
+      keeper = child_fixture(scope, %{name: "Keeper"})
+
+      {:ok, _lv, _html} = live(conn, ~p"/c/#{gone}")
+      {:ok, _} = Families.delete_child(scope, gone)
+
+      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ~p"/")
+      assert path == ~p"/c/#{keeper}"
+    end
   end
 
   describe "header menu" do

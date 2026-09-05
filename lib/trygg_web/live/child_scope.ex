@@ -12,6 +12,7 @@ defmodule TryggWeb.ChildScope do
   import Phoenix.LiveView, only: [connected?: 1, put_flash: 3, redirect: 2, attach_hook: 4]
   use TryggWeb, :verified_routes
 
+  alias Trygg.Accounts
   alias Trygg.Accounts.Scope
   alias Trygg.Families
 
@@ -20,7 +21,14 @@ defmodule TryggWeb.ChildScope do
 
     try do
       child = Families.get_child!(scope, id)
-      if connected?(socket), do: Families.subscribe(child.id)
+
+      if connected?(socket) do
+        Families.subscribe(child.id)
+        # Viewing a child *is* selecting it: remember it so `/` reopens here.
+        Accounts.put_last_child(scope.user, child.id)
+      end
+
+      scope = %{scope | user: %{scope.user | last_child_id: child.id}}
 
       socket =
         socket

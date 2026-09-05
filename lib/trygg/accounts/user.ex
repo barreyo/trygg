@@ -14,6 +14,10 @@ defmodule Trygg.Accounts.User do
     # CDC well-child schedule; `0` turns reminders off; a positive integer is a
     # fixed number of days without a logged weight.
     field :weight_reminder_days, :integer
+    # The child this caregiver was last looking at, so `/` reopens where they
+    # left off. Pure UI state — written fire-and-forget on child navigation, see
+    # `Trygg.Accounts.put_last_child/2`.
+    field :last_child_id, :id
 
     timestamps(type: :utc_datetime)
   end
