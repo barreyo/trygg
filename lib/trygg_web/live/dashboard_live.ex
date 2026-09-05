@@ -207,6 +207,10 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("quick", %{"kind" => kind}, socket), do: {:noreply, quick_log(socket, kind)}
 
+  def handle_event("open_sheet", %{"kind" => "earlier"}, socket) do
+    {:noreply, assign(socket, sheet: :earlier, sheet_form: nil)}
+  end
+
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
     last = socket.assigns.summary.last_feeding
 
@@ -650,22 +654,19 @@ defmodule TryggWeb.DashboardLive do
       </div>
 
       <%!-- Log something --%>
-      <div :if={@can_write} class="mt-6 space-y-4">
-        <div :if={!sleeping?(@summary)} class="space-y-2">
-          <.button variant="primary" size="lg" phx-click="start_sleep" class="w-full text-base">
-            <.icon name="hero-moon" class="size-5" /> Start sleep
-          </.button>
-          <.button
-            type="button"
-            variant="ghost"
-            size="sm"
-            phx-click="open_sheet"
-            phx-value-kind="sleep_past"
-            class="w-full"
-          >
-            <.icon name="hero-plus" class="size-4" /> Add a sleep from earlier
-          </.button>
-        </div>
+      <div
+        :if={@can_write}
+        class="mt-6 rounded-box border border-base-300 bg-base-200/40 p-3 space-y-3"
+      >
+        <.button
+          :if={!sleeping?(@summary)}
+          variant="primary"
+          size="lg"
+          phx-click="start_sleep"
+          class="w-full text-base"
+        >
+          <.icon name="hero-moon" class="size-5" /> Start sleep
+        </.button>
 
         <.button
           type="button"
@@ -687,17 +688,18 @@ defmodule TryggWeb.DashboardLive do
               emoji={emoji}
             />
           </div>
-          <.button
-            type="button"
-            variant="ghost"
-            size="sm"
-            phx-click="open_sheet"
-            phx-value-kind="diaper_past"
-            class="w-full mt-2"
-          >
-            <.icon name="hero-plus" class="size-4" /> Add one from earlier
-          </.button>
         </div>
+
+        <.button
+          type="button"
+          variant="ghost"
+          size="sm"
+          phx-click="open_sheet"
+          phx-value-kind="earlier"
+          class="w-full"
+        >
+          <.icon name="hero-clock" class="size-4" /> Log from earlier
+        </.button>
       </div>
 
       <div class="mt-8 flex items-center justify-between border-b border-base-300 pb-2">
@@ -767,6 +769,43 @@ defmodule TryggWeb.DashboardLive do
       <div class="absolute inset-0 bg-black/60" phx-click="close_sheet"></div>
       <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
         <%= case @kind do %>
+          <% :earlier -> %>
+            <h3 class="font-semibold text-lg mb-1">Log from earlier</h3>
+            <p class="text-sm opacity-60 mb-4">What do you want to add?</p>
+            <div class="space-y-2">
+              <.button
+                type="button"
+                size="lg"
+                phx-click="open_sheet"
+                phx-value-kind="sleep_past"
+                class="w-full justify-start text-base"
+              >
+                <.icon name="hero-moon" class="size-5" /> Sleep
+              </.button>
+              <.button
+                type="button"
+                size="lg"
+                phx-click="open_sheet"
+                phx-value-kind="bottle"
+                class="w-full justify-start text-base"
+              >
+                <.icon name="hero-beaker" class="size-5" /> Bottle
+              </.button>
+              <.button
+                type="button"
+                size="lg"
+                phx-click="open_sheet"
+                phx-value-kind="diaper_past"
+                class="w-full justify-start text-base"
+              >
+                <span class="text-xl leading-none" aria-hidden="true">🧷</span> Diaper
+              </.button>
+            </div>
+            <div class="pt-4">
+              <.button type="button" variant="ghost" class="w-full" phx-click="close_sheet">
+                Cancel
+              </.button>
+            </div>
           <% :bottle -> %>
             <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
             <.form
