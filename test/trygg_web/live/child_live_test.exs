@@ -120,6 +120,31 @@ defmodule TryggWeb.ChildLiveTest do
     assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) == nil
   end
 
+  test "the edit form can move a born child into practice mode", %{conn: conn, scope: scope} do
+    child = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -30)})
+    entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
+
+    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+
+    lv |> element("#child-form button[phx-value-status='expecting']") |> render_click()
+
+    due = Date.add(Date.utc_today(), 25)
+
+    {:error, {:live_redirect, %{to: path}}} =
+      lv
+      |> form("#child-form", child: %{expected_birth_date: Date.to_iso8601(due)})
+      |> render_submit()
+
+    assert path == ~p"/c/#{child}"
+
+    updated = Families.get_child!(scope, child.id)
+    assert Child.expecting?(updated)
+    assert updated.birth_date == nil
+    assert updated.expected_birth_date == due
+    # Data is retained — it just becomes practice data.
+    assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) != nil
+  end
+
   test "editing renames the child", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
     {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")

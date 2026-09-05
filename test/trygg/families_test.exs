@@ -156,6 +156,36 @@ defmodule Trygg.FamiliesTest do
 
       assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) != nil
     end
+
+    test "setting a due date on a born child re-opens practice mode without wiping data" do
+      scope = user_scope_fixture()
+
+      child =
+        child_fixture(scope, %{
+          birth_date: Date.add(Date.utc_today(), -10),
+          birth_time: ~T[12:00:00]
+        })
+
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
+
+      Families.subscribe(child.id)
+
+      assert {:ok, expecting} =
+               Families.update_child(scope, child, %{
+                 expected_birth_date: Date.add(Date.utc_today(), 20)
+               })
+
+      assert Child.expecting?(expecting)
+      assert expecting.birth_date == nil
+      assert expecting.birth_time == nil
+
+      assert_receive {:child_updated, %Child{} = broadcasted}
+      assert broadcasted.id == child.id
+      refute_receive {:child_born, _}
+
+      # Existing entries stay put — they just become practice data now.
+      assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) != nil
+    end
   end
 
   describe "members" do
