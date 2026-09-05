@@ -45,6 +45,43 @@ fly secrets set RESEND_API_KEY=re_xxx MAIL_FROM="Trygg <hello@trygg.app>"
 The wiring lives in `config/runtime.exs` (adapter + key) and `config/prod.exs`
 (the Req-based API client); `Trygg.Mailer.from_address/0` resolves `MAIL_FROM`.
 
+## Web Push notifications
+
+An installed (Add-to-Home-Screen) PWA gets an OS-level notification alongside
+the weight-check reminder email — same event, same per-caregiver cadence, the
+same `growth_reminder_notifications` row (`Trygg.Growth.WeightReminders`
+sends both). Delivery runs through
+[`web_push_elixir`](https://hexdocs.pm/web_push_elixir) (payload encryption in
+pure Elixir, the POST over `Req`), wrapped behind `Trygg.Push.Sender` so tests
+never hit the network.
+
+It needs a VAPID keypair. Generate one once:
+
+```bash
+mix generate.vapid.keys
+```
+
+| Variable | What |
+| --- | --- |
+| `VAPID_PUBLIC_KEY` | base64url P-256 public key. Also handed to the browser so it can create a push subscription. |
+| `VAPID_PRIVATE_KEY` | base64url P-256 private key. Secret. |
+| `VAPID_SUBJECT` | a `mailto:` (or `https:`) contact URL push services can reach you at. |
+
+```bash
+fly secrets set VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT="mailto:you@trygg.app"
+```
+
+When the keypair is unset, push degrades to a no-op (`Trygg.Push.enabled?/0`
+is `false`) and the reminder emails still go out — mirroring how the mailer
+degrades without its config. Dev and test use a throwaway keypair baked into
+`config/config.exs`. Opt-in lives on `/preferences` (a per-device toggle);
+subscriptions are stored in `push_subscriptions` and registered via
+`POST /push/subscriptions`.
+
+iOS Safari only delivers Web Push to a Home-Screen-installed PWA (16.4+) and
+every push must show a notification; Android and desktop Chrome have neither
+restriction.
+
 ## Shape of the code
 
 | Area | Module | Notes |
@@ -71,6 +108,7 @@ Set these as Fly secrets before the first boot (`fly secrets set ...`). The rele
 | `DATABASE_URL` | yes | Postgres URL (`fly pg attach` writes this) |
 | `RESEND_API_KEY` | yes | Resend API key (`re_…`) — login is passwordless |
 | `MAIL_FROM` | no | Sender on a domain verified in Resend. Defaults to the Resend sandbox address, which only delivers to the account owner |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | no | Web Push identity (`mix generate.vapid.keys`). Unset ⇒ push is a no-op, reminder emails still send |
 | `RELEASE_COOKIE` | yes for clustering | Shared Erlang cookie. `mix phx.gen.secret` |
 | `PHX_HOST` | set in `fly.toml` | Public hostname (`track.backmanwong.family`) |
 | `POOL_SIZE` | set in `fly.toml` | Ecto pool size (default 10) |
@@ -106,8 +144,9 @@ medical advice" note.
 
 Deliberately excluded: sleep–feed causal correlations ("cap the afternoon
 bottle → longer nights"), fixed-age regression alerts, "growth spurt in N
-days" forecasts, WHO velocity tables (CDC stays), and push notifications (the
-cards are PubSub-driven, in-app only).
+days" forecasts, and WHO velocity tables (CDC stays). The in-app insight cards
+stay PubSub-driven; the one thing that leaves the app is the weight-check
+reminder, sent as an email and (on an installed PWA) a Web Push.
 
 ## Not in this version
 

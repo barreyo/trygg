@@ -22,6 +22,7 @@ defmodule Trygg.Growth.WeightReminders do
   alias Trygg.Growth.CheckReminder
   alias Trygg.Growth.Measurement
   alias Trygg.Growth.ReminderNotification
+  alias Trygg.Push.Notifier, as: PushNotifier
   alias Trygg.Repo
 
   @doc """
@@ -46,7 +47,11 @@ defmodule Trygg.Growth.WeightReminders do
         |> Enum.flat_map(&due_for(&1.user, child, weight, today))
 
       Enum.each(due, fn {user, status} ->
+        # One event, two channels: the email always, plus a Web Push to any
+        # of this caregiver's installed PWAs. Both are covered by the single
+        # `record/4` row below — no separate push dedupe.
         FamilyNotifier.deliver_weight_check_reminder(user.email, child, status, url(child))
+        PushNotifier.deliver_weight_check_reminder(child, status, user)
         record(child.id, user.id, status, today)
       end)
 

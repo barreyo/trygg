@@ -69,6 +69,9 @@ defmodule Trygg.MixProject do
       # AWS SigV4 request signing for Req — used to talk to Tigris (S3-compatible)
       # object storage on Fly for user-uploaded log photos.
       {:aws_signature, "~> 0.3"},
+      # Web Push for installed-PWA notifications. Pure Elixir payload encryption
+      # (jose) + Req for the HTTP POST — no extra HTTP client pulled in.
+      {:web_push_elixir, "~> 0.8"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},

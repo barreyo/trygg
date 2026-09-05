@@ -131,6 +131,32 @@ if config_env() == :prod do
       secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY")
   end
 
+  # ## Web Push (installed-PWA notifications)
+  #
+  # Delivers OS-level notifications to a home-screen-installed PWA alongside
+  # the reminder emails. Needs a VAPID keypair:
+  #
+  #   * VAPID_PUBLIC_KEY  – base64url P-256 public key. Also shipped to the
+  #                         browser so it can create push subscriptions.
+  #   * VAPID_PRIVATE_KEY – base64url P-256 private key. Secret.
+  #   * VAPID_SUBJECT      – a "mailto:you@domain" (or https) contact URL the
+  #                          push services can reach you at.
+  #
+  # Generate a pair once with `mix generate.vapid.keys` and set all three as
+  # release secrets. When the keypair is unset, push degrades to a no-op and
+  # the reminder emails still go out.
+  vapid_public_key = System.get_env("VAPID_PUBLIC_KEY")
+  vapid_private_key = System.get_env("VAPID_PRIVATE_KEY")
+
+  config :web_push_elixir,
+    vapid_public_key: vapid_public_key || "",
+    vapid_private_key: vapid_private_key || "",
+    vapid_subject: System.get_env("VAPID_SUBJECT") || "mailto:hello@johanbackman.com"
+
+  config :trygg, Trygg.Push,
+    enabled: vapid_public_key not in [nil, ""] and vapid_private_key not in [nil, ""],
+    sender: Trygg.Push.Sender.WebPush
+
   # Reports PDF export. The release runs as a non-root user on Alpine, where
   # Chrome's sandbox can't start; the HTML we print is our own, so disabling
   # it is fine. CHROME_EXECUTABLE is set in the Dockerfile.

@@ -9,7 +9,7 @@
 // `/` is deliberately not precached: for a signed-out visitor it redirects to
 // the login page, whose CSRF token is bound to a session that will be gone by
 // the time the cached copy is served. A static offline page is the fallback.
-const CACHE = "trygg-shell-v4"
+const CACHE = "trygg-shell-v5"
 const OFFLINE = "/offline.html"
 const SHELL = [OFFLINE, "/manifest.webmanifest"]
 
@@ -44,5 +44,52 @@ self.addEventListener("fetch", (event) => {
       caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {})
       return res
     }).catch(() => cached))
+  )
+})
+
+// --- Web Push -------------------------------------------------------------
+//
+// Payloads are JSON built by `Trygg.Push` (`{title, body, url, tag}`). iOS
+// Safari only delivers to an installed PWA and requires a visible
+// notification for every push, so we always call showNotification.
+
+self.addEventListener("push", (event) => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch (_e) {
+    payload = {body: event.data && event.data.text()}
+  }
+
+  const title = payload.title || "Trygg"
+  const options = {
+    body: payload.body || "",
+    icon: "/images/icon-192.png",
+    badge: "/images/icon-192.png",
+    tag: payload.tag || "trygg",
+    renotify: Boolean(payload.tag),
+    data: {url: payload.url || "/"},
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
+  const target = (event.notification.data && event.notification.data.url) || "/"
+  const targetUrl = new URL(target, self.location.origin).href
+
+  event.waitUntil(
+    self.clients.matchAll({type: "window", includeUncontrolled: true}).then((clients) => {
+      for (const client of clients) {
+        if (client.url === targetUrl && "focus" in client) return client.focus()
+      }
+      for (const client of clients) {
+        if ("focus" in client && "navigate" in client) {
+          return client.focus().then(() => client.navigate(targetUrl))
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl)
+    })
   )
 })

@@ -40,6 +40,12 @@ config :trygg, Trygg.Storage,
   adapter: Trygg.Storage.Local,
   base_dir: Path.expand("../tmp/test_uploads", __DIR__)
 
+# Push is off by default in test and uses the recording adapter; a test that
+# needs it flips `enabled: true` and calls `Trygg.Push.Sender.Test.listen/0`.
+config :trygg, Trygg.Push,
+  enabled: false,
+  sender: Trygg.Push.Sender.Test
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 
