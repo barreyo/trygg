@@ -55,6 +55,9 @@ defmodule TryggWeb.Router do
     # Same session auth as the LiveViews; the child is membership-scoped.
     get "/c/:id/reports.pdf", ReportPdfController, :show
 
+    # Streams a log entry's attached photo. Membership-scoped like the log itself.
+    get "/c/:id/log/:entry_id/photo", PhotoController, :show
+
     live_session :require_authenticated_user,
       on_mount: [
         {TryggWeb.UserAuth, :require_authenticated},

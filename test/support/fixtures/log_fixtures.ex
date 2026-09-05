@@ -112,6 +112,13 @@ defmodule Trygg.LogFixtures do
     end
   end
 
+  @doc "A minimal but valid 1×1 PNG, for exercising photo uploads/storage."
+  def tiny_png do
+    Base.decode64!(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+  end
+
   defp hours_ago(hours) do
     DateTime.utc_now()
     |> DateTime.truncate(:second)

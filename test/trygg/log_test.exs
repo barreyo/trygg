@@ -153,6 +153,101 @@ defmodule Trygg.LogTest do
     end
   end
 
+  describe "photos" do
+    test "store_photo persists bytes and returns attrs to attach", %{scope: scope, child: child} do
+      assert {:ok, attrs} = Log.store_photo(child, tiny_png(), "image/png")
+      assert attrs["photo_content_type"] == "image/png"
+      assert attrs["photo_key"] =~ ~r"^children/#{child.id}/log/.+\.png$"
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
+
+      assert entry.photo_key == attrs["photo_key"]
+      assert {:ok, bytes, "image/png"} = Log.fetch_photo(entry)
+      assert bytes == tiny_png()
+    end
+
+    test "store_photo rejects a non-image", %{child: child} do
+      assert {:error, :unsupported_type} = Log.store_photo(child, "not-an-image", "text/plain")
+    end
+
+    test "store_photo rejects an oversized file", %{child: child} do
+      big = :binary.copy("x", Log.max_photo_bytes() + 1)
+      assert {:error, :too_large} = Log.store_photo(child, big, "image/png")
+    end
+
+    test "fetch_photo returns :error when the entry has none", %{scope: scope, child: child} do
+      {:ok, entry} = Log.create_entry(scope, child, :diaper, %{"data" => %{"kind" => "pee"}})
+      assert :error = Log.fetch_photo(entry)
+    end
+
+    test "update_entry replacing the photo discards the old bytes", %{scope: scope, child: child} do
+      {:ok, first} = Log.store_photo(child, tiny_png(), "image/png")
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, first))
+
+      {:ok, second} = Log.store_photo(child, tiny_png(), "image/jpeg")
+
+      {:ok, updated} =
+        Log.update_entry(scope, entry, %{
+          "type" => "diaper",
+          "started_at" => entry.started_at,
+          "data" => %{"kind" => "pee"},
+          "photo_key" => second["photo_key"],
+          "photo_content_type" => "image/jpeg"
+        })
+
+      assert updated.photo_key == second["photo_key"]
+      assert {:error, _} = Trygg.Storage.get(first["photo_key"])
+      assert {:ok, _} = Trygg.Storage.get(second["photo_key"])
+    end
+
+    test "update_entry clearing photo_key removes the stored bytes", %{scope: scope, child: child} do
+      {:ok, attrs} = Log.store_photo(child, tiny_png(), "image/png")
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
+
+      {:ok, updated} =
+        Log.update_entry(scope, entry, %{
+          "type" => "diaper",
+          "started_at" => entry.started_at,
+          "data" => %{"kind" => "pee"},
+          "photo_key" => nil
+        })
+
+      refute Entry.has_photo?(updated)
+      assert {:error, _} = Trygg.Storage.get(attrs["photo_key"])
+    end
+
+    test "delete_entry removes the photo too", %{scope: scope, child: child} do
+      {:ok, attrs} = Log.store_photo(child, tiny_png(), "image/png")
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
+
+      {:ok, _} = Log.delete_entry(scope, entry)
+      assert {:error, _} = Trygg.Storage.get(attrs["photo_key"])
+    end
+
+    test "changeset rejects an unsupported photo content type", %{scope: scope, child: child} do
+      assert {:error, cs} =
+               Log.create_entry(
+                 scope,
+                 child,
+                 :diaper,
+                 %{
+                   "data" => %{"kind" => "pee"},
+                   "photo_key" => "children/#{child.id}/log/x.tiff",
+                   "photo_content_type" => "image/tiff"
+                 }
+               )
+
+      assert %{photo_content_type: _} = errors_on(cs)
+    end
+  end
+
   describe "realtime" do
     test "writes broadcast on the child's topic", %{scope: scope, child: child} do
       Trygg.Families.subscribe(child.id)

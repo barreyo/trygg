@@ -68,6 +68,33 @@ defmodule TryggWeb.TimelineLiveTest do
     assert Log.list_entries(scope, child) == []
   end
 
+  test "a photo added while editing shows in the log feed", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    entry = entry_fixture(scope, child, type: :diaper)
+
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+
+    photo =
+      file_input(lv, "#edit-entry-form", :photo, [
+        %{name: "p.png", content: tiny_png(), type: "image/png"}
+      ])
+
+    assert render_upload(photo, "p.png")
+    lv |> form("#edit-entry-form", entry: %{}) |> render_submit()
+
+    updated = Log.get_entry!(scope, entry.id)
+    assert updated.photo_key
+    assert render(lv) =~ ~p"/c/#{child}/log/#{entry.id}/photo"
+
+    conn = get(conn, ~p"/c/#{child}/log/#{entry.id}/photo")
+    assert conn.status == 200
+    assert conn.resp_body == tiny_png()
+  end
+
   test "an entry logged by another caregiver shows up live", %{
     conn: conn,
     scope: scope,

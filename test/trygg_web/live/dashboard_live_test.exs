@@ -731,4 +731,85 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#glance-sleep", "for age")
     end
   end
+
+  describe "photos" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "a photo attached in the bottle sheet shows in the feed", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+
+      photo =
+        file_input(lv, "#bottle-form", :photo, [
+          %{name: "baby.png", content: Trygg.LogFixtures.tiny_png(), type: "image/png"}
+        ])
+
+      assert render_upload(photo, "baby.png")
+
+      lv |> form("#bottle-form", entry: %{bottle_contents: "formula"}) |> render_submit()
+
+      assert [%{type: :feeding} = feed] = Log.list_entries(scope, child)
+      assert feed.photo_key
+      assert feed.photo_content_type == "image/png"
+
+      src = ~p"/c/#{child}/log/#{feed.id}/photo"
+      assert render(lv) =~ src
+
+      resp = get(conn, src)
+      assert resp.status == 200
+      assert resp.resp_body == Trygg.LogFixtures.tiny_png()
+    end
+
+    test "a photo can be added to an existing entry from the edit modal", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+
+      photo =
+        file_input(lv, "#edit-entry-form", :photo, [
+          %{name: "d.png", content: Trygg.LogFixtures.tiny_png(), type: "image/png"}
+        ])
+
+      render_upload(photo, "d.png")
+      lv |> form("#edit-entry-form", entry: %{}) |> render_submit()
+
+      updated = Log.get_entry!(scope, entry.id)
+      assert updated.photo_key
+      assert render(lv) =~ ~p"/c/#{child}/log/#{entry.id}/photo"
+    end
+
+    test "the remove-photo toggle clears an entry's photo", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, attrs} = Log.store_photo(child, Trygg.LogFixtures.tiny_png(), "image/png")
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+
+      lv
+      |> form("#edit-entry-form", entry: %{remove_photo: "true"})
+      |> render_submit()
+
+      refute Log.get_entry!(scope, entry.id).photo_key
+      assert {:error, _} = Trygg.Storage.get(attrs["photo_key"])
+    end
+  end
 end

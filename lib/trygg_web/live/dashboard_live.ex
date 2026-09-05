@@ -41,6 +41,11 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:editing, nil)
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
+      |> allow_upload(:photo,
+        accept: Log.photo_extensions(),
+        max_entries: 1,
+        max_file_size: Log.max_photo_bytes()
+      )
       |> refresh()
 
     {:ok, socket}
@@ -172,7 +177,7 @@ defmodule TryggWeb.DashboardLive do
   def handle_event("request_stop", _params, socket) do
     child = socket.assigns.current_child
     form = to_form(%{"ended_at" => Child.to_local_input(child, now()), "note" => ""}, as: :sleep)
-    {:noreply, assign(socket, sheet: :sleep_stop, sheet_form: form)}
+    {:noreply, socket |> clear_photo_upload() |> assign(sheet: :sleep_stop, sheet_form: form)}
   end
 
   def handle_event("sheet_change", %{"sleep" => params}, socket) do
@@ -221,7 +226,9 @@ defmodule TryggWeb.DashboardLive do
       )
 
     socket =
-      assign(socket,
+      socket
+      |> clear_photo_upload()
+      |> assign(
         sheet: :bottle,
         sheet_form: form,
         sheet_amount: last_bottle_amount(last, socket.assigns.unit_system)
@@ -239,7 +246,8 @@ defmodule TryggWeb.DashboardLive do
             as: :sleep
           )
 
-        {:noreply, assign(socket, sheet: :sleep_start, sheet_form: form)}
+        {:noreply,
+         socket |> clear_photo_upload() |> assign(sheet: :sleep_start, sheet_form: form)}
 
       nil ->
         {:noreply, socket}
@@ -266,7 +274,7 @@ defmodule TryggWeb.DashboardLive do
         as: :sleep
       )
 
-    {:noreply, assign(socket, sheet: :sleep_past, sheet_form: form)}
+    {:noreply, socket |> clear_photo_upload() |> assign(sheet: :sleep_past, sheet_form: form)}
   end
 
   def handle_event("open_sheet", %{"kind" => "diaper_past"}, socket) do
@@ -282,11 +290,11 @@ defmodule TryggWeb.DashboardLive do
         as: :entry
       )
 
-    {:noreply, assign(socket, sheet: :diaper_past, sheet_form: form)}
+    {:noreply, socket |> clear_photo_upload() |> assign(sheet: :diaper_past, sheet_form: form)}
   end
 
   def handle_event("close_sheet", _params, socket) do
-    {:noreply, assign(socket, sheet: nil, sheet_form: nil)}
+    {:noreply, socket |> clear_photo_upload() |> assign(sheet: nil, sheet_form: nil)}
   end
 
   def handle_event("edit", %{"id" => id}, socket) do
@@ -295,15 +303,26 @@ defmodule TryggWeb.DashboardLive do
 
     {:noreply,
      socket
+     |> clear_photo_upload()
      |> assign(sheet: nil, sheet_form: nil)
      |> assign(editing: entry, edit_form: to_form(params, as: :entry))}
   end
 
   def handle_event("cancel_edit", _params, socket) do
-    {:noreply, assign(socket, editing: nil, edit_form: nil)}
+    {:noreply, socket |> clear_photo_upload() |> assign(editing: nil, edit_form: nil)}
+  end
+
+  def handle_event("validate_edit", %{"entry" => params}, socket) do
+    {:noreply, assign(socket, :edit_form, to_form(params, as: :entry))}
+  end
+
+  def handle_event("cancel_photo", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :photo, ref)}
   end
 
   def handle_event("save_edit", %{"entry" => params}, socket) do
+    params = Map.merge(params, consume_photo(socket))
+
     case save_entry_edit(
            socket.assigns.current_scope,
            socket.assigns.editing,
@@ -343,12 +362,20 @@ defmodule TryggWeb.DashboardLive do
     result =
       with {:ok, at} <- Child.from_local_input(child, params["at"] || ""),
            :ok <- not_future(at) do
-        Log.create_entry(socket.assigns.current_scope, child, :feeding, %{
-          "type" => "feeding",
-          "started_at" => at,
-          "data" => %{"bottle_contents" => params["bottle_contents"], "amount_ml" => ml},
-          "note" => blank(params["note"])
-        })
+        Log.create_entry(
+          socket.assigns.current_scope,
+          child,
+          :feeding,
+          Map.merge(
+            %{
+              "type" => "feeding",
+              "started_at" => at,
+              "data" => %{"bottle_contents" => params["bottle_contents"], "amount_ml" => ml},
+              "note" => blank(params["note"])
+            },
+            consume_photo(socket)
+          )
+        )
       end
 
     {:noreply, settle_feed(socket, result)}
@@ -360,11 +387,19 @@ defmodule TryggWeb.DashboardLive do
     result =
       with {:ok, started} <- Child.from_local_input(child, params["started_at"] || ""),
            :ok <- not_future(started) do
-        Log.create_entry(socket.assigns.current_scope, child, :diaper, %{
-          "started_at" => started,
-          "data" => %{"kind" => params["kind"]},
-          "note" => blank(params["note"])
-        })
+        Log.create_entry(
+          socket.assigns.current_scope,
+          child,
+          :diaper,
+          Map.merge(
+            %{
+              "started_at" => started,
+              "data" => %{"kind" => params["kind"]},
+              "note" => blank(params["note"])
+            },
+            consume_photo(socket)
+          )
+        )
       end
 
     {:noreply, settle_diaper(socket, result)}
@@ -407,7 +442,15 @@ defmodule TryggWeb.DashboardLive do
         # or before the start (e.g. stopping a nap that began seconds ago), the
         # tap means "now".
         ended = if DateTime.after?(ended, nap.started_at), do: ended, else: now()
-        Log.stop_timer(scope, nap, %{"ended_at" => ended, "note" => blank(params["note"])})
+
+        Log.stop_timer(
+          scope,
+          nap,
+          Map.merge(
+            %{"ended_at" => ended, "note" => blank(params["note"])},
+            consume_photo(socket)
+          )
+        )
       end
 
     settle(socket, result, "Sleep saved — sweet dreams.")
@@ -433,11 +476,19 @@ defmodule TryggWeb.DashboardLive do
     result =
       with {:ok, started} <- Child.from_local_input(child, params["started_at"] || ""),
            {:ok, ended} <- Child.from_local_input(child, params["ended_at"] || "") do
-        Log.create_entry(socket.assigns.current_scope, child, :sleep, %{
-          "started_at" => started,
-          "ended_at" => ended,
-          "note" => blank(params["note"])
-        })
+        Log.create_entry(
+          socket.assigns.current_scope,
+          child,
+          :sleep,
+          Map.merge(
+            %{
+              "started_at" => started,
+              "ended_at" => ended,
+              "note" => blank(params["note"])
+            },
+            consume_photo(socket)
+          )
+        )
       end
 
     settle(socket, result, "Added that sleep.")
@@ -471,6 +522,8 @@ defmodule TryggWeb.DashboardLive do
       _ -> put_flash(socket, :error, "Hmm, that didn't save — try again.")
     end
   end
+
+  defp consume_photo(socket), do: consume_photo(socket, socket.assigns.current_child)
 
   defp refresh(socket), do: socket |> refresh_summary() |> refresh_entries()
 
@@ -718,6 +771,7 @@ defmodule TryggWeb.DashboardLive do
           entry={entry}
           unit_system={@unit_system}
           tz={@current_child.timezone}
+          photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
           on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
         />
       </div>
@@ -728,9 +782,16 @@ defmodule TryggWeb.DashboardLive do
         form={@sheet_form}
         amount={@sheet_amount}
         unit_system={@unit_system}
+        photo_upload={@uploads.photo}
       />
 
-      <.edit_modal :if={@editing} entry={@editing} form={@edit_form} />
+      <.edit_modal
+        :if={@editing}
+        entry={@editing}
+        form={@edit_form}
+        upload={@uploads.photo}
+        photo_src={@editing.photo_key && ~p"/c/#{@current_child}/log/#{@editing.id}/photo"}
+      />
     </Layouts.app>
     """
   end
@@ -754,6 +815,7 @@ defmodule TryggWeb.DashboardLive do
   attr :form, :any, default: nil
   attr :amount, :float, required: true
   attr :unit_system, :atom, required: true
+  attr :photo_upload, :any, required: true
 
   defp sheet(assigns) do
     assigns = assign(assigns, :unit, Units.unit_label(:volume, assigns.unit_system))
@@ -837,6 +899,8 @@ defmodule TryggWeb.DashboardLive do
                 class="input input-bordered w-full"
               />
 
+              <.photo_field upload={@photo_upload} />
+
               <.sheet_buttons save="Save" />
             </.form>
           <% :sleep_stop -> %>
@@ -850,6 +914,7 @@ defmodule TryggWeb.DashboardLive do
             >
               <.input field={@form[:ended_at]} type="datetime-local" label="Woke up at" />
               <.note_field form={@form} />
+              <.photo_field upload={@photo_upload} />
               <.sheet_buttons save="Save sleep" />
             </.form>
           <% :sleep_start -> %>
@@ -870,11 +935,18 @@ defmodule TryggWeb.DashboardLive do
               <.input field={@form[:started_at]} type="datetime-local" label="Fell asleep" />
               <.input field={@form[:ended_at]} type="datetime-local" label="Woke up" />
               <.note_field form={@form} />
+              <.photo_field upload={@photo_upload} />
               <.sheet_buttons save="Add sleep" />
             </.form>
           <% :diaper_past -> %>
             <h3 class="font-semibold text-lg mb-3">Add a diaper from earlier</h3>
-            <.form for={@form} id="diaper-form" phx-submit="save_diaper" class="space-y-4">
+            <.form
+              for={@form}
+              id="diaper-form"
+              phx-change="sheet_change"
+              phx-submit="save_diaper"
+              class="space-y-4"
+            >
               <div class="join w-full">
                 <input
                   :for={{emoji, value, label} <- diaper_choices()}
@@ -893,6 +965,7 @@ defmodule TryggWeb.DashboardLive do
                 label="Note"
                 placeholder="Anything to remember? (optional)"
               />
+              <.photo_field upload={@photo_upload} />
               <.sheet_buttons save="Add diaper" />
             </.form>
         <% end %>
