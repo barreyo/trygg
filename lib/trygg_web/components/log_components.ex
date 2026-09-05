@@ -424,6 +424,8 @@ defmodule TryggWeb.LogComponents do
   merge into a `Trygg.Log` create/update call (`"photo_key"` /
   `"photo_content_type"`), or `%{}` when nothing is attached.
   """
+  # `path` is the LiveView-managed upload temp file, not request-controlled.
+  # sobelow_skip ["Traversal.FileModule"]
   def consume_photo(socket, %Child{} = child) do
     socket
     |> consume_uploaded_entries(:photo, fn %{path: path}, entry ->
