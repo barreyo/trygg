@@ -75,7 +75,8 @@ defmodule TryggWeb.TimelineLive do
       |> allow_upload(:photo,
         accept: Log.photo_extensions(),
         max_entries: 1,
-        max_file_size: Log.max_photo_bytes()
+        max_file_size: Log.max_photo_bytes(),
+        auto_upload: true
       )
       |> load_entries()
 

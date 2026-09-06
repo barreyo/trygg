@@ -459,6 +459,40 @@ defmodule TryggWeb.LogComponents do
   def upload_error_to_string(_), do: "That photo couldn't be added — try another."
 
   @doc """
+  True while a valid photo is still streaming to the server — used to hold the
+  save button until the upload lands so the entry never saves without its photo.
+  """
+  def photo_uploading?(%Phoenix.LiveView.UploadConfig{} = upload) do
+    Enum.any?(upload.entries, &(&1.valid? and not &1.done?))
+  end
+
+  @doc """
+  The primary submit button for a log form. It narrates what's happening:
+  while a photo is still uploading it's held disabled ("Waiting for photo…"),
+  and once submitted it swaps to a spinner + `saving_label` (via the
+  `phx-submit-loading` class LiveView puts on the button during the round trip).
+  """
+  attr :label, :string, required: true
+  attr :saving_label, :string, default: "Saving…"
+  attr :uploading?, :boolean, default: false
+  attr :class, :any, default: nil
+
+  def save_button(assigns) do
+    ~H"""
+    <.button type="submit" variant="primary" disabled={@uploading?} class={@class}>
+      <span class={[
+        "loading loading-spinner loading-sm",
+        !@uploading? && "hidden phx-submit-loading:inline-block"
+      ]}>
+      </span>
+      <span :if={@uploading?}>Waiting for photo…</span>
+      <span :if={!@uploading?} class="phx-submit-loading:hidden">{@label}</span>
+      <span :if={!@uploading?} class="hidden phx-submit-loading:inline">{@saving_label}</span>
+    </.button>
+    """
+  end
+
+  @doc """
   The photo picker shared by the log sheets and the edit modal: any current
   photo with a "remove" toggle, a live preview of a pending upload, and the
   file input itself.
@@ -484,18 +518,44 @@ defmodule TryggWeb.LogComponents do
         </label>
       </div>
 
-      <div :for={entry <- @upload.entries} class="mb-2 space-y-1">
-        <.live_img_preview
-          entry={entry}
-          class="h-36 w-full max-w-48 rounded-lg border border-base-300 object-cover"
-        />
+      <div :for={entry <- @upload.entries} class="mb-2 space-y-1.5">
+        <div class="relative w-full max-w-48">
+          <.live_img_preview
+            entry={entry}
+            class={[
+              "h-36 w-full rounded-lg border border-base-300 object-cover transition-opacity",
+              not entry.done? && "opacity-50"
+            ]}
+          />
+          <div
+            :if={entry.valid? and not entry.done?}
+            class="absolute inset-0 grid place-items-center rounded-lg bg-black/25"
+          >
+            <span class="loading loading-spinner loading-md text-white"></span>
+          </div>
+        </div>
+
+        <div :if={entry.valid? and not entry.done?}>
+          <progress
+            class="progress progress-primary h-1.5 w-full max-w-48"
+            value={entry.progress}
+            max="100"
+          >
+          </progress>
+          <p class="text-xs opacity-70">Uploading photo… {entry.progress}%</p>
+        </div>
+
+        <p :if={entry.done?} class="flex items-center gap-1 text-xs text-success">
+          <.icon name="hero-check-circle" class="size-4" /> Photo attached
+        </p>
+
         <button
           type="button"
           phx-click="cancel_photo"
           phx-value-ref={entry.ref}
           class="text-sm text-error hover:underline"
         >
-          Remove
+          {if entry.done?, do: "Remove", else: "Cancel upload"}
         </button>
         <p :for={err <- upload_errors(@upload, entry)} class="text-xs text-error">
           {upload_error_to_string(err)}
@@ -556,7 +616,12 @@ defmodule TryggWeb.LogComponents do
           <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
 
           <div class="flex gap-2 pt-1">
-            <.button type="submit" variant="primary" class="flex-1">Save</.button>
+            <.save_button
+              label="Save"
+              saving_label="Saving…"
+              uploading?={photo_uploading?(@upload)}
+              class="flex-1"
+            />
             <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
           </div>
           <.button
