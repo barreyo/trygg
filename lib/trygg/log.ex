@@ -304,8 +304,16 @@ defmodule Trygg.Log do
   @doc "Accepted photo content types."
   def photo_content_types, do: Entry.photo_content_types()
 
-  @doc "File-picker `accept` extensions matching `photo_content_types/0`."
-  def photo_extensions, do: ~w(.jpg .jpeg .png .webp .gif)
+  @doc """
+  `accept` list for the photo file picker, matching `photo_content_types/0`.
+
+  Leading with the image MIME types (rather than only extensions) is what makes
+  mobile browsers offer the camera: iOS shows its "Photo Library / Take Photo /
+  Choose File" sheet and Android's picker includes the camera alongside the
+  gallery. The extensions stay as a fallback for the browsers that hand us a
+  bare `application/octet-stream` for a genuine JPEG.
+  """
+  def photo_accept, do: ~w(image/jpeg image/png image/webp image/gif .jpg .jpeg .png .webp .gif)
 
   @doc """
   Stores `binary` as a photo for `child` and returns attrs to merge into a

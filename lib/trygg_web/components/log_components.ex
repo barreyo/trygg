@@ -562,6 +562,9 @@ defmodule TryggWeb.LogComponents do
         </p>
       </div>
 
+      <%!-- No `capture` attribute on purpose: with image MIME types in `accept`,
+      leaving it off lets mobile browsers offer both the camera and the existing
+      library (iOS shows its Photo Library / Take Photo / Choose File sheet). --%>
       <.live_file_input upload={@upload} class="file-input file-input-bordered w-full" />
 
       <p :for={err <- upload_errors(@upload)} class="text-xs text-error">
