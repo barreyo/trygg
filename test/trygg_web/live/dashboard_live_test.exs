@@ -759,6 +759,25 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#glance-next-nap", "typical for age")
       assert has_element?(lv, "#glance-sleep", "for age")
     end
+
+    test "a next-nap estimate from thin history is flagged as still learning", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, child} =
+        Families.update_child(scope, child, %{
+          birth_date: Date.add(Date.utc_today(), -120),
+          timezone: midday_timezone()
+        })
+
+      # Two days of naps — enough to lean on the child's pattern, not yet enough
+      # to call it learned.
+      sleep_days(scope, child, 2)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#glance-next-nap", "still learning the pattern")
+    end
   end
 
   describe "weight-check reminder" do

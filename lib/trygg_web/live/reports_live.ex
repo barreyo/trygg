@@ -276,7 +276,11 @@ defmodule TryggWeb.ReportsLive do
 
       <div id="todays-outlook" class="rounded-box border border-base-300 p-3">
         <h3 class="font-semibold text-sm mb-2">Today's outlook</h3>
-        <.outlook prediction={@insights.prediction} next_feed={@insights.feeding.next_feed} />
+        <.outlook
+          prediction={@insights.prediction}
+          next_feed={@insights.feeding.next_feed}
+          accuracy={@insights.prediction_accuracy}
+        />
       </div>
 
       <.alerts_list
@@ -394,6 +398,7 @@ defmodule TryggWeb.ReportsLive do
 
   attr :prediction, :map, required: true
   attr :next_feed, :map, default: nil
+  attr :accuracy, :map, default: nil
 
   defp outlook(%{prediction: %{state: :asleep}} = assigns) do
     ~H"""
@@ -410,6 +415,9 @@ defmodule TryggWeb.ReportsLive do
   defp outlook(assigns) do
     ~H"""
     <ul class="text-sm space-y-1">
+      <li :if={@prediction.transition?} id="outlook-transition" class="opacity-70">
+        Nap schedule looks like it's shifting — these times are less certain for now.
+      </li>
       <li :if={@prediction.morning_wake} id="outlook-wake">
         <span class="opacity-60">
           {if @prediction.morning_wake.actual?, do: "Woke", else: "Typical wake"}
@@ -425,6 +433,9 @@ defmodule TryggWeb.ReportsLive do
         <span class="opacity-60">{"· " <> in_label(@prediction.next_nap.in_seconds)}</span>
         <span :if={@prediction.next_nap.source == :age_prior} class="opacity-60">
           · typical for age
+        </span>
+        <span :if={@prediction.next_nap.source == :blended} class="opacity-60">
+          · still learning the pattern
         </span>
       </li>
       <li :if={@prediction.wake_pressure && @prediction.wake_pressure.state} id="outlook-awake">
@@ -443,6 +454,12 @@ defmodule TryggWeb.ReportsLive do
           {if @prediction.bedtime.estimate?, do: "Bedtime ≈", else: "Bedtime"}
         </span>
         <span class="font-semibold tabular-nums">{@prediction.bedtime.label}</span>
+        <span :if={bedtime_shifted?(@prediction.bedtime)} class="opacity-60">
+          · earlier tonight, naps ran short
+        </span>
+      </li>
+      <li :if={accuracy_note(@accuracy)} id="outlook-accuracy" class="opacity-60">
+        {accuracy_note(@accuracy)}
       </li>
       <li :if={
         @prediction.morning_wake == nil and @prediction.next_nap == nil and @prediction.bedtime == nil
@@ -480,6 +497,16 @@ defmodule TryggWeb.ReportsLive do
   defp pressure_note(%{state: :approaching}), do: " · nap time is near"
   defp pressure_note(%{source: :age_prior}), do: " (for age)"
   defp pressure_note(_), do: ""
+
+  defp bedtime_shifted?(%{shifted_by_seconds: s}) when is_integer(s), do: s >= 5 * 60
+  defp bedtime_shifted?(_), do: false
+
+  # Shown once enough predictions have been checked against real naps.
+  defp accuracy_note(%{n: n, mae_seconds: mae}) when n >= 5 do
+    "Recent nap predictions landed within about #{max(div(mae, 60), 1)} min"
+  end
+
+  defp accuracy_note(_), do: nil
 
   ## Feeding card ---------------------------------------------------------
 

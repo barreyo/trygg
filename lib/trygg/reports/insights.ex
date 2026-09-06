@@ -60,8 +60,12 @@ defmodule Trygg.Reports.Insights do
   `today` should be the `%Day{}` for the child's current local date; it may
   also be the last element of `days`.
 
-  `opts` carries feedback from `Trygg.Reports.PredictionLedger` (all optional):
+  `opts` (all optional):
 
+    * `:recent_days` — a longer `%Day{}` list (oldest first) to build the
+      *prediction* from when the descriptive `days` is a short viewed window;
+      the nap-transition signal needs ~2 weeks of history regardless of what
+      the caller is looking at. Defaults to `days`.
     * `:half_life_days` — override the recency half-life (a regime shift halves
       it so the model re-locks faster on the new pattern).
     * `:bias` — `%{next_nap: seconds, bedtime: seconds}` signed mean error to
@@ -80,7 +84,7 @@ defmodule Trygg.Reports.Insights do
     bedtime = clock_stat(child, Enum.map(days, & &1.bedtime), ready?, true)
 
     half_life = opts[:half_life_days] || @recency_half_life_days
-    recent = Enum.take(days, -@recency_window_days)
+    recent = Enum.take(opts[:recent_days] || days, -@recency_window_days)
     recent_ready? = Enum.count(recent, &(&1.total_sleep_seconds > 0)) >= @min_sample
     weighted = recency_weights(recent, today.date, half_life)
 

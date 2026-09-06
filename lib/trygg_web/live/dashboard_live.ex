@@ -1288,13 +1288,17 @@ defmodule TryggWeb.DashboardLive do
     if sleeping?(summary) do
       nil
     else
-      case wake_pressure(outlook) do
-        %{state: :past} -> "past the usual nap window"
-        %{state: :approaching} -> "nap window coming up"
-        _ -> nil
+      cond do
+        match?(%{state: :past}, wake_pressure(outlook)) -> "past the usual nap window"
+        match?(%{state: :approaching}, wake_pressure(outlook)) -> "nap window coming up"
+        in_transition?(outlook) -> "nap schedule looks like it's shifting"
+        true -> nil
       end
     end
   end
+
+  defp in_transition?(%{prediction: %{transition?: true}}), do: true
+  defp in_transition?(_), do: false
 
   defp sleep_tone(summary, outlook) do
     cond do
@@ -1312,10 +1316,18 @@ defmodule TryggWeb.DashboardLive do
 
   defp next_nap(summary, outlook) do
     with false <- sleeping?(summary),
-         %{state: :awake, next_nap: %{} = nap} <- outlook.prediction do
+         %{state: :awake, next_nap: %{} = nap} = prediction <- outlook.prediction do
       range = if nap.range, do: " (#{nap.range.label})", else: ""
-      source = if nap.source == :age_prior, do: " · typical for age", else: ""
-      "Next nap ≈ #{nap.label}#{range} · #{due_label(nap.in_seconds)}#{source}"
+
+      note =
+        cond do
+          prediction.transition? -> " · schedule may be shifting"
+          nap.source == :age_prior -> " · typical for age"
+          nap.source == :blended -> " · still learning the pattern"
+          true -> ""
+        end
+
+      "Next nap ≈ #{nap.label}#{range} · #{due_label(nap.in_seconds)}#{note}"
     else
       _ -> nil
     end

@@ -373,4 +373,76 @@ defmodule TryggWeb.ReportsLiveTest do
       assert has_element?(lv, "#trend-alerts-no-wet-diaper")
     end
   end
+
+  describe "sleep outlook" do
+    defp night_and_naps(scope, child, date, naps) do
+      prev = Date.add(date, -1)
+
+      entry_fixture(scope, child, %{
+        :type => :sleep,
+        "started_at" => DateTime.new!(prev, ~T[19:30:00], "Etc/UTC"),
+        "ended_at" => DateTime.new!(date, ~T[06:45:00], "Etc/UTC")
+      })
+
+      Enum.each(naps, fn {s, e} ->
+        entry_fixture(scope, child, %{
+          :type => :sleep,
+          "started_at" => DateTime.new!(date, s, "Etc/UTC"),
+          "ended_at" => DateTime.new!(date, e, "Etc/UTC")
+        })
+      end)
+    end
+
+    test "a recent nap-count drop shows a transition note", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      today = Date.utc_today()
+      {:ok, child} = Families.update_child(scope, child, %{birth_date: Date.add(today, -200)})
+
+      for i <- 18..8//-1 do
+        night_and_naps(scope, child, Date.add(today, -i), [
+          {~T[09:15:00], ~T[10:15:00]},
+          {~T[12:00:00], ~T[13:00:00]},
+          {~T[15:00:00], ~T[15:45:00]}
+        ])
+      end
+
+      for i <- 7..1//-1 do
+        night_and_naps(scope, child, Date.add(today, -i), [
+          {~T[09:30:00], ~T[10:45:00]},
+          {~T[13:30:00], ~T[14:45:00]}
+        ])
+      end
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      assert has_element?(lv, "#outlook-transition", "shifting")
+    end
+
+    test "the outlook reports recent prediction accuracy once naps have been checked", %{
+      conn: conn,
+      child: child
+    } do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      for i <- 1..5 do
+        %Trygg.Reports.Prediction{child_id: child.id, kind: :next_nap}
+        |> Trygg.Reports.Prediction.changeset(%{
+          made_at: now,
+          made_from_ts: DateTime.add(now, -i * 3600, :second),
+          ordinal: 1,
+          source: :history,
+          target_ts: now,
+          actual_ts: DateTime.add(now, 600, :second),
+          error_seconds: 600,
+          resolved_at: DateTime.add(now, -i * 60, :second)
+        })
+        |> Trygg.Repo.insert!()
+      end
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      assert has_element?(lv, "#outlook-accuracy", "within about 10 min")
+    end
+  end
 end
