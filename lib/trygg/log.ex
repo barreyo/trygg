@@ -380,10 +380,28 @@ defmodule Trygg.Log do
 
   defp broadcast({:ok, entry} = ok, child_id, action) do
     Families.broadcast(child_id, {:log, action, entry})
+    maybe_track_predictions(entry)
     ok
   end
 
   defp broadcast(other, _child_id, _action), do: other
+
+  # Every sleep write nudges the prediction ledger to record the fresh
+  # nap/bedtime target and reconcile any that have now come due. Config-gated
+  # (off in test); enqueue failures must never fail the log write.
+  defp maybe_track_predictions(%Entry{type: :sleep, child_id: child_id}) do
+    if Application.get_env(:trygg, Trygg.Reports, [])[:track_predictions] == true do
+      %{child_id: child_id}
+      |> Trygg.Reports.PredictionWorker.new()
+      |> Oban.insert()
+    end
+  rescue
+    error ->
+      Logger.warning("prediction tracking enqueue failed: #{inspect(error)}")
+      :ok
+  end
+
+  defp maybe_track_predictions(_entry), do: :ok
 
   defp filter_type(query, nil), do: query
   defp filter_type(query, type), do: where(query, [e], e.type == ^type)

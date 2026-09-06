@@ -32,7 +32,11 @@ config :trygg, Oban,
     {Oban.Lifeline, rescue_after: :timer.minutes(30)},
     {Oban.Pruner, max_age: {7, :days}},
     Oban.Reindexer,
-    {Oban.Cron, crontab: [{"0 */6 * * *", Trygg.Growth.WeightReminderWorker}]}
+    {Oban.Cron,
+     crontab: [
+       {"0 */6 * * *", Trygg.Growth.WeightReminderWorker},
+       {"*/30 * * * *", Trygg.Reports.PredictionWorker}
+     ]}
   ]
 
 # Configures Swoosh API Client

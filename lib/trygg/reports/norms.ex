@@ -6,9 +6,17 @@ defmodule Trygg.Reports.Norms do
 
   Sources (all population guidance, none of it a validated schedule):
 
-    * Wake windows — no peer-reviewed table exists; ranges below are the
-      overlap of commonly published charts (e.g. ParentData 2024, Baby Sleep
-      Science 2024, betteroo 2025) and are deliberately wide. Cues beat clocks.
+    * Wake windows — no peer-reviewed table exists. The anchor points below are
+      the overlap of the mainstream practitioner charts (Huckleberry, The Bump,
+      Taking Cara Babies, Baby Sleep Science) reconciled with the structural
+      findings in `docs/sleep-prediction-research.md`, and are interpolated
+      linearly by age so the prediction has no step discontinuities. Ranges are
+      deliberately wide; cues beat clocks. `wake_window_position_factor/2`
+      captures that the first wake window of the day runs short and the last
+      before bed runs long.
+    * Nap count — `typical_nap_count/1` follows the widely published
+      progression (4 → 3 → 2 → 1 across the first ~15 months); the 2→1 drop is
+      readiness-driven, so the age boundary is only a prior.
     * Intake — AAP / HealthyChildren "Amount and Schedule of Formula Feedings"
       (~150 ml/kg/day early, easing to 120–150 by 2–6 months and 100–120 once
       solids start); Better Health Victoria; Merck Manual.
@@ -41,30 +49,122 @@ defmodule Trygg.Reports.Norms do
     if days < 0, do: nil, else: days
   end
 
+  # {age_days, {low_minutes, high_minutes}} for the *midday* wake window,
+  # linearly interpolated between neighbours. See the moduledoc.
+  @wake_window_anchors [
+    {10, {40, 60}},
+    {21, {45, 70}},
+    {42, {50, 85}},
+    {70, {60, 100}},
+    {98, {70, 115}},
+    {120, {85, 135}},
+    {150, {100, 150}},
+    {180, {120, 170}},
+    {240, {140, 195}},
+    {300, {155, 210}},
+    {365, {170, 235}},
+    {455, {195, 260}},
+    {545, {240, 320}},
+    {730, {300, 360}},
+    {1095, {300, 360}}
+  ]
+
   @doc """
-  `{low_seconds, high_seconds}` typical wake window for the child's age, or
-  `nil` when age is unknown or beyond the infant range.
+  `{low_seconds, high_seconds}` typical *midday* wake window for the child's
+  age, interpolated between age anchors, or `nil` when age is unknown or past
+  the infant range. Multiply by `wake_window_position_factor/2` for the first
+  or last window of the day.
   """
   def wake_window_range(nil), do: nil
 
-  def wake_window_range(age_days) when is_integer(age_days) do
-    minutes =
-      cond do
-        age_days < 28 -> {45, 60}
-        age_days < 90 -> {60, 90}
-        age_days < 150 -> {75, 120}
-        age_days < 210 -> {120, 180}
-        age_days < 300 -> {150, 210}
-        age_days < 390 -> {180, 240}
-        age_days < 570 -> {180, 270}
-        age_days < 730 -> {240, 360}
-        age_days < 1095 -> {300, 360}
-        true -> nil
-      end
+  def wake_window_range(age_days) when is_integer(age_days) and age_days >= 0 do
+    {min_age, _} = hd(@wake_window_anchors)
+    {max_age, _} = List.last(@wake_window_anchors)
 
-    case minutes do
-      {lo, hi} -> {lo * 60, hi * 60}
-      nil -> nil
+    cond do
+      age_days > max_age -> nil
+      age_days <= min_age -> anchor_to_seconds(elem(hd(@wake_window_anchors), 1))
+      true -> interpolate_wake_window(age_days)
+    end
+  end
+
+  def wake_window_range(_), do: nil
+
+  defp anchor_to_seconds({lo, hi}), do: {lo * 60, hi * 60}
+
+  defp interpolate_wake_window(age_days) do
+    [{a1, {lo1, hi1}}, {a2, {lo2, hi2}}] =
+      @wake_window_anchors
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.find(fn [{a, _}, {b, _}] -> age_days >= a and age_days <= b end)
+
+    f = (age_days - a1) / (a2 - a1)
+    {round((lo1 + (lo2 - lo1) * f) * 60), round((hi1 + (hi2 - hi1) * f) * 60)}
+  end
+
+  @doc """
+  Prior for how many naps a child of this age typically takes, or `nil` when
+  age is unknown or past the age naps usually persist. The child's own logged
+  count always wins once there is enough of it — this only seeds a prediction
+  for a child with no nap history yet.
+  """
+  def typical_nap_count(nil), do: nil
+
+  def typical_nap_count(age_days) when is_integer(age_days) and age_days >= 0 do
+    cond do
+      # < ~12 weeks: many short naps
+      age_days < 84 -> 4
+      # ~3–8 months: settling toward three, 3→2 transition in the tail
+      age_days < 245 -> 3
+      # ~8–15 months: two naps
+      age_days < 450 -> 2
+      # ~15 months–4 years: one midday nap
+      age_days < 1460 -> 1
+      true -> nil
+    end
+  end
+
+  def typical_nap_count(_), do: nil
+
+  @doc """
+  Multiplier on `wake_window_range/1` for the `ordinal`-th wake window of a day
+  expected to hold `expected` naps: the first window of the day runs short, the
+  last before bed runs long, the rest sit near 1.0.
+  """
+  def wake_window_position_factor(ordinal, expected)
+      when is_integer(ordinal) and is_integer(expected) and expected >= 1 do
+    cond do
+      expected == 1 -> 1.0
+      ordinal <= 1 -> 0.82
+      ordinal >= expected -> 1.2
+      true -> 0.85 + 0.3 * ((ordinal - 1) / max(expected - 1, 1))
+    end
+  end
+
+  def wake_window_position_factor(_ordinal, _expected), do: 1.0
+
+  @doc "Shortest wake window worth predicting at this age, in seconds."
+  def min_wake_window_seconds(nil), do: 20 * 60
+
+  def min_wake_window_seconds(age_days) when is_integer(age_days) do
+    cond do
+      age_days < 84 -> 20 * 60
+      age_days < 180 -> 45 * 60
+      age_days < 365 -> 75 * 60
+      true -> 120 * 60
+    end
+  end
+
+  @doc "The most naps a day should ever be predicted to hold at this age."
+  def max_naps(nil), do: 5
+
+  def max_naps(age_days) when is_integer(age_days) do
+    cond do
+      age_days < 84 -> 6
+      age_days < 180 -> 4
+      age_days < 300 -> 3
+      age_days < 545 -> 2
+      true -> 1
     end
   end
 

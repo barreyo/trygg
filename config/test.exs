@@ -35,6 +35,10 @@ config :trygg, Trygg.RateLimit, enabled: false
 # `Trygg.Growth.WeightReminders.run/0` directly.
 config :trygg, Oban, testing: :manual
 
+# Don't enqueue prediction-ledger jobs on every sleep write in tests; exercise
+# `Trygg.Reports.PredictionLedger.track/2` directly instead.
+config :trygg, Trygg.Reports, track_predictions: false
+
 # Log photos land in a throwaway tmp dir during the test run.
 config :trygg, Trygg.Storage,
   adapter: Trygg.Storage.Local,

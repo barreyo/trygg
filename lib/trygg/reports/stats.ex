@@ -75,6 +75,85 @@ defmodule Trygg.Reports.Stats do
   end
 
   @doc """
+  Weighted quantile `p` (0..1) of `values`, each carrying the matching weight
+  in `weights`. Pairs with a non-positive or non-numeric weight are dropped.
+
+  Uses the "cumulative weight at the centre of each point's mass" convention,
+  linearly interpolated between neighbouring points and clamped at the ends —
+  so with equal weights it matches `percentile/2` closely and stays smooth as
+  weights change. `nil` when nothing is left after filtering.
+  """
+  def weighted_quantile(values, weights, p)
+      when is_list(values) and is_list(weights) and is_number(p) do
+    pairs =
+      values
+      |> Enum.zip(weights)
+      |> Enum.filter(fn {v, w} -> is_number(v) and is_number(w) and w > 0 end)
+      |> Enum.sort_by(&elem(&1, 0))
+
+    case pairs do
+      [] ->
+        nil
+
+      [{v, _}] ->
+        v * 1.0
+
+      _ ->
+        total = pairs |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+
+        {points, _} =
+          Enum.map_reduce(pairs, 0.0, fn {v, w}, acc ->
+            {{(acc + w / 2) / total, v * 1.0}, acc + w}
+          end)
+
+        interpolate_points(points, p)
+    end
+  end
+
+  defp interpolate_points(points, p) do
+    {first_c, first_v} = hd(points)
+    {last_c, last_v} = List.last(points)
+
+    cond do
+      p <= first_c ->
+        first_v
+
+      p >= last_c ->
+        last_v
+
+      true ->
+        [{c1, v1}, {c2, v2}] =
+          points
+          |> Enum.chunk_every(2, 1, :discard)
+          |> Enum.find(fn [{a, _}, {b, _}] -> p >= a and p <= b end)
+
+        v1 + (v2 - v1) * (p - c1) / (c2 - c1)
+    end
+  end
+
+  @doc "Weighted median — `weighted_quantile/3` at `p = 0.5`."
+  def weighted_median(values, weights), do: weighted_quantile(values, weights, 0.5)
+
+  @doc """
+  Kish effective sample size for a set of weights: `(Σw)² / Σw²`. Equals the
+  count when the weights are equal and shrinks as they grow lopsided. `0.0`
+  when no positive weight is left.
+  """
+  def effective_n(weights) when is_list(weights) do
+    ws = Enum.filter(weights, &(is_number(&1) and &1 > 0))
+
+    case ws do
+      [] ->
+        0.0
+
+      ws ->
+        sum = Enum.sum(ws)
+        sum_sq = ws |> Enum.map(&(&1 * &1)) |> Enum.sum()
+        sum * sum / sum_sq
+    end
+  end
+
+  @doc """
   Median absolute deviation, scaled by 1.4826 so it estimates the standard
   deviation for normal data. `nil` for fewer than three values.
   """

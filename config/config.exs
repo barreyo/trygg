@@ -124,6 +124,12 @@ config :trygg, Oban,
     Oban.Reindexer
   ]
 
+# Sleep-prediction accuracy ledger: on each sleep write, record the fresh
+# nap/bedtime target and reconcile matured ones (`Trygg.Reports.PredictionLedger`).
+# Instrumentation only — it does not change what the app predicts. Off in test
+# (call `PredictionLedger.track/2` directly).
+config :trygg, Trygg.Reports, track_predictions: true
+
 # Web Push (installed-PWA notifications). `sender` is the delivery adapter
 # (`Trygg.Push.Sender.Test` in test). Push also needs a VAPID keypair — set
 # below for dev/test, from env in config/runtime.exs for prod — and is a
