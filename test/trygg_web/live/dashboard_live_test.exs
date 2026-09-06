@@ -529,6 +529,32 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "pull to refresh" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "the refresh gesture re-syncs entries the socket didn't hear about", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      # Land an entry (this broadcasts, so the socket shows it), then remove it
+      # straight from the repo so no broadcast tells the LiveView it's gone.
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
+      assert render(lv) =~ "Pee diaper"
+      Trygg.Repo.delete!(entry)
+      assert render(lv) =~ "Pee diaper"
+
+      # The pull-to-refresh gesture pushes "refresh"; the stream is rebuilt.
+      html = render_hook(lv, "refresh", %{})
+      refute html =~ "Pee diaper"
+    end
+  end
+
   describe "units" do
     setup %{conn: conn} do
       %{conn: conn, user: user, scope: scope} = register_and_log_in_user(%{conn: conn})

@@ -31,6 +31,7 @@ import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
+import PullToRefresh from "./hooks/pull_to_refresh"
 import OfflineContext from "./hooks/offline_context"
 import {installOfflinePanel} from "./offline/panel_toggle"
 import {startAutoSync} from "./offline/auto_sync"
@@ -48,6 +49,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushNotifications,
     PushPrompt,
     ModalBack,
+    PullToRefresh,
     OfflineContext,
   },
 })

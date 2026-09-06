@@ -226,6 +226,11 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("quick", %{"kind" => kind}, socket), do: {:noreply, quick_log(socket, kind)}
 
+  # Pull-to-refresh gesture (see the `PullToRefresh` JS hook). LiveView already
+  # streams changes over the socket, so this is really a "did I miss anything?"
+  # re-sync. The empty reply is the hook's cue to release the spinner.
+  def handle_event("refresh", _params, socket), do: {:reply, %{}, refresh(socket)}
+
   def handle_event("open_sheet", %{"kind" => "earlier"}, socket) do
     {:noreply, assign(socket, sheet: :earlier, sheet_form: nil)}
   end
@@ -676,6 +681,25 @@ defmodule TryggWeb.DashboardLive do
         data-can-write={to_string(@can_write)}
         data-tz={@current_child.timezone}
       />
+
+      <%!-- Pull-to-refresh: a standalone PWA has no native pull-to-refresh, so
+           this inert sentinel's `PullToRefresh` hook drives the gesture on
+           <main> and pushes `refresh`. --%>
+      <div id="pull-to-refresh" phx-hook="PullToRefresh" class="contents">
+        <div
+          data-ptr-indicator
+          class="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 -mt-9 flex justify-center opacity-0"
+          aria-hidden="true"
+        >
+          <span
+            data-ptr-spinner
+            class="mt-2 flex size-8 items-center justify-center rounded-full border border-base-300 bg-base-100 text-base-content/70 shadow-sm"
+          >
+            <.icon name="hero-arrow-path" class="size-4" />
+          </span>
+        </div>
+      </div>
+
 
       <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
       <div :for={entry <- @summary.running} class="mb-6">
