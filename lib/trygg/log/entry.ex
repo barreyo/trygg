@@ -31,6 +31,11 @@ defmodule Trygg.Log.Entry do
     field :photo_key, :string
     field :photo_content_type, :string
 
+    # A client-generated UUID for entries captured offline (see
+    # `Trygg.Log.sync_entry/3`). `nil` for entries written online through the
+    # LiveView path. Unique per child, so a re-sync updates in place.
+    field :client_id, Ecto.UUID
+
     belongs_to :child, Trygg.Families.Child
     belongs_to :logged_by, Trygg.Accounts.User
 
@@ -40,7 +45,15 @@ defmodule Trygg.Log.Entry do
   @doc false
   def changeset(entry, attrs) do
     entry
-    |> cast(attrs, [:type, :started_at, :ended_at, :note, :photo_key, :photo_content_type])
+    |> cast(attrs, [
+      :type,
+      :started_at,
+      :ended_at,
+      :note,
+      :photo_key,
+      :photo_content_type,
+      :client_id
+    ])
     |> validate_required([:type, :started_at])
     |> validate_end_after_start()
     |> validate_photo()

@@ -9,9 +9,11 @@
 // `/` is deliberately not precached: for a signed-out visitor it redirects to
 // the login page, whose CSRF token is bound to a session that will be gone by
 // the time the cached copy is served. A static offline page is the fallback.
-const CACHE = "trygg-shell-v5"
+const CACHE = "trygg-shell-v6"
 const OFFLINE = "/offline.html"
-const SHELL = [OFFLINE, "/manifest.webmanifest"]
+// `offline.js` powers the offline quick-logger inside offline.html. Literal,
+// undigested path (see the note in offline.html) so it's stable to precache.
+const SHELL = [OFFLINE, "/manifest.webmanifest", "/assets/js/offline.js"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()))

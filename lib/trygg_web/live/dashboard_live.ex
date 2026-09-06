@@ -556,12 +556,59 @@ defmodule TryggWeb.DashboardLive do
   defp refresh_summary(socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
+    summary = Log.summary(scope, child)
 
     socket
-    |> assign(:summary, Log.summary(scope, child))
+    |> assign(:summary, summary)
     |> assign(:outlook, Reports.outlook(scope, child))
     |> assign(:weight_reminder, Growth.weight_check_reminder(scope, child))
+    |> push_offline_snapshot(scope, child, summary)
   end
+
+  # Mirror a compact read cache to the client (via the OfflineContext hook →
+  # IndexedDB) so the offline quick-logger can show recent activity and a
+  # running sleep timer while there's no socket. Only meaningful once
+  # connected; the static mount has nothing to push to.
+  defp push_offline_snapshot(socket, scope, child, summary) do
+    if connected?(socket) do
+      unit = socket.assigns.unit_system
+
+      push_event(socket, "offline:snapshot", %{
+        running:
+          Enum.map(summary.running, fn e ->
+            %{id: e.id, started_at: DateTime.to_iso8601(e.started_at)}
+          end),
+        recent:
+          scope
+          |> Log.recent_entries(child, 8)
+          |> Enum.map(fn e ->
+            %{
+              type: e.type,
+              at: DateTime.to_iso8601(e.started_at),
+              text: snapshot_line(e, unit)
+            }
+          end)
+      })
+    else
+      socket
+    end
+  end
+
+  defp snapshot_line(%Entry{type: :feeding, data: data}, unit) do
+    case data["amount_ml"] do
+      ml when is_number(ml) -> "Bottle · " <> Units.format(ml, :volume, unit)
+      _ -> "Bottle"
+    end
+  end
+
+  defp snapshot_line(%Entry{type: :diaper, data: %{"kind" => kind}}, _unit),
+    do: String.capitalize(kind) <> " diaper"
+
+  defp snapshot_line(%Entry{type: :diaper}, _unit), do: "Diaper"
+  defp snapshot_line(%Entry{type: :sleep, ended_at: nil}, _unit), do: "Sleeping"
+
+  defp snapshot_line(%Entry{type: :sleep} = entry, _unit),
+    do: "Slept " <> format_duration(Entry.duration_seconds(entry))
 
   defp refresh_entries(socket) do
     scope = socket.assigns.current_scope
@@ -621,6 +668,20 @@ defmodule TryggWeb.DashboardLive do
       subtitle={Child.caption(@current_child)}
       children={@children}
     >
+      <%!-- Mirrors which child / units / write-access into IndexedDB so the
+           offline quick-logger (served with no live socket) knows what it's
+           logging for. See assets/js/hooks/offline_context.js. --%>
+      <div
+        id="offline-context"
+        phx-hook="OfflineContext"
+        hidden
+        data-child-id={@current_child.id}
+        data-child-name={@current_child.name}
+        data-unit-system={@unit_system}
+        data-can-write={to_string(@can_write)}
+        data-tz={@current_child.timezone}
+      />
+
       <%!-- Pull-to-refresh: a standalone PWA has no native pull-to-refresh, so
            this inert sentinel's `PullToRefresh` hook drives the gesture on
            <main> and pushes `refresh`. --%>
