@@ -30,12 +30,22 @@ import DownloadPdf from "./hooks/download_pdf"
 import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
+import ModalBack from "./hooks/modal_back"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Timer, InstallPrompt, DownloadPdf, Theme, PushNotifications, PushPrompt},
+  hooks: {
+    ...colocatedHooks,
+    Timer,
+    InstallPrompt,
+    DownloadPdf,
+    Theme,
+    PushNotifications,
+    PushPrompt,
+    ModalBack,
+  },
 })
 
 // Show progress bar on live navigation and form submits
