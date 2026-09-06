@@ -31,6 +31,7 @@ import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
+import PullToRefresh from "./hooks/pull_to_refresh"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -45,6 +46,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushNotifications,
     PushPrompt,
     ModalBack,
+    PullToRefresh,
   },
 })
 
