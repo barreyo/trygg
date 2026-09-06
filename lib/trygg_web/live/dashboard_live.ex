@@ -700,7 +700,6 @@ defmodule TryggWeb.DashboardLive do
         </div>
       </div>
 
-
       <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
       <div :for={entry <- @summary.running} class="mb-6">
         <.timer_banner
