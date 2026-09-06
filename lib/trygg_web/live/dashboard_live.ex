@@ -43,7 +43,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:now_tick, System.system_time(:second))
       |> assign(:vapid_public_key, Push.vapid_public_key())
       |> allow_upload(:photo,
-        accept: Log.photo_extensions(),
+        accept: Log.photo_accept(),
         max_entries: 1,
         max_file_size: Log.max_photo_bytes()
       )
