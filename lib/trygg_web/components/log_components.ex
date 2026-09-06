@@ -523,6 +523,8 @@ defmodule TryggWeb.LogComponents do
       class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
       phx-window-keydown="cancel_edit"
       phx-key="escape"
+      phx-hook="ModalBack"
+      data-close-event="cancel_edit"
     >
       <div class="absolute inset-0 bg-black/60" phx-click="cancel_edit"></div>
       <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
