@@ -177,6 +177,177 @@ defmodule Trygg.Log do
   end
 
   @doc """
+  Idempotently records an entry that was captured offline and is now being
+  synced. `attrs` must carry a client-generated `"client_id"` (a UUID) and the
+  real event time in `"started_at"`; re-syncing the same `client_id` for the
+  child updates that row in place instead of inserting a duplicate.
+
+  Like `create_entry/4` it requires `:caregiver` and broadcasts — `:created`
+  the first time a `client_id` is seen for the child, `:updated` on a re-sync.
+
+  Returns `{:error, :missing_client_id}` when the `client_id` is absent or
+  malformed; otherwise `{:ok, entry}` / `{:error, %Ecto.Changeset{}}`.
+  """
+  def sync_entry(%Scope{} = scope, %Child{} = child, attrs) do
+    Families.authorize!(scope, child, :caregiver)
+
+    attrs = stringify(attrs)
+
+    with {:ok, client_id} <- fetch_client_id(attrs) do
+      attrs =
+        attrs
+        |> Map.put("client_id", client_id)
+        |> clamp_started_at()
+        |> instantaneous_feeding()
+
+      result =
+        case Repo.get_by(Entry, child_id: child.id, client_id: client_id) do
+          nil ->
+            %Entry{child_id: child.id, logged_by_id: scope.user.id}
+            |> Entry.changeset(attrs)
+            |> Repo.insert(
+              on_conflict: {:replace, [:started_at, :ended_at, :data, :note, :updated_at]},
+              conflict_target:
+                {:unsafe_fragment, ~s<("child_id", "client_id") WHERE "client_id" IS NOT NULL>}
+            )
+            |> broadcast(child.id, :created)
+
+          %Entry{} = existing ->
+            existing
+            |> Entry.changeset(attrs)
+            |> Repo.update()
+            |> broadcast(existing.child_id, :updated)
+        end
+
+      with {:ok, entry} <- result, do: {:ok, collapse_open_sleeps(entry)}
+    end
+  end
+
+  @doc """
+  Stops an already-persisted running timer by its server `id` — the offline
+  "Stop sleep" for a sleep that was started while online, so there is no
+  `client_id` to key on. `ended_at` (ISO8601) is the moment the caregiver
+  tapped stop; a value far in the future is pulled back to now. Requires
+  `:caregiver` for the timer's child. Idempotent.
+
+  `{:error, :not_found}` if the entry is gone or belongs to another child.
+  """
+  def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at) do
+    with {int, ""} <- Integer.parse(to_string(id)),
+         %Entry{child_id: child_id} = entry when child_id == child.id <- Repo.get(Entry, int) do
+      stop_timer(scope, entry, %{"ended_at" => clamp_future(ended_at)})
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  # At most one running sleep per child. When a sync leaves an open sleep and
+  # the child has others open — two caregivers each started one, at least one
+  # offline — treat them as the same sleep: keep the earliest start, fold any
+  # note/data from the rest into it, and delete the rest.
+  defp collapse_open_sleeps(%Entry{type: :sleep, ended_at: nil, child_id: child_id} = entry) do
+    others =
+      Entry
+      |> where(
+        [e],
+        e.child_id == ^child_id and e.type == :sleep and is_nil(e.ended_at) and e.id != ^entry.id
+      )
+      |> Repo.all()
+
+    case others do
+      [] ->
+        entry
+
+      _ ->
+        all = [entry | others]
+        kept = Enum.min_by(all, & &1.started_at, DateTime)
+        losers = Enum.reject(all, &(&1.id == kept.id))
+
+        note = kept.note || Enum.find_value(losers, & &1.note)
+        data = Enum.reduce(losers, kept.data || %{}, &Map.merge(&1.data || %{}, &2))
+
+        {:ok, kept} =
+          kept
+          |> Entry.changeset(%{
+            "type" => "sleep",
+            "started_at" => kept.started_at,
+            "note" => note,
+            "data" => data
+          })
+          |> Repo.update()
+
+        Enum.each(losers, fn loser ->
+          {:ok, _} = Repo.delete(loser)
+          Families.broadcast(child_id, {:log, :deleted, loser})
+        end)
+
+        Families.broadcast(child_id, {:log, :updated, kept})
+        kept
+    end
+  end
+
+  defp collapse_open_sleeps(entry), do: entry
+
+  defp fetch_client_id(attrs) do
+    case Ecto.UUID.cast(attrs["client_id"]) do
+      {:ok, uuid} -> {:ok, uuid}
+      :error -> {:error, :missing_client_id}
+    end
+  end
+
+  # Trust the device's event time, but a clock running fast shouldn't file an
+  # entry in the future. Anything more than two minutes ahead of the server
+  # clock is pulled back to now; past timestamps are left alone.
+  defp clamp_started_at(attrs) do
+    case parse_dt(attrs["started_at"]) do
+      {:ok, dt} ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        dt = DateTime.truncate(dt, :second)
+        Map.put(attrs, "started_at", if(DateTime.diff(dt, now) > 120, do: now, else: dt))
+
+      :error ->
+        attrs
+    end
+  end
+
+  # Pull a timestamp more than two minutes ahead of the server clock back to
+  # now; leave everything else (including `nil`) untouched.
+  defp clamp_future(value) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    case parse_dt(value) do
+      {:ok, dt} ->
+        dt = DateTime.truncate(dt, :second)
+        if DateTime.diff(dt, now) > 120, do: now, else: dt
+
+      :error ->
+        value
+    end
+  end
+
+  # Feeds are instantaneous, same as `create_entry/4` — fill in `ended_at`
+  # when an offline client left it blank (absent or an explicit `null`).
+  defp instantaneous_feeding(%{"type" => "feeding", "started_at" => started} = attrs) do
+    case Map.get(attrs, "ended_at") do
+      nil -> Map.put(attrs, "ended_at", started)
+      _ -> attrs
+    end
+  end
+
+  defp instantaneous_feeding(attrs), do: attrs
+
+  defp parse_dt(%DateTime{} = dt), do: {:ok, dt}
+
+  defp parse_dt(s) when is_binary(s) do
+    case DateTime.from_iso8601(s) do
+      {:ok, dt, _offset} -> {:ok, dt}
+      _ -> :error
+    end
+  end
+
+  defp parse_dt(_), do: :error
+
+  @doc """
   Updates an entry. Requires `:caregiver` for the entry's child.
 
   When `attrs` changes `photo_key` (to a new key or to `nil`), the previously

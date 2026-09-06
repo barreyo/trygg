@@ -31,6 +31,9 @@ import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
+import OfflineContext from "./hooks/offline_context"
+import {installOfflinePanel} from "./offline/panel_toggle"
+import {startAutoSync} from "./offline/auto_sync"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -45,6 +48,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushNotifications,
     PushPrompt,
     ModalBack,
+    OfflineContext,
   },
 })
 
@@ -55,6 +59,11 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
+
+// Reveal the offline quick-logger if the connection drops while the app is open,
+// and drain any queued offline entries once we're connected.
+installOfflinePanel(liveSocket)
+startAutoSync({liveSocket})
 
 // Register the service worker for installable-PWA / offline app shell.
 if ("serviceWorker" in navigator) {

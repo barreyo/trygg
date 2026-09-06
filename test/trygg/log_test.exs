@@ -269,4 +269,217 @@ defmodule Trygg.LogTest do
       assert_receive {:log, :deleted, %Entry{}}
     end
   end
+
+  defp offline_diaper(cid, overrides \\ %{}) do
+    Map.merge(
+      %{
+        "client_id" => cid,
+        "type" => "diaper",
+        "started_at" =>
+          DateTime.utc_now() |> DateTime.add(-300, :second) |> DateTime.to_iso8601(),
+        "data" => %{"kind" => "pee"}
+      },
+      overrides
+    )
+  end
+
+  describe "sync_entry/3" do
+    setup do
+      %{cid: Ecto.UUID.generate()}
+    end
+
+    test "records an offline entry with its client_id and event time", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      assert {:ok, entry} = Log.sync_entry(scope, child, offline_diaper(cid))
+      assert entry.client_id == cid
+      assert entry.type == :diaper
+      assert entry.data == %{"kind" => "pee"}
+      assert entry.logged_by_id == scope.user.id
+      assert DateTime.diff(DateTime.utc_now(), entry.started_at) in 280..320
+    end
+
+    test "re-syncing the same client_id updates in place, not a duplicate", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      assert {:ok, first} = Log.sync_entry(scope, child, offline_diaper(cid))
+
+      assert {:ok, second} =
+               Log.sync_entry(scope, child, offline_diaper(cid, %{"note" => "leaked"}))
+
+      assert second.id == first.id
+      assert second.note == "leaked"
+      assert Log.recent_entries(scope, child) |> length() == 1
+    end
+
+    test "first sync broadcasts :created, a re-sync broadcasts :updated", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      Trygg.Families.subscribe(child.id)
+
+      {:ok, _} = Log.sync_entry(scope, child, offline_diaper(cid))
+      assert_receive {:log, :created, %Entry{client_id: ^cid}}
+
+      {:ok, _} = Log.sync_entry(scope, child, offline_diaper(cid, %{"note" => "again"}))
+      assert_receive {:log, :updated, %Entry{client_id: ^cid}}
+    end
+
+    test "clamps a future started_at back to now", %{scope: scope, child: child, cid: cid} do
+      future = DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.to_iso8601()
+
+      assert {:ok, entry} =
+               Log.sync_entry(scope, child, offline_diaper(cid, %{"started_at" => future}))
+
+      assert DateTime.diff(DateTime.utc_now(), entry.started_at) |> abs() <= 5
+    end
+
+    test "a missing or malformed client_id is rejected", %{scope: scope, child: child, cid: cid} do
+      assert {:error, :missing_client_id} =
+               Log.sync_entry(scope, child, offline_diaper(cid) |> Map.delete("client_id"))
+
+      assert {:error, :missing_client_id} =
+               Log.sync_entry(scope, child, offline_diaper("not-a-uuid"))
+    end
+
+    test "invalid type-specific data comes back as a changeset error", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      attrs =
+        offline_diaper(cid, %{"type" => "feeding", "data" => %{"bottle_contents" => "formula"}})
+
+      assert {:error, %Ecto.Changeset{} = cs} = Log.sync_entry(scope, child, attrs)
+      assert %{data: _} = errors_on(cs)
+    end
+
+    test "an offline feed with a null ended_at is stored as instantaneous", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      attrs =
+        offline_diaper(cid, %{
+          "type" => "feeding",
+          "ended_at" => nil,
+          "data" => %{"amount_ml" => 90}
+        })
+
+      assert {:ok, entry} = Log.sync_entry(scope, child, attrs)
+      assert entry.ended_at == entry.started_at
+    end
+
+    test "syncs a sleep that started and ended offline as one entry", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      started = DateTime.utc_now() |> DateTime.add(-7200, :second)
+      ended = DateTime.utc_now() |> DateTime.add(-3600, :second)
+
+      running =
+        offline_diaper(cid, %{
+          "type" => "sleep",
+          "started_at" => DateTime.to_iso8601(started),
+          "data" => %{"location" => "crib"}
+        })
+
+      assert {:ok, open} = Log.sync_entry(scope, child, running)
+      assert open.ended_at == nil
+
+      assert {:ok, closed} =
+               Log.sync_entry(
+                 scope,
+                 child,
+                 Map.put(running, "ended_at", DateTime.to_iso8601(ended))
+               )
+
+      assert closed.id == open.id
+      assert DateTime.diff(closed.ended_at, closed.started_at) == 3600
+    end
+
+    test "a viewer cannot sync", %{child: child, cid: cid} do
+      viewer_user = user_fixture()
+      membership_fixture(child, viewer_user, :viewer)
+      viewer = user_scope_fixture(viewer_user)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.sync_entry(viewer, child, offline_diaper(cid))
+      end
+    end
+
+    test "collapses two overlapping open sleeps into the earliest, merging notes", %{
+      scope: scope,
+      child: child,
+      cid: cid
+    } do
+      earlier = DateTime.utc_now() |> DateTime.add(-1800, :second)
+      later = DateTime.utc_now() |> DateTime.add(-600, :second)
+
+      # One started online (no client_id), then a second synced from offline.
+      {:ok, online} = Log.start_timer(scope, child, :sleep, %{"started_at" => earlier})
+
+      {:ok, synced} =
+        Log.sync_entry(
+          scope,
+          child,
+          offline_diaper(cid, %{
+            "type" => "sleep",
+            "started_at" => DateTime.to_iso8601(later),
+            "ended_at" => nil,
+            "note" => "contact nap",
+            "data" => %{}
+          })
+        )
+
+      # The earliest-started open sleep survives and keeps the note; the
+      # offline-synced duplicate is gone and only one open sleep remains.
+      assert synced.id == online.id
+      assert synced.note == "contact nap"
+      assert synced.ended_at == nil
+      assert [remaining] = Log.running_timers(scope, child)
+      assert remaining.id == online.id
+      refute Enum.any?(Log.list_entries(scope, child), &(&1.client_id == cid))
+    end
+  end
+
+  describe "sync_stop_timer/4" do
+    test "stops a running timer by its server id", %{scope: scope, child: child} do
+      {:ok, nap} = Log.start_timer(scope, child, :sleep)
+      at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      assert {:ok, stopped} =
+               Log.sync_stop_timer(scope, child, nap.id, DateTime.to_iso8601(at))
+
+      assert stopped.id == nap.id
+      assert stopped.ended_at == at
+      assert Log.running_timers(scope, child) == []
+    end
+
+    test "is idempotent", %{scope: scope, child: child} do
+      started = DateTime.utc_now() |> DateTime.add(-3600, :second) |> DateTime.truncate(:second)
+      {:ok, nap} = Log.start_timer(scope, child, :sleep, %{"started_at" => started})
+      at = DateTime.utc_now() |> DateTime.add(-600, :second) |> DateTime.truncate(:second)
+      iso = DateTime.to_iso8601(at)
+
+      assert {:ok, _} = Log.sync_stop_timer(scope, child, nap.id, iso)
+      assert {:ok, again} = Log.sync_stop_timer(scope, child, nap.id, iso)
+      assert again.ended_at == at
+    end
+
+    test "not_found for an entry on another child or a bad id", %{scope: scope, child: child} do
+      other = child_fixture(scope)
+      {:ok, elsewhere} = Log.start_timer(scope, other, :sleep)
+
+      assert {:error, :not_found} = Log.sync_stop_timer(scope, child, elsewhere.id, nil)
+      assert {:error, :not_found} = Log.sync_stop_timer(scope, child, 999_999, nil)
+      assert {:error, :not_found} = Log.sync_stop_timer(scope, child, "not-an-id", nil)
+    end
+  end
 end

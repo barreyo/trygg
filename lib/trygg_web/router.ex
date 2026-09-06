@@ -74,6 +74,11 @@ defmodule TryggWeb.Router do
     post "/push/subscriptions", PushSubscriptionController, :create
     delete "/push/subscriptions", PushSubscriptionController, :delete
 
+    # Batch-sync log entries captured while the PWA was offline. Plain JSON,
+    # not a LiveView event: the offline queue is flushed with a bare `fetch`
+    # once the device reconnects. Membership-scoped like the log itself.
+    post "/c/:id/log/entries", LogSyncController, :create
+
     live_session :require_authenticated_user,
       on_mount: [
         {TryggWeb.UserAuth, :require_authenticated},
