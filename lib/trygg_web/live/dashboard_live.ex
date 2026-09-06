@@ -45,7 +45,8 @@ defmodule TryggWeb.DashboardLive do
       |> allow_upload(:photo,
         accept: Log.photo_extensions(),
         max_entries: 1,
-        max_file_size: Log.max_photo_bytes()
+        max_file_size: Log.max_photo_bytes(),
+        auto_upload: true
       )
       |> refresh()
 
@@ -1026,7 +1027,7 @@ defmodule TryggWeb.DashboardLive do
 
               <.photo_field upload={@photo_upload} />
 
-              <.sheet_buttons save="Save" />
+              <.sheet_buttons save="Save" uploading?={photo_uploading?(@photo_upload)} />
             </.form>
           <% :sleep_stop -> %>
             <h3 class="font-semibold text-lg mb-3">How did they sleep?</h3>
@@ -1040,7 +1041,7 @@ defmodule TryggWeb.DashboardLive do
               <.input field={@form[:ended_at]} type="datetime-local" label="Woke up at" />
               <.note_field form={@form} />
               <.photo_field upload={@photo_upload} />
-              <.sheet_buttons save="Save sleep" />
+              <.sheet_buttons save="Save sleep" uploading?={photo_uploading?(@photo_upload)} />
             </.form>
           <% :sleep_start -> %>
             <h3 class="font-semibold text-lg mb-3">When did they fall asleep?</h3>
@@ -1061,7 +1062,7 @@ defmodule TryggWeb.DashboardLive do
               <.input field={@form[:ended_at]} type="datetime-local" label="Woke up" />
               <.note_field form={@form} />
               <.photo_field upload={@photo_upload} />
-              <.sheet_buttons save="Add sleep" />
+              <.sheet_buttons save="Add sleep" uploading?={photo_uploading?(@photo_upload)} />
             </.form>
           <% :diaper_past -> %>
             <h3 class="font-semibold text-lg mb-3">Add a diaper from earlier</h3>
@@ -1091,7 +1092,7 @@ defmodule TryggWeb.DashboardLive do
                 placeholder="Anything to remember? (optional)"
               />
               <.photo_field upload={@photo_upload} />
-              <.sheet_buttons save="Add diaper" />
+              <.sheet_buttons save="Add diaper" uploading?={photo_uploading?(@photo_upload)} />
             </.form>
         <% end %>
       </div>
@@ -1127,11 +1128,12 @@ defmodule TryggWeb.DashboardLive do
   end
 
   attr :save, :string, required: true
+  attr :uploading?, :boolean, default: false
 
   defp sheet_buttons(assigns) do
     ~H"""
     <div class="flex gap-2 pt-1">
-      <.button type="submit" variant="primary" class="flex-1">{@save}</.button>
+      <.save_button label={@save} uploading?={@uploading?} class="flex-1" />
       <.button type="button" variant="ghost" phx-click="close_sheet">Cancel</.button>
     </div>
     """
