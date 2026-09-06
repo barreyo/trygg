@@ -69,8 +69,10 @@ defmodule Trygg.Reports do
 
     weight = recent_weight(scope, child)
 
-    insights =
-      Insights.summarize(child, days, today_day, now, PredictionLedger.prediction_opts(child.id))
+    # The prediction (and its nap-transition signal) always looks at the last
+    # ~18 days, even when the caller is viewing a shorter window.
+    pred_opts = [recent_days: all_days] ++ PredictionLedger.prediction_opts(child.id)
+    insights = Insights.summarize(child, days, today_day, now, pred_opts)
 
     feeding = Feeding.summarize(child, days, now, weight: weight)
     diapers = Diapers.summarize(child, days, now)
@@ -91,7 +93,8 @@ defmodule Trygg.Reports do
       diapers: diapers,
       shifts: shifts,
       growth: growth,
-      alerts: alerts
+      alerts: alerts,
+      prediction_accuracy: PredictionLedger.accuracy(child.id, :next_nap)
     })
   end
 

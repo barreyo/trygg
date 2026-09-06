@@ -24,6 +24,29 @@ runs on mount and on every 60 s tick — added work must stay O(days).
 
 ---
 
+## UI wiring — ✅ DONE (stacked PR)
+
+On top of the estimator work, the new signals are now surfaced:
+
+- **Dashboard** (`dashboard_live.ex`) — the `#glance-next-nap` line reads
+  `· still learning the pattern` for a `:blended` source and
+  `· schedule may be shifting` while `prediction.transition?`; the sleep card
+  status shows `nap schedule looks like it's shifting` when nothing more urgent
+  applies.
+- **Reports outlook** (`reports_live.ex`) — a `#outlook-transition` note when
+  the schedule is shifting; `· still learning the pattern` on the next-nap line;
+  `· earlier tonight, naps ran short` when `bedtime.shifted_by_seconds` is set;
+  and a `#outlook-accuracy` line ("Recent nap predictions landed within about
+  N min") once ≥ 5 predictions have been checked against real naps.
+- `Trygg.Reports.summary/4` now returns `prediction_accuracy`
+  (`PredictionLedger.accuracy(child.id, :next_nap)`), and passes
+  `recent_days: all_days` into `Insights.summarize/5` so the ~2-week
+  nap-transition comparison works even on a 7-day report view.
+- Tests: dashboard "still learning", reports transition note, reports accuracy
+  line.
+
+---
+
 ## Phase 0 — Prediction ledger (no behaviour change) — ✅ DONE
 
 Shipped in this branch:
