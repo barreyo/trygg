@@ -12,11 +12,41 @@ defmodule Trygg.Reports.NormsTest do
   end
 
   test "wake windows widen with age and stop after three years" do
-    assert {2700, 3600} = Norms.wake_window_range(10)
+    assert {2400, 3600} = Norms.wake_window_range(10)
     assert {lo, hi} = Norms.wake_window_range(120)
     assert lo < hi
     assert Norms.wake_window_range(2000) == nil
     assert Norms.wake_window_range(nil) == nil
+
+    # Lower bound is non-decreasing with age.
+    {lo_1mo, _} = Norms.wake_window_range(30)
+    {lo_6mo, _} = Norms.wake_window_range(180)
+    {lo_1yr, _} = Norms.wake_window_range(365)
+    assert lo_1mo <= lo_6mo and lo_6mo <= lo_1yr
+
+    # Interpolated, so no jump across a former band boundary.
+    {lo_a, hi_a} = Norms.wake_window_range(89)
+    {lo_b, hi_b} = Norms.wake_window_range(91)
+    assert abs(lo_a - lo_b) < 3 * 60
+    assert abs(hi_a - hi_b) < 3 * 60
+  end
+
+  test "typical_nap_count steps 4 → 3 → 2 → 1 across the first 15 months" do
+    assert Norms.typical_nap_count(30) == 4
+    assert Norms.typical_nap_count(120) == 3
+    assert Norms.typical_nap_count(300) == 2
+    assert Norms.typical_nap_count(500) == 1
+    assert Norms.typical_nap_count(2000) == nil
+    assert Norms.typical_nap_count(nil) == nil
+  end
+
+  test "wake_window_position_factor shortens the first window and lengthens the last" do
+    assert Norms.wake_window_position_factor(1, 4) < 1.0
+    assert Norms.wake_window_position_factor(4, 4) > 1.0
+    assert Norms.wake_window_position_factor(1, 1) == 1.0
+    # A middle window sits near 1.0.
+    mid = Norms.wake_window_position_factor(2, 4)
+    assert mid > 0.85 and mid < 1.15
   end
 
   test "intake guide narrows by age and ends after the first year" do

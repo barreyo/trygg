@@ -17,6 +17,7 @@ defmodule Trygg.Reports do
   alias Trygg.Reports.Diapers
   alias Trygg.Reports.Feeding
   alias Trygg.Reports.Insights
+  alias Trygg.Reports.PredictionLedger
   alias Trygg.Reports.Shifts
 
   # Long enough to reconstruct last night's cluster (and a late bedtime).
@@ -67,7 +68,10 @@ defmodule Trygg.Reports do
     today_day = List.last(days) || Day.build(child, today, [], now)
 
     weight = recent_weight(scope, child)
-    insights = Insights.summarize(child, days, today_day, now)
+
+    insights =
+      Insights.summarize(child, days, today_day, now, PredictionLedger.prediction_opts(child.id))
+
     feeding = Feeding.summarize(child, days, now, weight: weight)
     diapers = Diapers.summarize(child, days, now)
 
