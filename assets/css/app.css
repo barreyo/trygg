@@ -166,6 +166,17 @@ html { overscroll-behavior-y: none; }
   .snooze i { animation: none; opacity: 0.6; }
 }
 
+/* The live sleep arc on the Home rhythm dial breathes while a nap is running */
+@keyframes trygg-rhythm-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+.rhythm-pulse { animation: trygg-rhythm-pulse 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rhythm-pulse { animation: none; }
+}
+
 /* Bottom-sheet dialogs: slide up from the bottom on small screens */
 dialog.sheet { margin: 0 auto auto; }
 dialog.sheet::backdrop { background: rgb(0 0 0 / 0.6); }
