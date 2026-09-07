@@ -785,6 +785,41 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#glance-next-nap", "typical for age")
       assert has_element?(lv, "#glance-sleep", "for age")
     end
+
+    test "the rhythm dial calls out the next nap while the child is awake", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, child} =
+        Families.update_child(scope, child, %{
+          birth_date: Date.add(Date.utc_today(), -60),
+          timezone: midday_timezone()
+        })
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      entry_fixture(scope, child, %{
+        :type => :sleep,
+        "started_at" => DateTime.add(now, -9 * 3600, :second),
+        "ended_at" => DateTime.add(now, -20 * 60, :second)
+      })
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#rhythm-dial", "Next nap")
+    end
+
+    test "the rhythm dial shows the running sleep in its centre", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      Trygg.Log.start_timer(scope, child, :sleep)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#rhythm-dial", "Asleep")
+      assert has_element?(lv, "#rhythm-dial-elapsed")
+    end
   end
 
   describe "weight-check reminder" do

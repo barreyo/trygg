@@ -562,8 +562,71 @@ defmodule TryggWeb.DashboardLive do
     |> assign(:summary, summary)
     |> assign(:outlook, Reports.outlook(scope, child))
     |> assign(:weight_reminder, Growth.weight_check_reminder(scope, child))
+    |> assign_rhythm_center()
     |> push_offline_snapshot(scope, child, summary)
   end
+
+  # The single most actionable thing, for the middle of the rhythm dial: a
+  # running sleep timer wins, then the next predicted nap (tinted amber once
+  # they're past their usual window), then bedtime when the naps are done,
+  # then a plain "awake since" / "slept so far".
+  defp assign_rhythm_center(socket) do
+    assign(socket, :rhythm_center, rhythm_center(socket.assigns))
+  end
+
+  defp rhythm_center(%{summary: summary, outlook: outlook, current_child: child}) do
+    cond do
+      e = running_sleep_entry(summary) ->
+        %{
+          eyebrow: "Asleep",
+          since_unix: DateTime.to_unix(e.started_at),
+          detail: "since #{Child.local_clock(child, e.started_at)}",
+          tone: :success
+        }
+
+      nap = awake_next_nap(outlook) ->
+        %{
+          eyebrow: "Next nap",
+          big: nap.label,
+          detail: due_label(nap.in_seconds),
+          tone: if(match?(%{state: :past}, wake_pressure(outlook)), do: :warning, else: :primary)
+        }
+
+      bed = awake_bedtime(outlook) ->
+        %{
+          eyebrow: "Bedtime",
+          big: bed.label,
+          detail: due_label(DateTime.diff(bed.at, now(), :second)),
+          tone: :primary
+        }
+
+      woke = woke_at(summary) ->
+        %{
+          eyebrow: "Awake",
+          big: format_duration(DateTime.diff(now(), woke, :second)),
+          detail: "since #{Child.local_clock(child, woke)}",
+          tone: :base
+        }
+
+      true ->
+        %{
+          eyebrow: "Slept today",
+          big: format_duration(summary.today.sleep_seconds),
+          detail: "so far",
+          tone: :base
+        }
+    end
+  end
+
+  defp awake_next_nap(%{prediction: %{state: :awake, next_nap: %{} = nap}}), do: nap
+  defp awake_next_nap(_), do: nil
+
+  defp awake_bedtime(%{
+         prediction: %{state: :awake, next_nap: nil, bedtime: %{at: %DateTime{}} = b}
+       }),
+       do: b
+
+  defp awake_bedtime(_), do: nil
 
   # Mirror a compact read cache to the client (via the OfflineContext hook →
   # IndexedDB) so the offline quick-logger can show recent activity and a
@@ -699,6 +762,14 @@ defmodule TryggWeb.DashboardLive do
           </span>
         </div>
       </div>
+
+      <%!-- Typical-day dial: the child's rhythm at a glance, with the next
+           actionable moment (or a running timer) called out in the middle. --%>
+      <.rhythm_dial
+        rhythm={@outlook.rhythm}
+        center={@rhythm_center}
+        child_name={@current_child.name}
+      />
 
       <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
       <div :for={entry <- @summary.running} class="mb-6">

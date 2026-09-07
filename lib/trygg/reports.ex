@@ -18,6 +18,7 @@ defmodule Trygg.Reports do
   alias Trygg.Reports.Feeding
   alias Trygg.Reports.Insights
   alias Trygg.Reports.PredictionLedger
+  alias Trygg.Reports.Rhythm
   alias Trygg.Reports.Shifts
 
   # Long enough to reconstruct last night's cluster (and a late bedtime).
@@ -91,7 +92,8 @@ defmodule Trygg.Reports do
       diapers: diapers,
       shifts: shifts,
       growth: growth,
-      alerts: alerts
+      alerts: alerts,
+      rhythm: Rhythm.summarize(child, days, today_day, now)
     })
   end
 
@@ -119,14 +121,15 @@ defmodule Trygg.Reports do
 
   @doc """
   The slice of `summary/4` the Home screen needs: today's sleep prediction and
-  wake pressure, the next-feed estimate, hydration status and the alert list.
-  Built from the last #{@outlook_window} days.
+  wake pressure, the "typical day" rhythm, the next-feed estimate, hydration
+  status and the alert list. Built from the last #{@outlook_window} days.
   """
   def outlook(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
     s = summary(scope, child, @outlook_window, now)
 
     %{
       prediction: s.prediction,
+      rhythm: s.rhythm,
       next_feed: s.feeding.next_feed,
       cluster: s.feeding.cluster,
       diapers: %{flags: s.diapers.flags, dry_seconds: s.diapers.dry_seconds},
