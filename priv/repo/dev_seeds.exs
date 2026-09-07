@@ -28,7 +28,7 @@ defmodule Trygg.DevSeeds do
   alias Trygg.Growth.Percentiles
   alias Trygg.Log.Entry
 
-  @email "hello@johabackman.com"
+  @email "hello@johanbackman.com"
   @first_name "Johan"
   @last_name "Backman"
   @child_name "Astrid"
