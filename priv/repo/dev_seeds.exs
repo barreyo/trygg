@@ -4,16 +4,29 @@
 #     # or: mix run priv/repo/dev_seeds.exs
 #
 # Creates (or reuses) a magic-link user `hello@johabackman.com` / "Johan Backman"
-# and a one-week-old daughter, Astrid, then fills her shared log with a realistic
-# week of newborn life: bottle feeds every couple of hours (small colostrum-era
-# amounts growing day by day), a dozen-ish diapers a day (meconium → transitional →
-# seedy yellow), and the short, scattered sleeps of a newborn — night stretches
-# in the bassinet, daytime contact naps, an evening cluster-feed slump. If the
-# current wall-clock lands mid-nap, that nap is left running so the dashboard's
-# live sleep timer has something to show.
+# and two children on his shared log:
 #
-# Re-running wipes Astrid's existing entries and regenerates, so it's safe to
-# run repeatedly. The RNG is seeded, so the shape of the week is stable.
+#   * Astrid — one week old. A realistic newborn week: bottle feeds every couple
+#     of hours (small colostrum-era amounts growing day by day), a dozen-ish
+#     diapers a day (meconium → transitional → seedy yellow), and the short,
+#     scattered sleeps of a newborn. Predictions here lean on the age prior —
+#     no circadian rhythm yet.
+#
+#   * Otto — about five months old, on a settled three-nap routine, so the sleep
+#     predictor has something real to work with. Three weeks of age-appropriate
+#     sleep with day-to-day jitter, and a short first nap today so bedtime is
+#     pulled earlier. Every historical wake is replayed through
+#     `Trygg.Reports.PredictionLedger`, so the ledger holds real reconciled
+#     predictions (within ~10 min) and the Reports outlook reports its recent
+#     accuracy. Set `@predictor_transition_days_ago` to ~6 to make the "nap
+#     schedule looks like it's shifting" signal fire instead.
+#
+# If the current wall-clock lands mid-nap for either child, that nap is left
+# running so the dashboard's live sleep timer has something to show.
+#
+# Re-running wipes both children's entries (and Otto's prediction ledger) and
+# regenerates, so it's safe to run repeatedly. The RNG is seeded, so the shape
+# is stable.
 
 defmodule Trygg.DevSeeds do
   import Ecto.Query
@@ -21,12 +34,22 @@ defmodule Trygg.DevSeeds do
   alias Trygg.{Accounts, Families, Repo}
   alias Trygg.Accounts.Scope
   alias Trygg.Log.Entry
+  alias Trygg.Reports.{Prediction, PredictionLedger}
 
   @email "hello@johabackman.com"
   @first_name "Johan"
   @last_name "Backman"
   @child_name "Astrid"
   @tz "America/Los_Angeles"
+
+  # Otto — the settled routine the sleep predictor is built for.
+  @predictor_name "Otto"
+  @predictor_age_days 150
+  @predictor_history_days 21
+  # Days ago the three-nap → two-nap drop happens. 0 = never (a steady
+  # three-nap routine, the default). Bump to ~6 to see the "nap schedule looks
+  # like it's shifting" signal fire.
+  @predictor_transition_days_ago 0
 
   def run do
     :rand.seed(:exsss, {20_260_901, 7, 24})
@@ -46,6 +69,8 @@ defmodule Trygg.DevSeeds do
 
     {inserted, _} = Repo.insert_all(Entry, rows)
 
+    otto = seed_predictor_child(scope, user, now)
+
     IO.puts("""
 
     Seeded local dev data:
@@ -53,8 +78,10 @@ defmodule Trygg.DevSeeds do
       child  #{child.name}  (female, born #{DateTime.shift_zone!(birth, @tz) |> Calendar.strftime("%Y-%m-%d %H:%M")} #{@tz}, 1 week old)
       log    #{inserted} entries over 7 days#{if deleted > 0, do: "  (replaced #{deleted} previous)", else: ""}
       running nap: #{if Enum.any?(rows, &is_nil(&1.ended_at)), do: "yes — dashboard timer is live", else: "no"}
+      child  #{otto.name}  (~5 months old, settled routine; #{@predictor_history_days}d of sleep, prediction ledger filled)
 
     Sign in at /users/log-in with #{user.email} (grab the magic link from the server log).
+    The sleep predictor is live on #{otto.name}'s Home card and Reports → Trends → Today's outlook.
     """)
   end
 
@@ -302,6 +329,191 @@ defmodule Trygg.DevSeeds do
       if acc <= weight, do: {:halt, value}, else: {:cont, acc - weight}
     end)
   end
+
+  # --- Otto: the settled routine for the sleep predictor -----------------
+
+  # An age-appropriate day: morning wake, then a run of naps separated by
+  # age-typical wake windows, then bedtime. All in minutes from local midnight.
+  # `three_nap?` toggles the pre / post nap-transition shape.
+  defp predictor_model(true) do
+    %{wake: 6 * 60 + 45, ww: [90, 130, 160, 175], nap: [70, 75, 40]}
+  end
+
+  defp predictor_model(false) do
+    %{wake: 6 * 60 + 45, ww: [165, 205, 220], nap: [85, 75]}
+  end
+
+  # Steady three-nap routine unless a transition is configured.
+  defp predictor_three_nap?(days_ago) do
+    @predictor_transition_days_ago <= 0 or days_ago >= @predictor_transition_days_ago
+  end
+
+  defp upsert_predictor_child(scope, now) do
+    birth = DateTime.add(now, -@predictor_age_days * 24 * 3600, :second)
+    local_birth = DateTime.shift_zone!(birth, @tz)
+
+    attrs = %{
+      name: @predictor_name,
+      birth_date: DateTime.to_date(local_birth),
+      birth_time: ~T[04:10:00],
+      sex: :male,
+      timezone: @tz,
+      # early day start so the first short wake window is unambiguously daytime
+      day_start: ~T[06:00:00],
+      night_start: ~T[19:00:00]
+    }
+
+    case Enum.find(Families.list_children(scope), &(&1.name == @predictor_name)) do
+      nil -> Families.create_child(scope, attrs) |> ok!()
+      existing -> Families.update_child(scope, existing, attrs) |> ok!()
+    end
+  end
+
+  defp seed_predictor_child(scope, user, now) do
+    child = upsert_predictor_child(scope, now)
+
+    Repo.delete_all(from(e in Entry, where: e.child_id == ^child.id))
+    Repo.delete_all(from(p in Prediction, where: p.child_id == ^child.id))
+
+    today = child |> local_now(now) |> DateTime.to_date()
+    dates = for i <- @predictor_history_days..1//-1, do: Date.add(today, -i)
+
+    # Walk the days in order, carrying each day's bedtime forward so the next
+    # morning's overnight block starts exactly where the last wake window ended.
+    {day_blocks, last_bed} =
+      Enum.reduce(dates, {[], nil}, fn d, {acc, prev_bed} ->
+        model = predictor_model(predictor_three_nap?(day_index_from_today(today, d)))
+        wake_min = model.wake + rand_between(-12, 12)
+        wake_dt = at_local(child, d, wake_min)
+        night_start = prev_bed || at_local(child, Date.add(d, -1), model.wake + 12 * 60)
+
+        {naps, bed_min} = full_day_naps(child, d, model, wake_min)
+        night = %{s: night_start, e: wake_dt, wake?: true}
+
+        {acc ++ [night | naps], at_local(child, d, bed_min)}
+      end)
+
+    blocks =
+      (day_blocks ++ partial_today(child, today, now, last_bed))
+      |> Enum.sort_by(& &1.s, DateTime)
+
+    # Don't record predictions from the first few days — they'd only ever be the
+    # age prior and would drag the accuracy summary down for weeks.
+    ledger_from = at_local(child, Date.add(today, -(@predictor_history_days - 5)), 0)
+
+    # Insert a block, and on every real wake replay it through the ledger — so
+    # the prediction is always built from the log as it stood at that moment.
+    Enum.each(blocks, fn b ->
+      Repo.insert_all(Entry, [sleep_block_row(child, user, b)])
+
+      if b.wake? and not is_nil(b.e) and DateTime.compare(b.e, ledger_from) == :gt do
+        PredictionLedger.track(child, DateTime.add(b.e, 1, :second))
+      end
+    end)
+
+    child
+  end
+
+  # A full past day's naps as {start, end} wake blocks, plus the bedtime (the
+  # last nap end + the final wake window), all in minutes from local midnight.
+  # History days follow the routine with modest jitter so the predictor has a
+  # clean pattern to lock onto; the interesting "short day" is only today.
+  defp full_day_naps(child, date, model, wake_min) do
+    {naps, cursor} =
+      model.nap
+      |> Enum.with_index()
+      |> Enum.reduce({[], wake_min}, fn {dur, i}, {acc, t} ->
+        start = t + Enum.at(model.ww, i) + rand_between(-9, 9)
+        finish = start + max(dur + rand_between(-9, 9), 15)
+
+        block = %{s: at_local(child, date, start), e: at_local(child, date, finish), wake?: true}
+        {[block | acc], finish}
+      end)
+
+    bed_min = cursor + List.last(model.ww) + rand_between(-12, 12)
+    {Enum.reverse(naps), bed_min}
+  end
+
+  # Today up to `now`: last night's stretch, then the naps that have already
+  # happened (the last one left running if we're mid-nap), with a deliberately
+  # short first nap so the day is trailing the usual daytime sleep.
+  defp partial_today(child, today, now, last_bed) do
+    model = predictor_model(predictor_three_nap?(0))
+    wake_min = model.wake + rand_between(-8, 8)
+
+    night_start =
+      last_bed ||
+        at_local(child, Date.add(today, -1), model.wake + 12 * 60 + rand_between(-15, 25))
+
+    wake_dt = at_local(child, today, wake_min)
+
+    if DateTime.compare(wake_dt, now) != :lt do
+      # still asleep for the night
+      [%{s: night_start, e: nil, wake?: false}]
+    else
+      night = %{s: night_start, e: wake_dt, wake?: true}
+      [night | partial_today_naps(child, today, now, model, wake_min)]
+    end
+  end
+
+  defp partial_today_naps(child, today, now, model, wake_min) do
+    {blocks, _cursor, _stop} =
+      model.nap
+      |> Enum.with_index()
+      |> Enum.reduce({[], wake_min, false}, fn
+        _pair, {acc, t, true} ->
+          {acc, t, true}
+
+        {dur, i}, {acc, t, false} ->
+          start = t + Enum.at(model.ww, i) + rand_between(-10, 10)
+          # first nap of the day runs short on purpose
+          len = if i == 0, do: round(dur * 0.45), else: dur + rand_between(-10, 10)
+          finish = start + max(len, 12)
+
+          start_dt = at_local(child, today, start)
+          finish_dt = at_local(child, today, finish)
+
+          cond do
+            DateTime.compare(start_dt, now) != :lt ->
+              {acc, t, true}
+
+            DateTime.compare(finish_dt, now) != :lt ->
+              {[%{s: start_dt, e: nil, wake?: false} | acc], finish, true}
+
+            true ->
+              {[%{s: start_dt, e: finish_dt, wake?: true} | acc], finish, false}
+          end
+      end)
+
+    Enum.reverse(blocks)
+  end
+
+  defp sleep_block_row(child, user, %{s: s, e: e}) do
+    night? = local_hour(s) >= 19 or local_hour(s) < 6
+
+    loc =
+      if night?,
+        do: pick([{"bassinet", 60}, {"crib", 38}, {"contact", 2}]),
+        else: pick([{"crib", 45}, {"bassinet", 30}, {"contact", 15}, {"stroller", 10}])
+
+    base_row(child, user, :sleep, s, e, %{"location" => loc}, nil)
+  end
+
+  # --- small helpers ----------------------------------------------------
+
+  defp ok!({:ok, value}), do: value
+
+  defp local_now(child, now), do: DateTime.shift_zone!(now, child.timezone)
+
+  defp at_local(child, %Date{} = date, minutes) do
+    minutes = max(round(minutes), 0)
+    extra_days = div(minutes, 24 * 60)
+    mins = rem(minutes, 24 * 60)
+    time = Time.new!(div(mins, 60), rem(mins, 60), 0)
+    Trygg.Families.Child.at_local(child, Date.add(date, extra_days), time)
+  end
+
+  defp day_index_from_today(today, date), do: Date.diff(today, date)
 end
 
 Trygg.DevSeeds.run()
