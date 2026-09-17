@@ -37,7 +37,6 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:can_write, child.role in [:owner, :caregiver])
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
-      |> assign(:sheet_amount, 0.0)
       |> assign(:editing, nil)
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
@@ -243,6 +242,7 @@ defmodule TryggWeb.DashboardLive do
         %{
           "at" => Child.to_local_input(socket.assigns.current_child, now()),
           "bottle_contents" => last_bottle_contents(last),
+          "amount" => trim(last_bottle_amount(last, socket.assigns.unit_system)),
           "note" => ""
         },
         as: :entry
@@ -251,11 +251,7 @@ defmodule TryggWeb.DashboardLive do
     socket =
       socket
       |> clear_photo_upload()
-      |> assign(
-        sheet: :bottle,
-        sheet_form: form,
-        sheet_amount: last_bottle_amount(last, socket.assigns.unit_system)
-      )
+      |> assign(sheet: :bottle, sheet_form: form)
 
     {:noreply, socket}
   end
@@ -369,18 +365,22 @@ defmodule TryggWeb.DashboardLive do
   end
 
   def handle_event("bump_amount", %{"by" => by}, socket) do
-    step = String.to_integer(by)
-    {:noreply, update(socket, :sheet_amount, &(max(&1 + step, 0) |> :erlang.float()))}
+    step = parse_number(by) || 0
+    current = parse_number(current_sheet_params(socket)["amount"]) || 0
+    new_amount = trim(max(current + step, 0) * 1.0)
+    params = Map.put(current_sheet_params(socket), "amount", new_amount)
+    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
   end
 
   def handle_event("reset_amount", _params, socket) do
-    {:noreply, assign(socket, :sheet_amount, 0.0)}
+    params = Map.put(current_sheet_params(socket), "amount", trim(0.0))
+    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
   end
 
   def handle_event("save_sheet", %{"entry" => params}, socket) do
     units = socket.assigns.unit_system
     child = socket.assigns.current_child
-    ml = Units.from_display(socket.assigns.sheet_amount, :volume, units)
+    ml = Units.from_display(parse_number(params["amount"]) || 0, :volume, units)
 
     result =
       with {:ok, at} <- Child.from_local_input(child, params["at"] || ""),
@@ -709,6 +709,21 @@ defmodule TryggWeb.DashboardLive do
   defp preset_steps(:metric), do: [10, 30, 60]
   defp preset_steps(:imperial), do: [1, 2, 4]
 
+  defp fine_step(:metric), do: 5
+  defp fine_step(:imperial), do: 0.5
+
+  defp parse_number(nil), do: nil
+  defp parse_number(""), do: nil
+
+  defp parse_number(s) when is_binary(s) do
+    case Float.parse(s) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
+
+  defp parse_number(n) when is_number(n), do: n * 1.0
+
   ## Render -------------------------------------------------------------
 
   @impl true
@@ -1021,7 +1036,6 @@ defmodule TryggWeb.DashboardLive do
         :if={@sheet}
         kind={@sheet}
         form={@sheet_form}
-        amount={@sheet_amount}
         unit_system={@unit_system}
         photo_upload={@uploads.photo}
       />
@@ -1054,7 +1068,6 @@ defmodule TryggWeb.DashboardLive do
 
   attr :kind, :atom, required: true
   attr :form, :any, default: nil
-  attr :amount, :float, required: true
   attr :unit_system, :atom, required: true
   attr :photo_upload, :any, required: true
 
@@ -1120,10 +1133,47 @@ defmodule TryggWeb.DashboardLive do
               class="space-y-4"
             >
               <div>
-                <div id="bottle-amount" class="text-3xl font-bold text-center tabular-nums">
-                  {trim(@amount)} <span class="text-base font-normal opacity-60">{@unit}</span>
+                <div class="flex items-center justify-center gap-4">
+                  <.button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="btn-circle"
+                    phx-click="bump_amount"
+                    phx-value-by={-fine_step(@unit_system)}
+                    aria-label={"Decrease by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
+                  >
+                    <.icon name="hero-minus" class="size-4" />
+                  </.button>
+
+                  <div class="flex items-baseline gap-1">
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      step="any"
+                      min="0"
+                      name="entry[amount]"
+                      id="bottle-amount"
+                      value={@form.params["amount"]}
+                      class="text-3xl font-bold text-center tabular-nums w-20 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <span class="text-base font-normal opacity-60">{@unit}</span>
+                  </div>
+
+                  <.button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="btn-circle"
+                    phx-click="bump_amount"
+                    phx-value-by={fine_step(@unit_system)}
+                    aria-label={"Increase by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
+                  >
+                    <.icon name="hero-plus" class="size-4" />
+                  </.button>
                 </div>
-                <div class="flex gap-2 justify-center mt-2">
+
+                <div class="flex gap-2 justify-center mt-2 flex-wrap">
                   <.button
                     :for={step <- preset_steps(@unit_system)}
                     type="button"
