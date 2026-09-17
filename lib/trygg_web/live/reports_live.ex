@@ -560,11 +560,11 @@ defmodule TryggWeb.ReportsLive do
         <p :if={@feeding.intake} id="feeding-intake" class="text-xs opacity-70 leading-snug">
           <span class="font-medium">Intake guide:</span>
           averaging {Units.format(@feeding.intake.avg_ml, :volume, @unit_system)} a day
-          ({round(@feeding.intake.ml_per_kg)} ml/kg at {Units.format(
+          ({Units.format_rate_per_kg(@feeding.intake.ml_per_kg, @unit_system)} at {Units.format(
             @feeding.intake.weight_g,
             :weight,
             @unit_system
-          )}) — {intake_status_copy(@feeding.intake)}
+          )}) — {intake_status_copy(@feeding.intake, @unit_system)}
         </p>
         <p :if={@feeding.cluster.active?} id="feeding-cluster" class="text-xs opacity-70">
           {@feeding.cluster.count} feeds in the last 2 hours — looks like cluster feeding, which is
@@ -607,16 +607,16 @@ defmodule TryggWeb.ReportsLive do
       "(Johns Hopkins / CDC)."
   end
 
-  defp intake_status_copy(%{status: :within, guide_per_kg: {lo, hi}}),
-    do: "within the #{lo}–#{hi} ml/kg guide for their age."
+  defp intake_status_copy(%{status: :within} = intake, units),
+    do: "within the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age."
 
-  defp intake_status_copy(%{status: :below, guide_per_kg: {lo, hi}}),
+  defp intake_status_copy(%{status: :below} = intake, units),
     do:
-      "below the #{lo}–#{hi} ml/kg guide for their age. Babies vary; steady weight gain is the better check."
+      "below the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age. Babies vary; steady weight gain is the better check."
 
-  defp intake_status_copy(%{status: :above, guide_per_kg: {lo, hi}}),
+  defp intake_status_copy(%{status: :above} = intake, units),
     do:
-      "above the #{lo}–#{hi} ml/kg guide for their age. Follow their cues; the guide is only a guide."
+      "above the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age. Follow their cues; the guide is only a guide."
 
   ## Diapers card ---------------------------------------------------------
 
