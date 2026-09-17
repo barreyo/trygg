@@ -247,7 +247,7 @@ defmodule TryggWeb.VitalsLive do
             id="weight-gain-guide"
             class="opacity-70"
           >
-            {guide_copy(@velocity.velocity)}
+            {guide_copy(@velocity.velocity, @unit_system)}
           </p>
         <% else %>
           <p id="weight-gain-empty" class="opacity-60">
@@ -318,8 +318,10 @@ defmodule TryggWeb.VitalsLive do
   defp sign(n) when n < 0, do: "−"
   defp sign(_n), do: "+"
 
-  defp guide_copy(%{guide_g_per_day: {lo, hi}, g_per_day: rate, guide_status: status}) do
-    base = "About #{round(rate)} g a day; typical for their age is #{lo}–#{hi} g a day"
+  defp guide_copy(%{guide_g_per_day: {lo, hi}, g_per_day: rate, guide_status: status}, units) do
+    base =
+      "About #{weight_rate_label(rate, units)} a day; typical for their age is " <>
+        "#{weight_rate_label(lo, units)}–#{weight_rate_label(hi, units)} a day"
 
     case status do
       :below -> base <> " — a bit under, worth mentioning at the next visit."
@@ -327,6 +329,13 @@ defmodule TryggWeb.VitalsLive do
       _ -> base <> "."
     end
   end
+
+  defp weight_rate_label(grams, :imperial) do
+    oz = grams / 28.349523125
+    "#{:erlang.float_to_binary(oz * 1.0, decimals: 1)} oz"
+  end
+
+  defp weight_rate_label(grams, _metric), do: "#{round(grams)} g"
 
   defp newborn_copy(newborn, units) do
     birth = Units.format(newborn.birth_grams, :weight, units)

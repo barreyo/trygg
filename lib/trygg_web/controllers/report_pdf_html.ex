@@ -371,7 +371,7 @@ defmodule TryggWeb.ReportPdfHTML do
           }
           class="opacity-80"
         >
-          {guide_copy(@velocity.velocity)}
+          {guide_copy(@velocity.velocity, @unit_system)}
         </p>
         <p :if={@velocity.newborn} class="opacity-80">
           {newborn_copy(@velocity.newborn, @unit_system)}
@@ -590,14 +590,14 @@ defmodule TryggWeb.ReportPdfHTML do
           <h3 class="font-semibold text-sm">Intake</h3>
           <p :if={@feeding.intake} id="pdf-feeding-intake" class="opacity-80 leading-snug">
             Averaging {Units.format(@feeding.intake.avg_ml, :volume, @unit_system)} a day
-            ({round(@feeding.intake.ml_per_kg)} ml/kg at {Units.format(
+            ({Units.format_rate_per_kg(@feeding.intake.ml_per_kg, @unit_system)} at {Units.format(
               @feeding.intake.weight_g,
               :weight,
               @unit_system
-            )}) — {intake_status_copy(@feeding.intake)}
+            )}) — {intake_status_copy(@feeding.intake, @unit_system)}
           </p>
           <p :if={!@feeding.intake} class="opacity-60">
-            Log a recent weight to compare intake against the ml/kg guide for their age.
+            Log a recent weight to compare intake against the {Units.rate_per_kg_label(@unit_system)} guide for their age.
           </p>
           <p class="opacity-60 text-xs leading-snug">{Norms.kcal_note()}</p>
         </div>
@@ -837,16 +837,17 @@ defmodule TryggWeb.ReportPdfHTML do
     end
   end
 
-  defp intake_status_copy(%{status: :within, guide_per_kg: {lo, hi}}),
-    do: "within the #{lo}–#{hi} ml/kg guide for their age."
-
-  defp intake_status_copy(%{status: :below, guide_per_kg: {lo, hi}}),
+  defp intake_status_copy(%{status: :within} = intake, units),
     do:
-      "below the #{lo}–#{hi} ml/kg guide for their age. Babies vary; steady weight gain is the better check."
+      "within the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age."
 
-  defp intake_status_copy(%{status: :above, guide_per_kg: {lo, hi}}),
+  defp intake_status_copy(%{status: :below} = intake, units),
     do:
-      "above the #{lo}–#{hi} ml/kg guide for their age. Follow their cues; the guide is only a guide."
+      "below the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age. Babies vary; steady weight gain is the better check."
+
+  defp intake_status_copy(%{status: :above} = intake, units),
+    do:
+      "above the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age. Follow their cues; the guide is only a guide."
 
   defp slope_copy(%{label: "steady"}), do: "Holding steady"
   defp slope_copy(%{label: label}), do: "Trend #{label}"
@@ -883,8 +884,10 @@ defmodule TryggWeb.ReportPdfHTML do
   defp sign(n) when n < 0, do: "−"
   defp sign(_n), do: "+"
 
-  defp guide_copy(%{guide_g_per_day: {lo, hi}, g_per_day: rate, guide_status: status}) do
-    base = "About #{round(rate)} g a day; typical for their age is #{lo}–#{hi} g a day"
+  defp guide_copy(%{guide_g_per_day: {lo, hi}, g_per_day: rate, guide_status: status}, units) do
+    base =
+      "About #{weight_rate_label(rate, units)} a day; typical for their age is " <>
+        "#{weight_rate_label(lo, units)}–#{weight_rate_label(hi, units)} a day"
 
     case status do
       :below -> base <> " — a bit under, worth mentioning at the next visit."
@@ -892,6 +895,13 @@ defmodule TryggWeb.ReportPdfHTML do
       _ -> base <> "."
     end
   end
+
+  defp weight_rate_label(grams, :imperial) do
+    oz = grams / 28.349523125
+    "#{:erlang.float_to_binary(oz * 1.0, decimals: 1)} oz"
+  end
+
+  defp weight_rate_label(grams, _metric), do: "#{round(grams)} g"
 
   defp newborn_copy(newborn, units) do
     birth = Units.format(newborn.birth_grams, :weight, units)

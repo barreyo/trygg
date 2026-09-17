@@ -141,15 +141,14 @@ defmodule Trygg.Reports.Alerts do
   defp intake(%{intake: nil}, _units), do: nil
 
   defp intake(%{intake: %{status: :below} = intake}, units) do
-    {lo, hi} = intake.guide_per_kg
-
     alert(
       "intake-below-guide",
       :info,
       "Intake below the usual guide",
       "Averaging #{Units.format(intake.avg_ml, :volume, units)} a day over the last #{intake.avg_days} " <>
-        "#{plural(intake.avg_days, "day")} (#{round(intake.ml_per_kg)} ml/kg). " <>
-        "The guide for their age is #{lo}–#{hi} ml/kg/day (AAP). Babies vary; growth is the better check.",
+        "#{plural(intake.avg_days, "day")} (#{Units.format_rate_per_kg(intake.ml_per_kg, units)}). " <>
+        "The guide for their age is #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)}/day (AAP). " <>
+        "Babies vary; growth is the better check.",
       :vitals
     )
   end

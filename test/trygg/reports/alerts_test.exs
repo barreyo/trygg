@@ -119,7 +119,25 @@ defmodule Trygg.Reports.AlertsTest do
     [alert] = Alerts.build(%{feeding: feeding}, unit_system: :imperial)
     assert alert.id == "intake-below-guide"
     assert alert.severity == :info
-    assert alert.detail =~ "oz"
+    assert alert.detail =~ "18.3 oz a day"
+    assert alert.detail =~ "2.07 oz/lb"
+    assert alert.detail =~ "2.3–2.76 oz/lb"
+    refute alert.detail =~ "ml/kg"
+  end
+
+  test "intake below the guide stays in ml/kg for metric" do
+    feeding = %{
+      intake: %{
+        status: :below,
+        avg_ml: 540.0,
+        avg_days: 3,
+        ml_per_kg: 135.0,
+        guide_per_kg: {150, 180}
+      }
+    }
+
+    [alert] = Alerts.build(%{feeding: feeding}, unit_system: :metric)
+    assert alert.detail =~ "135 ml/kg"
     assert alert.detail =~ "150–180 ml/kg"
   end
 end

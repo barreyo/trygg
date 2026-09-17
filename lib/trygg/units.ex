@@ -87,6 +87,50 @@ defmodule Trygg.Units do
     "#{number} #{unit_label(kind, system)}"
   end
 
+  @doc """
+  Converts a volume-per-kilogram-of-body-weight rate (e.g. a feeding intake
+  guide, always stored as ml/kg) into the user's preferred `system`:
+  millilitres per kilogram stay as-is, imperial becomes fluid ounces per
+  pound. Returns `nil` when given `nil`.
+  """
+  @spec rate_per_kg_to_display(number | nil, system) :: float | nil
+  def rate_per_kg_to_display(nil, _system), do: nil
+
+  def rate_per_kg_to_display(value, :metric) when is_number(value), do: round_to(value * 1.0, 1)
+
+  def rate_per_kg_to_display(value, :imperial) when is_number(value),
+    do: round_to(value / @ml_per_oz * (@g_per_lb / 1000), 2)
+
+  @doc "The unit label for a volume-per-kilogram rate: \"ml/kg\" or \"oz/lb\"."
+  @spec rate_per_kg_label(system) :: String.t()
+  def rate_per_kg_label(:metric), do: "ml/kg"
+  def rate_per_kg_label(:imperial), do: "oz/lb"
+
+  @doc """
+  Formats a volume-per-kilogram rate for display, e.g. `"150 ml/kg"` or
+  `"2.3 oz/lb"`.
+  """
+  @spec format_rate_per_kg(number | nil, system) :: String.t() | nil
+  def format_rate_per_kg(nil, _system), do: nil
+
+  def format_rate_per_kg(value, system) when is_number(value) do
+    number = value |> rate_per_kg_to_display(system) |> trim_float()
+    "#{number} #{rate_per_kg_label(system)}"
+  end
+
+  @doc """
+  Formats a `{low, high}` volume-per-kilogram range for display with one unit
+  suffix, e.g. `"150–180 ml/kg"` or `"2.3–2.8 oz/lb"`.
+  """
+  @spec format_rate_per_kg_range({number, number} | nil, system) :: String.t() | nil
+  def format_rate_per_kg_range(nil, _system), do: nil
+
+  def format_rate_per_kg_range({lo, hi}, system) do
+    lo_n = lo |> rate_per_kg_to_display(system) |> trim_float()
+    hi_n = hi |> rate_per_kg_to_display(system) |> trim_float()
+    "#{lo_n}–#{hi_n} #{rate_per_kg_label(system)}"
+  end
+
   defp round_to(float, places) do
     Float.round(float, places)
   end
