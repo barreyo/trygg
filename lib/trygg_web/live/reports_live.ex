@@ -608,7 +608,8 @@ defmodule TryggWeb.ReportsLive do
   end
 
   defp intake_status_copy(%{status: :within} = intake, units),
-    do: "within the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age."
+    do:
+      "within the #{Units.format_rate_per_kg_range(intake.guide_per_kg, units)} guide for their age."
 
   defp intake_status_copy(%{status: :below} = intake, units),
     do:
