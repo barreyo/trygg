@@ -4,8 +4,18 @@ defmodule TryggWeb.Router do
   import Oban.Web.Router
   import TryggWeb.UserAuth
 
-  pipeline :browser do
+  # Format negotiation is split out from :browser so the PDF export route can
+  # opt into "pdf" (its URL ends in .pdf, which Plug resolves to that format)
+  # without loosening the accepted formats for every other browser route.
+  pipeline :accepts_html do
     plug :accepts, ["html"]
+  end
+
+  pipeline :accepts_html_or_pdf do
+    plug :accepts, ["html", "pdf"]
+  end
+
+  pipeline :browser do
     plug :fetch_session
     plug :fetch_live_flash
     plug :put_root_layout, html: {TryggWeb.Layouts, :root}
@@ -34,7 +44,7 @@ defmodule TryggWeb.Router do
   # behind HTTP Basic Auth and only mounted when OBAN_DASHBOARD_USER /
   # OBAN_DASHBOARD_PASSWORD are set — see `TryggWeb.ObanDashboardAuth`.
   scope "/" do
-    pipe_through [:browser, TryggWeb.ObanDashboardAuth]
+    pipe_through [:accepts_html, :browser, TryggWeb.ObanDashboardAuth]
 
     oban_dashboard("/oban")
   end
@@ -49,7 +59,7 @@ defmodule TryggWeb.Router do
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
-      pipe_through :browser
+      pipe_through [:accepts_html, :browser]
 
       live_dashboard "/dashboard", metrics: TryggWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
@@ -59,11 +69,17 @@ defmodule TryggWeb.Router do
   ## Authentication routes
 
   scope "/", TryggWeb do
-    pipe_through [:browser, :require_authenticated_user]
+    pipe_through [:accepts_html_or_pdf, :browser, :require_authenticated_user]
 
     # Plain controller (not a LiveView): streams the Reports tab as a PDF.
     # Same session auth as the LiveViews; the child is membership-scoped.
+    # The ".pdf" extension makes Plug resolve the request format to "pdf",
+    # so this route needs the PDF-aware accepts pipeline above.
     get "/c/:id/reports.pdf", ReportPdfController, :show
+  end
+
+  scope "/", TryggWeb do
+    pipe_through [:accepts_html, :browser, :require_authenticated_user]
 
     # Streams a log entry's attached photo. Membership-scoped like the log itself.
     get "/c/:id/log/:entry_id/photo", PhotoController, :show
@@ -104,7 +120,7 @@ defmodule TryggWeb.Router do
   end
 
   scope "/", TryggWeb do
-    pipe_through [:browser]
+    pipe_through [:accepts_html, :browser]
 
     live_session :current_user,
       on_mount: [{TryggWeb.UserAuth, :mount_current_scope}] do
