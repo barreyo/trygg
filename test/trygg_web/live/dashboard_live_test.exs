@@ -272,6 +272,45 @@ defmodule TryggWeb.DashboardLiveTest do
       assert render(lv) =~ "90 ml"
     end
 
+    test "an exact small amount can be typed directly into the bottle sheet", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+
+      lv
+      |> form("#bottle-form", entry: %{amount: "28", bottle_contents: "formula"})
+      |> render_submit()
+
+      assert [%{type: :feeding, data: %{"amount_ml" => 28.0, "bottle_contents" => "formula"}}] =
+               Log.list_entries(scope, child)
+    end
+
+    test "the fine +/- steps nudge the bottle amount by a small increment", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+      lv |> element(~s(button[phx-value-by="5"])) |> render_click()
+      lv |> element(~s(button[phx-value-by="5"])) |> render_click()
+
+      assert has_element?(lv, "input#bottle-amount[value='10']")
+
+      lv |> element(~s(button[phx-value-by="-5"])) |> render_click()
+
+      assert has_element?(lv, "input#bottle-amount[value='5']")
+
+      lv |> form("#bottle-form", entry: %{bottle_contents: "formula"}) |> render_submit()
+
+      assert [%{data: %{"amount_ml" => 5.0}}] = Log.list_entries(scope, child)
+    end
+
     test "a bottle can be back-dated through the sheet", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
@@ -593,12 +632,12 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
       lv |> element("button", "Log a bottle") |> render_click()
 
-      assert has_element?(lv, "#bottle-amount", ~r/\A\s*2\.5\s+oz/)
+      assert has_element?(lv, "input#bottle-amount[value='2.5']")
 
       lv |> element("#bottle-reset") |> render_click()
 
-      assert has_element?(lv, "#bottle-amount", ~r/\A\s*0\s+oz/)
-      refute has_element?(lv, "#bottle-amount", ~r/0\.5/)
+      assert has_element?(lv, "input#bottle-amount[value='0']")
+      refute has_element?(lv, "input#bottle-amount[value='0.5']")
     end
   end
 
