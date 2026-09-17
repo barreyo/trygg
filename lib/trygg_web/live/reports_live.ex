@@ -268,7 +268,10 @@ defmodule TryggWeb.ReportsLive do
 
   defp week_feed_sub(days, units) do
     n = length(days)
-    total_ml = days |> Enum.flat_map(& &1.feeds) |> Enum.map(&(&1.data["amount_ml"] || 0)) |> Enum.sum()
+
+    total_ml =
+      days |> Enum.flat_map(& &1.feeds) |> Enum.map(&(&1.data["amount_ml"] || 0)) |> Enum.sum()
+
     avg_diapers = days |> Enum.map(&length(&1.diapers)) |> Enum.sum() |> Kernel./(n)
 
     [
