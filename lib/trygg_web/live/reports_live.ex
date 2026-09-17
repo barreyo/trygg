@@ -96,7 +96,13 @@ defmodule TryggWeb.ReportsLive do
         unit_system={@unit_system}
         today_date={@today_date}
       />
-      <.week_view :if={@view == :week} days={@days} child={@current_child} today_date={@today_date} />
+      <.week_view
+        :if={@view == :week}
+        days={@days}
+        child={@current_child}
+        today_date={@today_date}
+        unit_system={@unit_system}
+      />
       <.trends_view
         :if={@view == :trends}
         insights={@insights}
@@ -156,6 +162,21 @@ defmodule TryggWeb.ReportsLive do
         </.button>
       </div>
 
+      <div class="grid grid-cols-2 gap-2 mb-4">
+        <.since_card
+          icon="hero-moon"
+          label="Sleep"
+          value={format_duration(@day.total_sleep_seconds)}
+          sub={"Day #{format_duration(@day.day_sleep_seconds)} · Night #{format_duration(@day.night_sleep_seconds)}"}
+        />
+        <.since_card
+          icon="hero-beaker"
+          label="Feeds"
+          value={to_string(length(@day.feeds))}
+          sub={day_feed_sub(@day, @unit_system)}
+        />
+      </div>
+
       <.today_calendar
         id="today-calendar"
         day={@day}
@@ -174,21 +195,6 @@ defmodule TryggWeb.ReportsLive do
       >
         {@caption || "Tap a block for details"}
       </p>
-
-      <div class="grid grid-cols-2 gap-2 mt-4">
-        <.since_card
-          icon="hero-moon"
-          label="Sleep"
-          value={format_duration(@day.total_sleep_seconds)}
-          sub={"Day #{format_duration(@day.day_sleep_seconds)} · Night #{format_duration(@day.night_sleep_seconds)}"}
-        />
-        <.since_card
-          icon="hero-beaker"
-          label="Feeds"
-          value={to_string(length(@day.feeds))}
-          sub={day_feed_sub(@day, @unit_system)}
-        />
-      </div>
     </section>
     """
   end
@@ -217,15 +223,60 @@ defmodule TryggWeb.ReportsLive do
   attr :days, :list, required: true
   attr :child, Child, required: true
   attr :today_date, Date, required: true
+  attr :unit_system, :atom, required: true
 
   defp week_view(assigns) do
     ~H"""
     <section id="report-week" class="mt-4">
       <h2 class="font-semibold mb-2">Last 7 days</h2>
+
+      <div class="grid grid-cols-2 gap-2 mb-4">
+        <.since_card
+          icon="hero-moon"
+          label="Sleep"
+          value={format_duration(week_avg_seconds(@days, :total_sleep_seconds))}
+          sub={"avg Day #{format_duration(week_avg_seconds(@days, :day_sleep_seconds))} · Night #{format_duration(week_avg_seconds(@days, :night_sleep_seconds))}"}
+        />
+        <.since_card
+          icon="hero-beaker"
+          label="Feeds"
+          value={week_feed_count_label(@days)}
+          sub={week_feed_sub(@days, @unit_system)}
+        />
+      </div>
+
       <.week_calendar id="week-calendar" days={@days} child={@child} today_date={@today_date} />
       <p class="text-xs opacity-50 text-center mt-2">Tap a day to open it</p>
     </section>
     """
+  end
+
+  defp week_avg_seconds([], _field), do: 0
+
+  defp week_avg_seconds(days, field) do
+    days |> Enum.map(&Map.fetch!(&1, field)) |> Enum.sum() |> div(length(days))
+  end
+
+  defp week_feed_count_label([]), do: "0"
+
+  defp week_feed_count_label(days) do
+    total = days |> Enum.map(&length(&1.feeds)) |> Enum.sum()
+    "~#{round(total / length(days))}"
+  end
+
+  defp week_feed_sub([], _units), do: nil
+
+  defp week_feed_sub(days, units) do
+    n = length(days)
+    total_ml = days |> Enum.flat_map(& &1.feeds) |> Enum.map(&(&1.data["amount_ml"] || 0)) |> Enum.sum()
+    avg_diapers = days |> Enum.map(&length(&1.diapers)) |> Enum.sum() |> Kernel./(n)
+
+    [
+      if(total_ml > 0, do: "~#{Units.format(round(total_ml / n), :volume, units)}/day"),
+      "~#{trim_num(Float.round(avg_diapers, 1))} diapers/day"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
   end
 
   attr :insights, :map, required: true
