@@ -9,7 +9,7 @@
 // `/` is deliberately not precached: for a signed-out visitor it redirects to
 // the login page, whose CSRF token is bound to a session that will be gone by
 // the time the cached copy is served. A static offline page is the fallback.
-const CACHE = "trygg-shell-v6"
+const CACHE = "trygg-shell-v7"
 const OFFLINE = "/offline.html"
 // `offline.js` powers the offline quick-logger inside offline.html. Literal,
 // undigested path (see the note in offline.html) so it's stable to precache.
@@ -40,10 +40,20 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
+  // Reports PDF export is generated fresh per request (date window, latest
+  // data) — never serve or store a cached copy, and never let a transient
+  // failure response get cached and replayed on the next attempt.
+  if (url.pathname.endsWith("/reports.pdf")) {
+    event.respondWith(fetch(request))
+    return
+  }
+
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((res) => {
-      const copy = res.clone()
-      caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {})
+      if (res.ok) {
+        const copy = res.clone()
+        caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {})
+      }
       return res
     }).catch(() => cached))
   )
