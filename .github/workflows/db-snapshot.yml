@@ -1,0 +1,74 @@
+name: Database Snapshot
+
+on:
+  schedule:
+    - cron: "0 */12 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: db-snapshot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: Snapshot Postgres to Tigris
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # Fly Postgres only speaks to the app's private 6PN network, which the
+      # runner isn't on. `flyctl proxy` opens a WireGuard tunnel (using
+      # FLY_API_TOKEN) and forwards a local port to the Postgres app's 5432.
+      - name: Open proxy to Fly Postgres
+        run: |
+          nohup flyctl proxy 15432:5432 -a "${{ secrets.FLY_POSTGRES_APP }}" > proxy.log 2>&1 &
+          echo $! > proxy.pid
+          disown
+
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/localhost/15432) 2>/dev/null; then
+              exec 3<&- 3>&-
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Timed out waiting for the Fly Postgres proxy to come up"
+          exit 1
+
+      # Same Postgres major version as the CI test service (postgres:17-alpine),
+      # run via Docker so the client always matches the server version.
+      - name: Dump database
+        run: |
+          DUMP_URL=$(echo "${{ secrets.DATABASE_URL }}" | sed -E "s#@[^/]+/#@localhost:15432/#")
+
+          docker run --rm --network host \
+            -e PGSSLMODE=disable \
+            -v "$PWD":/backup \
+            postgres:17-alpine \
+            pg_dump "$DUMP_URL" -Fc -f /backup/snapshot.dump
+
+          if [ ! -s snapshot.dump ]; then
+            echo "::error::pg_dump produced an empty file"
+            exit 1
+          fi
+
+      - name: Close proxy
+        if: always()
+        run: kill "$(cat proxy.pid)" 2>/dev/null || true
+
+      - name: Upload snapshot to Tigris
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://fly.storage.tigris.dev
+          AWS_REGION: auto
+        run: |
+          KEY="postgres/$(date -u +%Y/%m/%d)/trygg-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          aws s3 cp snapshot.dump "s3://${{ secrets.TIGRIS_BACKUP_BUCKET }}/${KEY}" \
+            --endpoint-url "$AWS_ENDPOINT_URL_S3"
