@@ -39,6 +39,9 @@ jobs:
             sleep 1
           done
           echo "::error::Timed out waiting for the Fly Postgres proxy to come up"
+          echo "::group::proxy.log"
+          cat proxy.log || true
+          echo "::endgroup::"
           exit 1
 
       # Same Postgres major version as the CI test service (postgres:17-alpine),
