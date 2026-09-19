@@ -44,8 +44,8 @@ jobs:
           echo "::endgroup::"
           exit 1
 
-      # Same Postgres major version as the CI test service (postgres:17-alpine),
-      # run via Docker so the client always matches the server version.
+      # trygg-db runs Postgres 18 (not the 17 used by the CI test service) —
+      # pg_dump refuses to talk to a newer server, so pin the client to match.
       - name: Dump database
         run: |
           DUMP_URL=$(echo "${{ secrets.DATABASE_URL }}" | sed -E "s#@[^/]+/#@localhost:15432/#")
@@ -53,7 +53,7 @@ jobs:
           docker run --rm --network host \
             -e PGSSLMODE=disable \
             -v "$PWD":/backup \
-            postgres:17-alpine \
+            postgres:18-alpine \
             pg_dump "$DUMP_URL" -Fc -f /backup/snapshot.dump
 
           if [ ! -s snapshot.dump ]; then
