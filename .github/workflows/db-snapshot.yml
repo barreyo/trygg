@@ -81,14 +81,6 @@ jobs:
           # which Tigris doesn't resolve/sign correctly.
           aws configure set default.s3.addressing_style path
 
-          echo "::group::debug: head-bucket"
-          aws s3api head-bucket --bucket "${{ secrets.TIGRIS_BACKUP_BUCKET }}" --endpoint-url "$AWS_ENDPOINT_URL_S3" --debug 2>&1 | tail -60
-          echo "::endgroup::"
-
-          echo "::group::debug: list bucket"
-          aws s3 ls "s3://${{ secrets.TIGRIS_BACKUP_BUCKET }}" --endpoint-url "$AWS_ENDPOINT_URL_S3" 2>&1
-          echo "::endgroup::"
-
           KEY="postgres/$(date -u +%Y/%m/%d)/trygg-$(date -u +%Y%m%dT%H%M%SZ).dump"
           aws s3 cp snapshot.dump "s3://${{ secrets.TIGRIS_BACKUP_BUCKET }}/${KEY}" \
             --endpoint-url "$AWS_ENDPOINT_URL_S3"
