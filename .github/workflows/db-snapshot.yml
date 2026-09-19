@@ -76,6 +76,11 @@ jobs:
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
+          # The app's own S3 client (lib/trygg/storage/s3.ex) talks to Tigris
+          # with path-style URLs; aws-cli defaults to virtual-hosted-style,
+          # which Tigris doesn't resolve/sign correctly.
+          aws configure set default.s3.addressing_style path
+
           KEY="postgres/$(date -u +%Y/%m/%d)/trygg-$(date -u +%Y%m%dT%H%M%SZ).dump"
           aws s3 cp snapshot.dump "s3://${{ secrets.TIGRIS_BACKUP_BUCKET }}/${KEY}" \
             --endpoint-url "$AWS_ENDPOINT_URL_S3"
