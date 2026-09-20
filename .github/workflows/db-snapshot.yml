@@ -84,3 +84,27 @@ jobs:
           KEY="postgres/$(date -u +%Y/%m/%d)/trygg-$(date -u +%Y%m%dT%H%M%SZ).dump"
           aws s3 cp snapshot.dump "s3://${{ secrets.TIGRIS_BACKUP_BUCKET }}/${KEY}" \
             --endpoint-url "$AWS_ENDPOINT_URL_S3"
+
+      - name: Prune snapshots older than 14 days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://fly.storage.tigris.dev
+          AWS_REGION: auto
+        run: |
+          aws configure set default.s3.addressing_style path
+
+          CUTOFF=$(date -u -d '14 days ago' +%Y-%m-%d)
+          BUCKET="${{ secrets.TIGRIS_BACKUP_BUCKET }}"
+
+          aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "postgres/" \
+            --endpoint-url "$AWS_ENDPOINT_URL_S3" --query "Contents[].Key" --output text \
+            | tr '\t' '\n' \
+            | while IFS= read -r key; do
+                [ -z "$key" ] || [ "$key" = "None" ] && continue
+                snapshot_date=$(echo "$key" | awk -F/ '{print $2"-"$3"-"$4}')
+                if [[ "$snapshot_date" < "$CUTOFF" ]]; then
+                  echo "Deleting $key (dated $snapshot_date, older than $CUTOFF)"
+                  aws s3 rm "s3://$BUCKET/$key" --endpoint-url "$AWS_ENDPOINT_URL_S3"
+                fi
+              done
