@@ -134,6 +134,7 @@ defmodule Trygg.LogTest do
 
       summary = Log.summary(scope, child)
       assert summary.today.feedings == 2
+      assert summary.today.volume_ml == 180.0
       assert summary.today.diapers == 1
       assert summary.today.sleep_seconds >= 3600
       assert summary.last_feeding.type == :feeding

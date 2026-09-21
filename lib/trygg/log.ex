@@ -95,6 +95,7 @@ defmodule Trygg.Log do
       running: running_timers(scope, child),
       today: %{
         feedings: count_between(child, :feeding, day_start, day_end),
+        volume_ml: volume_ml_between(child, day_start, day_end),
         diapers: count_between(child, :diaper, day_start, day_end),
         sleep_seconds: sleep_seconds_between(child, day_start, day_end)
       }
@@ -118,6 +119,16 @@ defmodule Trygg.Log do
             e.started_at >= ^from and e.started_at < ^to,
         select: count(e.id)
     )
+  end
+
+  defp volume_ml_between(child, from, to) do
+    Repo.one(
+      from e in Entry,
+        where:
+          e.child_id == ^child.id and e.type == :feeding and
+            e.started_at >= ^from and e.started_at < ^to,
+        select: sum(fragment("(?->>'amount_ml')::float", e.data))
+    ) || 0.0
   end
 
   defp sleep_seconds_between(child, from, to) do
