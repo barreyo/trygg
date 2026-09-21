@@ -922,6 +922,9 @@ defmodule TryggWeb.DashboardLive do
               {@summary.today.diapers}
             </span>
             Diapers
+            <span class="opacity-70 tabular-nums">
+              ({diaper_emoji("pee")} {@summary.today.diapers_wet} · {diaper_emoji("poo")} {@summary.today.diapers_dirty})
+            </span>
           </div>
           <div class="h-3 w-px bg-base-300"></div>
           <div class="opacity-70">
