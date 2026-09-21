@@ -997,6 +997,7 @@ defmodule TryggWeb.DashboardLive do
               kind={"diaper_#{value}"}
               label={label}
               emoji={emoji}
+              color_class={diaper_color_class(value)}
             />
           </div>
         </div>
@@ -1060,21 +1061,28 @@ defmodule TryggWeb.DashboardLive do
   attr :kind, :string, required: true
   attr :label, :string, required: true
   attr :emoji, :string, required: true
+  attr :color_class, :string, required: true
 
   defp action_btn(assigns) do
     ~H"""
     <.button
       type="button"
-      variant="accent"
       phx-click="quick"
       phx-value-kind={@kind}
-      class="h-auto py-3 flex-col gap-1"
+      class={["h-auto py-3 flex-col gap-1", @color_class]}
     >
       <span class="text-3xl leading-none" aria-hidden="true">{@emoji}</span>
       <span class="text-xs font-semibold">{@label}</span>
     </.button>
     """
   end
+
+  # Each diaper kind gets its own fixed, literal color (see the
+  # --color-diaper-* vars in app.css) instead of one shared variant, so the
+  # three buttons are distinguishable by color alone, not just by emoji/label.
+  defp diaper_color_class("pee"), do: "btn-diaper-pee"
+  defp diaper_color_class("poo"), do: "btn-diaper-poo"
+  defp diaper_color_class("mixed"), do: "btn-diaper-mixed"
 
   attr :kind, :atom, required: true
   attr :form, :any, default: nil
