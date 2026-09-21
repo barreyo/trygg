@@ -825,6 +825,9 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#glance-sleep", "for age")
     end
 
+    # The rhythm dial is commented out of the Home screen for now (see
+    # TryggWeb.DashboardLive's render/1) — re-enable these once it's back.
+    @tag :skip
     test "the rhythm dial calls out the next nap while the child is awake", %{
       conn: conn,
       scope: scope,
@@ -848,6 +851,7 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#rhythm-dial", "Next nap")
     end
 
+    @tag :skip
     test "the rhythm dial shows the running sleep in its centre", %{
       conn: conn,
       scope: scope,
