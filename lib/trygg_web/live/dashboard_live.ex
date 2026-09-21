@@ -980,6 +980,7 @@ defmodule TryggWeb.DashboardLive do
 
         <.button
           type="button"
+          variant="info"
           size="lg"
           phx-click="open_sheet"
           phx-value-kind="bottle"
@@ -989,7 +990,7 @@ defmodule TryggWeb.DashboardLive do
         </.button>
 
         <div>
-          <div class="text-xs opacity-60 mb-1.5">Diaper</div>
+          <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
           <div class="grid grid-cols-3 gap-2">
             <.action_btn
               :for={{emoji, value, label} <- diaper_choices()}
@@ -1062,9 +1063,15 @@ defmodule TryggWeb.DashboardLive do
 
   defp action_btn(assigns) do
     ~H"""
-    <.button type="button" phx-click="quick" phx-value-kind={@kind} class="h-auto py-3 flex-col gap-1">
-      <span class="text-2xl leading-none" aria-hidden="true">{@emoji}</span>
-      <span class="text-xs font-medium">{@label}</span>
+    <.button
+      type="button"
+      variant="accent"
+      phx-click="quick"
+      phx-value-kind={@kind}
+      class="h-auto py-3 flex-col gap-1"
+    >
+      <span class="text-3xl leading-none" aria-hidden="true">{@emoji}</span>
+      <span class="text-xs font-semibold">{@label}</span>
     </.button>
     """
   end
