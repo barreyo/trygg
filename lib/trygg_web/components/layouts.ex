@@ -131,9 +131,12 @@ defmodule TryggWeb.Layouts do
           if(@current_child, do: "pb-28", else: "pb-8")
         ]}
       >
-        <.install_prompt :if={@current_scope && @current_scope.user} />
         <.demo_banner :if={@current_child && Child.expecting?(@current_child)} child={@current_child} />
         {render_slot(@inner_block)}
+        <%!-- Kept last so it never pushes a page's own content (vital stats,
+             alerts, …) down the screen — it reads as a footer-level nudge,
+             not something competing for the top of the page. --%>
+        <.install_prompt :if={@current_scope && @current_scope.user} />
       </main>
 
       <%!-- The tab bar is child-scoped. Account-level pages (children, preferences,
@@ -188,7 +191,7 @@ defmodule TryggWeb.Layouts do
       phx-hook="InstallPrompt"
       phx-update="ignore"
       hidden
-      class="mb-4 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+      class="mt-6 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
     >
       <.icon name="hero-device-phone-mobile" class="size-5 shrink-0 mt-0.5 text-primary" />
       <div class="flex-1 min-w-0 space-y-2">

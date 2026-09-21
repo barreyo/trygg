@@ -195,6 +195,16 @@ html { overscroll-behavior-y: none; }
   }
 }
 
+/*
+ * Category-identity tint for the Home screen's "Diaper" glance card. The
+ * daisyUI accent/primary tokens sit too close in hue in the dark theme to
+ * read as distinct at a glance, so this reuses the diaper-pee yellow above —
+ * it's already the color caregivers associate with diapers on this screen.
+ */
+.tint-diaper {
+  background-color: color-mix(in oklab, var(--color-diaper-pee) 16%, transparent);
+}
+
 /* Little "Zzz" drifting up next to a child who's asleep in the log */
 @keyframes trygg-snooze {
   0%   { opacity: 0; transform: translateY(3px) scale(0.7); }

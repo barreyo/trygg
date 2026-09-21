@@ -463,12 +463,23 @@ defmodule TryggWeb.ReportComponents do
   attr :title, :string, default: nil
 
   def alerts_list(assigns) do
+    assigns = assign(assigns, :tone, alerts_tone(assigns.alerts))
+
     ~H"""
-    <section :if={@alerts != []} id={@id} class="rounded-box border border-base-300 overflow-hidden">
+    <section
+      :if={@alerts != []}
+      id={@id}
+      class={[
+        "rounded-box overflow-hidden",
+        @tone == :warning && "border-2 border-warning bg-warning/20",
+        @tone == :notice && "border border-info/50 bg-info/10",
+        @tone == :none && "border border-base-300"
+      ]}
+    >
       <div :if={@title} class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">{@title}</h3>
       </div>
-      <ul class="divide-y divide-base-300">
+      <ul class="divide-y divide-base-content/10">
         <li :for={alert <- @alerts} id={"#{@id}-#{alert.id}"} class="p-3 flex gap-3">
           <span
             class={["mt-1.5 size-2.5 rounded-full shrink-0", severity_dot(alert.severity)]}
@@ -488,11 +499,22 @@ defmodule TryggWeb.ReportComponents do
           </div>
         </li>
       </ul>
-      <p class="text-[11px] opacity-50 px-3 py-1.5 border-t border-base-300">
+      <p class="text-[11px] opacity-50 px-3 py-1.5 border-t border-base-content/10">
         {Alerts.disclaimer()}
       </p>
     </section>
     """
+  end
+
+  # The container's overall visual weight follows the single most severe
+  # alert in the list — a mix of a warning and a notice should still read as
+  # urgent, not get watered down to the milder tone.
+  defp alerts_tone(alerts) do
+    cond do
+      Enum.any?(alerts, &(&1.severity == :warning)) -> :warning
+      Enum.any?(alerts, &(&1.severity == :notice)) -> :notice
+      true -> :none
+    end
   end
 
   defp severity_dot(:warning), do: "bg-warning"

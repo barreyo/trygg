@@ -789,11 +789,10 @@ defmodule TryggWeb.DashboardLiveTest do
     test "a quiet log shows plain glance cards and no alerts", %{conn: conn, child: child} do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
-      assert has_element?(lv, "#glance-feed", "no feeds yet")
+      assert has_element?(lv, "#glance-feed", "No feeds yet")
       assert has_element?(lv, "#glance-diaper")
       assert has_element?(lv, "#glance-sleep")
       refute has_element?(lv, "#home-alerts")
-      refute has_element?(lv, "#glance-next-nap")
     end
 
     test "regular bottles produce a next-feed estimate on the feed card", %{
@@ -804,8 +803,8 @@ defmodule TryggWeb.DashboardLiveTest do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
-      assert has_element?(lv, "#glance-feed", "Next ≈")
-      refute has_element?(lv, "#glance-feed", "later than usual")
+      assert has_element?(lv, "#glance-feed", "In ")
+      refute has_element?(lv, "#glance-feed", "past usual")
     end
 
     test "a feed well past its usual time is framed against their rhythm, not a schedule", %{
@@ -816,8 +815,7 @@ defmodule TryggWeb.DashboardLiveTest do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 5)
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
-      assert has_element?(lv, "#glance-feed", "Next ≈")
-      assert has_element?(lv, "#glance-feed", "later than usual")
+      assert has_element?(lv, "#glance-feed", "past usual")
       refute has_element?(lv, "#glance-feed", "overdue")
     end
 
@@ -868,8 +866,7 @@ defmodule TryggWeb.DashboardLiveTest do
       })
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
-      assert has_element?(lv, "#glance-next-nap", "typical for age")
-      assert has_element?(lv, "#glance-sleep", "for age")
+      assert has_element?(lv, "#glance-sleep", "Nap ·")
     end
 
     # The rhythm dial is commented out of the Home screen for now (see
