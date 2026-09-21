@@ -55,6 +55,17 @@ defmodule TryggWeb.Layouts do
   def app(assigns) do
     assigns = assign(assigns, :child_switcher, child_switcher_kind(assigns))
 
+    assigns =
+      if assigns.child_switcher do
+        assigns
+        |> assign(:swipe_prev, sibling_child(assigns.children, assigns.current_child, -1))
+        |> assign(:swipe_next, sibling_child(assigns.children, assigns.current_child, 1))
+      else
+        assigns
+        |> assign(:swipe_prev, nil)
+        |> assign(:swipe_next, nil)
+      end
+
     ~H"""
     <div class="min-h-dvh flex flex-col bg-base-100 text-base-content">
       <header class="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 pt-[env(safe-area-inset-top)]">
@@ -95,6 +106,22 @@ defmodule TryggWeb.Layouts do
           <.app_menu :if={@current_scope && @current_scope.user} current_child={@current_child} />
         </div>
       </header>
+
+      <%!-- Revealed edge-first by the `ChildSwipe` hook as <main> is dragged,
+           so a mid-swipe glance already shows who you'd land on. Also used
+           to play the one-time swipe hint (see the hook). --%>
+      <.child_swipe_peek
+        :if={@swipe_prev}
+        id="child-swipe-peek-prev"
+        side={:left}
+        child={@swipe_prev}
+      />
+      <.child_swipe_peek
+        :if={@swipe_next}
+        id="child-swipe-peek-next"
+        side={:right}
+        child={@swipe_next}
+      />
 
       <main
         id="main-content"
@@ -321,6 +348,47 @@ defmodule TryggWeb.Layouts do
   end
 
   defp child_switcher_kind(_assigns), do: nil
+
+  # The child a left/right swipe would land on, wrapping around the list the
+  # same way the `ChildSwipe` hook's `go/1` does.
+  defp sibling_child(children, %{id: current_id}, offset) when is_list(children) do
+    len = length(children)
+
+    with true <- len >= 2,
+         index when not is_nil(index) <- Enum.find_index(children, &(&1.id == current_id)) do
+      Enum.at(children, rem(index + offset + len, len))
+    else
+      _ -> nil
+    end
+  end
+
+  defp sibling_child(_children, _current_child, _offset), do: nil
+
+  # Edge chip the `ChildSwipe` hook slides into view (by id) as <main> is
+  # dragged, previewing the child a release would switch to. Hidden and
+  # off-screen until the hook animates it.
+  attr :id, :string, required: true
+  attr :side, :atom, required: true, values: [:left, :right]
+  attr :child, :map, required: true
+
+  defp child_swipe_peek(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "fixed top-1/2 z-40 flex items-center gap-2 rounded-full border border-base-300 bg-base-100 py-2 pl-2 pr-3.5 shadow-lg opacity-0 pointer-events-none",
+        @side == :left && "left-3",
+        @side == :right && "right-3"
+      ]}
+      aria-hidden="true"
+    >
+      <span class="size-8 rounded-full bg-primary/15 text-primary grid place-items-center text-sm font-semibold shrink-0">
+        {child_initial(@child)}
+      </span>
+      <span class="text-sm font-medium truncate max-w-28">{@child.name}</span>
+    </div>
+    """
+  end
 
   attr :variant, :atom, required: true, values: [:full, :compact]
   attr :current_child, :map, required: true
