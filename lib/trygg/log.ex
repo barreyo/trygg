@@ -87,6 +87,7 @@ defmodule Trygg.Log do
   def summary(%Scope{} = scope, %Child{} = child) do
     Families.authorize!(scope, child, :viewer)
     {day_start, day_end} = Child.day_bounds(child)
+    diaper_kinds = diaper_kinds_between(child, day_start, day_end)
 
     %{
       last_feeding: last_of_type(child, :feeding),
@@ -96,7 +97,9 @@ defmodule Trygg.Log do
       today: %{
         feedings: count_between(child, :feeding, day_start, day_end),
         volume_ml: volume_ml_between(child, day_start, day_end),
-        diapers: count_between(child, :diaper, day_start, day_end),
+        diapers: length(diaper_kinds),
+        diapers_wet: Enum.count(diaper_kinds, &(&1 in ["pee", "mixed"])),
+        diapers_dirty: Enum.count(diaper_kinds, &(&1 in ["poo", "mixed"])),
         sleep_seconds: sleep_seconds_between(child, day_start, day_end)
       }
     }
@@ -129,6 +132,19 @@ defmodule Trygg.Log do
             e.started_at >= ^from and e.started_at < ^to,
         select: sum(fragment("(?->>'amount_ml')::float", e.data))
     ) || 0.0
+  end
+
+  # Diaper `kind`s ("pee" / "poo" / "mixed") logged in the window, used to
+  # split today's diaper count into wet vs. dirty (mirrors the same
+  # pee/mixed and poo/mixed grouping as `Trygg.Reports.Diapers`).
+  defp diaper_kinds_between(child, from, to) do
+    Repo.all(
+      from e in Entry,
+        where:
+          e.child_id == ^child.id and e.type == :diaper and
+            e.started_at >= ^from and e.started_at < ^to,
+        select: fragment("?->>'kind'", e.data)
+    )
   end
 
   defp sleep_seconds_between(child, from, to) do

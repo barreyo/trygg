@@ -122,6 +122,8 @@ defmodule Trygg.LogTest do
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :diaper)
+      entry_fixture(scope, child, %{"data" => %{"kind" => "poo"}, :type => :diaper})
+      entry_fixture(scope, child, %{"data" => %{"kind" => "mixed"}, :type => :diaper})
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -135,7 +137,9 @@ defmodule Trygg.LogTest do
       summary = Log.summary(scope, child)
       assert summary.today.feedings == 2
       assert summary.today.volume_ml == 180.0
-      assert summary.today.diapers == 1
+      assert summary.today.diapers == 3
+      assert summary.today.diapers_wet == 2
+      assert summary.today.diapers_dirty == 2
       assert summary.today.sleep_seconds >= 3600
       assert summary.last_feeding.type == :feeding
     end

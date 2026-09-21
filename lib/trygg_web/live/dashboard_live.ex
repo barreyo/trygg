@@ -945,6 +945,9 @@ defmodule TryggWeb.DashboardLive do
           <div class="rounded-box bg-base-100 border border-base-300 py-2">
             <div class="font-semibold text-lg">{@summary.today.diapers}</div>
             <div class="opacity-60 text-xs">diapers today</div>
+            <div class="opacity-50 text-[11px] tabular-nums">
+              {diaper_emoji("pee")} {@summary.today.diapers_wet} · {diaper_emoji("poo")} {@summary.today.diapers_dirty}
+            </div>
           </div>
           <div class="rounded-box bg-base-100 border border-base-300 py-2">
             <div class="font-semibold text-lg">{format_duration(@summary.today.sleep_seconds)}</div>
