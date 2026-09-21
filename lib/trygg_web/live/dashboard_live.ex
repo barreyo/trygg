@@ -779,12 +779,15 @@ defmodule TryggWeb.DashboardLive do
       </div>
 
       <%!-- Typical-day dial: the child's rhythm at a glance, with the next
-           actionable moment (or a running timer) called out in the middle. --%>
+           actionable moment (or a running timer) called out in the middle.
+           Hidden for now — not needed yet. --%>
+      <%!--
       <.rhythm_dial
         rhythm={@outlook.rhythm}
         center={@rhythm_center}
         child_name={@current_child.name}
       />
+      --%>
 
       <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
       <div :for={entry <- @summary.running} class="mb-6">
