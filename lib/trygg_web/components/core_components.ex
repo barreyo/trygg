@@ -97,7 +97,8 @@ defmodule TryggWeb.CoreComponents do
   ## Attributes
 
     * `variant` - `nil` (neutral surface), `"primary"`, `"soft"`, `"neutral"`,
-      `"ghost"`, `"outline"`, `"error"`, `"warning"`, `"link"`.
+      `"ghost"`, `"outline"`, `"error"`, `"warning"`, `"info"`, `"accent"`,
+      `"link"`.
     * `size` - `nil`, `"xs"`, `"sm"`, or `"lg"`.
     * `class` - extra classes, appended after the base + variant classes.
 
@@ -114,7 +115,19 @@ defmodule TryggWeb.CoreComponents do
 
   attr :variant, :string,
     default: nil,
-    values: [nil, "primary", "soft", "neutral", "ghost", "outline", "error", "warning", "link"]
+    values: [
+      nil,
+      "primary",
+      "soft",
+      "neutral",
+      "ghost",
+      "outline",
+      "error",
+      "warning",
+      "info",
+      "accent",
+      "link"
+    ]
 
   attr :size, :string, default: nil, values: [nil, "xs", "sm", "lg"]
   slot :inner_block, required: true
@@ -132,6 +145,8 @@ defmodule TryggWeb.CoreComponents do
     "outline" => "btn-outline",
     "error" => "btn-error",
     "warning" => "btn-warning",
+    "info" => "btn-info",
+    "accent" => "btn-accent",
     "link" => "btn-link"
   }
 
