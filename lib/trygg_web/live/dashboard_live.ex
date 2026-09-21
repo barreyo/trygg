@@ -938,6 +938,9 @@ defmodule TryggWeb.DashboardLive do
           <div class="rounded-box bg-base-100 border border-base-300 py-2">
             <div class="font-semibold text-lg">{@summary.today.feedings}</div>
             <div class="opacity-60 text-xs">feeds today</div>
+            <div class="opacity-50 text-[11px] tabular-nums">
+              {Units.format(@summary.today.volume_ml, :volume, @unit_system)}
+            </div>
           </div>
           <div class="rounded-box bg-base-100 border border-base-300 py-2">
             <div class="font-semibold text-lg">{@summary.today.diapers}</div>
