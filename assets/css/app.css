@@ -103,6 +103,25 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/*
+ * Colors for the three diaper-kind buttons on the Home screen (pee/poo/
+ * mixed) — kept out of the daisyUI theme plugin blocks above because those
+ * only recognize a fixed set of theme keys (primary, secondary, …); an
+ * unrecognized key there is silently dropped instead of scoped per theme.
+ * A plain `:root` var works for both themes here since these are
+ * intentionally fixed, literal colors (yellow/brown/orange) rather than
+ * theme-relative ones, and their mid-range lightness reads clearly against
+ * both the near-white light surface and the true-black dark one.
+ */
+:root {
+  --color-diaper-pee: oklch(82% 0.14 95);
+  --color-diaper-pee-content: oklch(28% 0.04 95);
+  --color-diaper-poo: oklch(38% 0.07 50);
+  --color-diaper-poo-content: oklch(96% 0.01 90);
+  --color-diaper-mixed: oklch(64% 0.19 35);
+  --color-diaper-mixed-content: oklch(98% 0.02 60);
+}
+
 /* This file is for your main application CSS */
 
 /*
@@ -128,7 +147,8 @@ html { overscroll-behavior-y: none; }
   .btn:not(
     .btn-primary, .btn-secondary, .btn-accent, .btn-neutral, .btn-info,
     .btn-success, .btn-warning, .btn-error, .btn-ghost, .btn-link,
-    .btn-outline, .btn-soft, .btn-active, .btn-dash
+    .btn-outline, .btn-soft, .btn-active, .btn-dash,
+    .btn-diaper-pee, .btn-diaper-poo, .btn-diaper-mixed
   ) {
     background-color: var(--color-base-200);
     border-color: var(--color-base-300);
@@ -138,10 +158,40 @@ html { overscroll-behavior-y: none; }
   .btn:not(
     .btn-primary, .btn-secondary, .btn-accent, .btn-neutral, .btn-info,
     .btn-success, .btn-warning, .btn-error, .btn-ghost, .btn-link,
-    .btn-outline, .btn-soft, .btn-active, .btn-dash
+    .btn-outline, .btn-soft, .btn-active, .btn-dash,
+    .btn-diaper-pee, .btn-diaper-poo, .btn-diaper-mixed
   ):hover {
     background-color: var(--color-base-300);
     border-color: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  }
+}
+
+/*
+ * Diaper-kind buttons on the Home screen — see the --color-diaper-* vars
+ * above. Set `--btn-color`/`--btn-fg`, the same hooks daisyUI's own
+ * `.btn-primary`/`.btn-warning`/etc. use, so `.btn`'s base rule derives
+ * `background-color`, hover-darkening and border straight from them. This
+ * has to live in `@layer utilities` (where daisyUI itself emits `.btn` and
+ * `.btn-primary`), not `@layer components` above: Tailwind's layer order is
+ * `theme, base, components, utilities`, and a later-declared layer always
+ * wins over an earlier one regardless of selector specificity — so from
+ * `@layer components`, `--btn-fg` here would always lose the cascade to
+ * `.btn`'s own `--btn-fg: var(--color-base-content)`.
+ */
+@layer utilities {
+  .btn-diaper-pee {
+    --btn-color: var(--color-diaper-pee);
+    --btn-fg: var(--color-diaper-pee-content);
+  }
+
+  .btn-diaper-poo {
+    --btn-color: var(--color-diaper-poo);
+    --btn-fg: var(--color-diaper-poo-content);
+  }
+
+  .btn-diaper-mixed {
+    --btn-color: var(--color-diaper-mixed);
+    --btn-fg: var(--color-diaper-mixed-content);
   }
 }
 
