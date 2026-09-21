@@ -96,10 +96,14 @@ defmodule TryggWeb.Layouts do
         </div>
       </header>
 
-      <main class={[
-        "flex-1 mx-auto max-w-md w-full px-4 py-4",
-        if(@current_child, do: "pb-28", else: "pb-8")
-      ]}>
+      <main
+        id="main-content"
+        phx-hook={@child_switcher && "ChildSwipe"}
+        class={[
+          "flex-1 mx-auto max-w-md w-full px-4 py-4",
+          if(@current_child, do: "pb-28", else: "pb-8")
+        ]}
+      >
         <.install_prompt :if={@current_scope && @current_scope.user} />
         <.demo_banner :if={@current_child && Child.expecting?(@current_child)} child={@current_child} />
         {render_slot(@inner_block)}
