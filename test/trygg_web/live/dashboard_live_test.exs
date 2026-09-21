@@ -229,6 +229,26 @@ defmodule TryggWeb.DashboardLiveTest do
       assert render(lv) =~ "Poo diaper"
     end
 
+    test "the quick time chip back-dates a past diaper", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log from earlier") |> render_click()
+      lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
+
+      lv
+      |> element(~s(button[phx-value-field="started_at"][phx-value-by="-15"]))
+      |> render_click()
+
+      lv |> form("#diaper-form", entry: %{kind: "pee", note: ""}) |> render_submit()
+
+      assert [%{type: :diaper} = entry] = Log.list_entries(scope, child)
+      assert DateTime.diff(DateTime.utc_now(), entry.started_at, :second) in 850..950
+    end
+
     test "a future diaper time is rejected", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
@@ -297,12 +317,12 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="5"])) |> render_click()
-      lv |> element(~s(button[phx-value-by="5"])) |> render_click()
+      lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="5"])) |> render_click()
+      lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="5"])) |> render_click()
 
       assert has_element?(lv, "input#bottle-amount[value='10']")
 
-      lv |> element(~s(button[phx-value-by="-5"])) |> render_click()
+      lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="-5"])) |> render_click()
 
       assert has_element?(lv, "input#bottle-amount[value='5']")
 
@@ -477,6 +497,33 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert DateTime.diff(nap.ended_at, nap.started_at, :second) in 4400..4600
       assert Log.running_timers(scope, child) == []
+    end
+
+    test "the quick time chips back-date a past sleep's start and end", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log from earlier") |> render_click()
+      lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
+
+      lv
+      |> element(~s(button[phx-value-field="started_at"][phx-value-by="-30"]))
+      |> render_click()
+
+      lv
+      |> element(~s(button[phx-value-field="ended_at"][phx-value-by="-5"]))
+      |> render_click()
+
+      lv |> form("#sleep-form", sleep: %{note: "quick chips"}) |> render_submit()
+
+      assert [%{type: :sleep, ended_at: %DateTime{}, note: "quick chips"} = nap] =
+               Log.list_entries(scope, child)
+
+      assert DateTime.diff(DateTime.utc_now(), nap.ended_at, :second) in 250..350
+      assert DateTime.diff(nap.ended_at, nap.started_at, :second) in 1450..1550
     end
 
     test "a past sleep with the end before the start is rejected", %{conn: conn, child: child} do

@@ -201,15 +201,20 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
   end
 
-  def handle_event("nudge_feed", %{"by" => by}, socket) do
+  # Backs every quick time chip in the "Log from earlier" sheets (sleep,
+  # bottle, diaper) — `field` is whichever datetime-local input the chip row
+  # sits above, so one handler covers all of them consistently.
+  def handle_event("nudge_time", %{"field" => field, "by" => by}, socket) do
     at = DateTime.add(now(), String.to_integer(by) * 60, :second)
+    local = Child.to_local_input(socket.assigns.current_child, at)
 
     params =
       socket
       |> current_sheet_params()
-      |> Map.put("at", Child.to_local_input(socket.assigns.current_child, at))
+      |> Map.put(field, local)
 
-    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
+    {:noreply,
+     assign(socket, :sheet_form, to_form(params, as: sheet_form_as(socket.assigns.sheet)))}
   end
 
   def handle_event("set_note", %{"text" => text}, socket) do
@@ -691,6 +696,10 @@ defmodule TryggWeb.DashboardLive do
 
   defp current_sheet_params(_socket), do: %{}
 
+  # The sleep sheets submit as `sleep` params, everything else as `entry`.
+  defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
+  defp sheet_form_as(_sheet), do: :entry
+
   defp not_future(dt) do
     if DateTime.compare(dt, now()) == :gt, do: {:error, :future}, else: :ok
   end
@@ -1105,30 +1114,33 @@ defmodule TryggWeb.DashboardLive do
             <div class="space-y-2">
               <.button
                 type="button"
+                variant="primary"
                 size="lg"
                 phx-click="open_sheet"
                 phx-value-kind="sleep_past"
-                class="w-full justify-start text-base"
+                class="w-full h-16 justify-start gap-3 text-base"
               >
-                <.icon name="hero-moon" class="size-5" /> Sleep
+                <.icon name="hero-moon" class="size-6" /> Sleep
               </.button>
               <.button
                 type="button"
+                variant="info"
                 size="lg"
                 phx-click="open_sheet"
                 phx-value-kind="bottle"
-                class="w-full justify-start text-base"
+                class="w-full h-16 justify-start gap-3 text-base"
               >
-                <.icon name="hero-beaker" class="size-5" /> Bottle
+                <.icon name="hero-beaker" class="size-6" /> Bottle
               </.button>
               <.button
                 type="button"
+                variant="accent"
                 size="lg"
                 phx-click="open_sheet"
                 phx-value-kind="diaper_past"
-                class="w-full justify-start text-base"
+                class="w-full h-16 justify-start gap-3 text-base"
               >
-                <span class="text-xl leading-none" aria-hidden="true">🧷</span> Diaper
+                <span class="text-2xl leading-none" aria-hidden="true">🧷</span> Diaper
               </.button>
             </div>
             <div class="pt-4">
@@ -1219,21 +1231,7 @@ defmodule TryggWeb.DashboardLive do
                 </option>
               </select>
 
-              <div>
-                <div class="flex flex-wrap gap-2 mb-2">
-                  <.button
-                    :for={{label, mins} <- feed_offsets()}
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    phx-click="nudge_feed"
-                    phx-value-by={mins}
-                  >
-                    {label}
-                  </.button>
-                </div>
-                <.input field={@form[:at]} type="datetime-local" label="When" />
-              </div>
+              <.time_field form={@form} field={:at} label="When" />
 
               <input
                 type="text"
@@ -1276,8 +1274,8 @@ defmodule TryggWeb.DashboardLive do
               phx-submit="save_sleep"
               class="space-y-4"
             >
-              <.input field={@form[:started_at]} type="datetime-local" label="Fell asleep" />
-              <.input field={@form[:ended_at]} type="datetime-local" label="Woke up" />
+              <.time_field form={@form} field={:started_at} label="Fell asleep" />
+              <.time_field form={@form} field={:ended_at} label="Woke up" />
               <.note_field form={@form} />
               <.photo_field upload={@photo_upload} />
               <.sheet_buttons save="Add sleep" uploading?={photo_uploading?(@photo_upload)} />
@@ -1302,7 +1300,7 @@ defmodule TryggWeb.DashboardLive do
                   class="join-item btn flex-1"
                 />
               </div>
-              <.input field={@form[:started_at]} type="datetime-local" label="When" />
+              <.time_field form={@form} field={:started_at} label="When" />
               <.input
                 field={@form[:note]}
                 type="text"
@@ -1345,6 +1343,34 @@ defmodule TryggWeb.DashboardLive do
     """
   end
 
+  attr :form, :any, required: true
+  attr :field, :atom, required: true
+  attr :label, :string, required: true
+
+  # One-tap "Now / 5m ago / 15m ago / …" chips above a datetime-local input,
+  # shared by every "log from earlier" sheet so backdating feels the same
+  # everywhere: sleep, bottle, diaper.
+  defp time_field(assigns) do
+    ~H"""
+    <div>
+      <div class="flex flex-wrap gap-2 mb-2">
+        <.button
+          :for={{label, mins} <- time_offsets()}
+          type="button"
+          variant="outline"
+          size="xs"
+          phx-click="nudge_time"
+          phx-value-field={@field}
+          phx-value-by={mins}
+        >
+          {label}
+        </.button>
+      </div>
+      <.input field={@form[@field]} type="datetime-local" label={@label} />
+    </div>
+    """
+  end
+
   attr :save, :string, required: true
   attr :uploading?, :boolean, default: false
 
@@ -1368,9 +1394,11 @@ defmodule TryggWeb.DashboardLive do
   defp last_diaper_emoji(%Entry{data: %{"kind" => k}}), do: diaper_emoji(k)
   defp last_diaper_emoji(_), do: diaper_emoji(nil)
 
-  # {label, minutes-from-now} one-tap chips for back-dating a bottle.
-  defp feed_offsets,
-    do: [{"Now", 0}, {"15m ago", -15}, {"30m ago", -30}, {"1h ago", -60}, {"2h ago", -120}]
+  # {label, minutes-from-now} one-tap chips for back-dating any "log from
+  # earlier" time field (sleep, bottle, diaper) — kept in one list so every
+  # sheet offers the same quick options.
+  defp time_offsets,
+    do: [{"Now", 0}, {"5m ago", -5}, {"15m ago", -15}, {"30m ago", -30}, {"1h ago", -60}]
 
   defp contents_option_label("formula"), do: "Formula"
   defp contents_option_label("expressed"), do: "Expressed milk"
