@@ -32,7 +32,7 @@ defmodule TryggWeb.ReportsLiveTest do
     assert has_element?(switched, "header", "Reports")
   end
 
-  test "today view renders the calendar, stats, and day/night definition", %{
+  test "today view renders the calendar and stats", %{
     conn: conn,
     child: child
   } do
@@ -44,8 +44,16 @@ defmodule TryggWeb.ReportsLiveTest do
     assert has_element?(lv, "#today-calendar")
     assert has_element?(lv, "#day-prev")
     assert has_element?(lv, "#day-next")
-    assert has_element?(lv, "#day-night-def", "08:00")
-    assert has_element?(lv, "#day-night-def", "20:00")
+  end
+
+  test "the sleep section header shows the day/night definition", %{
+    conn: conn,
+    child: child
+  } do
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+
+    assert has_element?(lv, "#section-sleep #day-night-def", "08:00")
+    assert has_element?(lv, "#section-sleep #day-night-def", "20:00")
     assert has_element?(lv, "#change-day-night")
   end
 

@@ -34,6 +34,7 @@ import ModalBack from "./hooks/modal_back"
 import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
 import OfflineContext from "./hooks/offline_context"
+import ChartScrub from "./hooks/chart_scrub"
 import {installOfflinePanel} from "./offline/panel_toggle"
 import {startAutoSync} from "./offline/auto_sync"
 
@@ -53,6 +54,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PullToRefresh,
     ChildSwipe,
     OfflineContext,
+    ChartScrub,
   },
 })
 

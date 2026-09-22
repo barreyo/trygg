@@ -87,8 +87,8 @@ defmodule TryggWeb.ReportComponents do
         x={@plot.axis_x}
         y={hour.y + 3}
         text-anchor="end"
-        class="fill-base-content/55"
-        font-size="9"
+        class="fill-base-content/70"
+        font-size="11"
       >
         {hour.label}
       </text>
@@ -117,8 +117,8 @@ defmodule TryggWeb.ReportComponents do
           x={(@plot.col_left + @plot.col_right) / 2}
           y={wake.y + wake.h / 2 + 3}
           text-anchor="middle"
-          class="fill-base-content/45"
-          font-size="9"
+          class="fill-base-content/60"
+          font-size="11"
         >
           {wake.label}
         </text>
@@ -165,8 +165,8 @@ defmodule TryggWeb.ReportComponents do
           :if={ev.amount}
           x={@plot.gutter_x + 10}
           y={ev.y + 3}
-          class="fill-base-content/60"
-          font-size="8"
+          class="fill-base-content/75"
+          font-size="10"
         >
           {ev.amount}
         </text>
@@ -186,7 +186,7 @@ defmodule TryggWeb.ReportComponents do
         x={@plot.col_right + 2}
         y={@plot.now_y + 3}
         class="fill-error"
-        font-size="8"
+        font-size="10"
       >
         now
       </text>
@@ -219,8 +219,8 @@ defmodule TryggWeb.ReportComponents do
         x={@plot.axis_x}
         y={hour.y + 3}
         text-anchor="end"
-        class="fill-base-content/55"
-        font-size="8"
+        class="fill-base-content/70"
+        font-size="10"
       >
         {hour.label}
       </text>
@@ -296,7 +296,7 @@ defmodule TryggWeb.ReportComponents do
             "fill-base-content/70",
             col.today? && "fill-primary font-semibold"
           ]}
-          font-size="8"
+          font-size="9"
         >
           {col.weekday}
         </text>
@@ -304,8 +304,8 @@ defmodule TryggWeb.ReportComponents do
           x={col.x + col.width / 2}
           y={@plot.top - 1}
           text-anchor="middle"
-          class="fill-base-content/50"
-          font-size="8"
+          class="fill-base-content/65"
+          font-size="9"
         >
           {col.daynum}
         </text>
@@ -313,8 +313,8 @@ defmodule TryggWeb.ReportComponents do
           x={col.x + col.width / 2}
           y={@plot.top + @plot.plot_h + 12}
           text-anchor="middle"
-          class="fill-base-content/60"
-          font-size="8"
+          class="fill-base-content/75"
+          font-size="9"
         >
           {col.total_label}
         </text>
@@ -337,7 +337,7 @@ defmodule TryggWeb.ReportComponents do
     assigns = assign(assigns, :chart, chart)
 
     ~H"""
-    <div id={@id}>
+    <div id={@id} phx-hook={!@static && !@chart.empty? && "ChartScrub"}>
       <p :if={@chart.empty?} class="opacity-60 text-sm py-8 text-center">Nothing to chart yet.</p>
       <svg
         :if={!@chart.empty?}
@@ -360,8 +360,8 @@ defmodule TryggWeb.ReportComponents do
           x={@chart.left - 4}
           y={tick.y + 3}
           text-anchor="end"
-          class="fill-base-content/55"
-          font-size="9"
+          class="fill-base-content/70"
+          font-size="11"
         >
           {tick.label}
         </text>
@@ -398,8 +398,19 @@ defmodule TryggWeb.ReportComponents do
             class="fill-transparent cursor-pointer"
             phx-click="select_bar"
             phx-value-date={bar.iso}
+            data-selected={to_string(bar.selected?)}
           />
           <title>{bar.caption}</title>
+          <text
+            :if={@chart.show_value_labels?}
+            x={bar.mid_x}
+            y={bar.label_y}
+            text-anchor="middle"
+            class="fill-base-content/80 font-medium pointer-events-none"
+            font-size="9"
+          >
+            {bar.value_label}
+          </text>
         </g>
         <polyline
           :if={@chart.polyline}
@@ -415,8 +426,8 @@ defmodule TryggWeb.ReportComponents do
           x={label.x}
           y={@chart.bottom + 14}
           text-anchor="middle"
-          class="fill-base-content/55"
-          font-size="8"
+          class="fill-base-content/70"
+          font-size="10"
         >
           {label.label}
         </text>
@@ -546,8 +557,8 @@ defmodule TryggWeb.ReportComponents do
           x={@chart.left - 4}
           y={tick.y + 3}
           text-anchor="end"
-          class="fill-base-content/55"
-          font-size="8"
+          class="fill-base-content/70"
+          font-size="10"
         >
           {tick.label}
         </text>
@@ -563,6 +574,16 @@ defmodule TryggWeb.ReportComponents do
             ]}
           />
           <title>{bar.caption}</title>
+          <text
+            :if={@chart.show_value_labels? && bar.value_label != ""}
+            x={bar.mid_x}
+            y={bar.label_y}
+            text-anchor="middle"
+            class="fill-base-content/80 font-medium pointer-events-none"
+            font-size="9"
+          >
+            {bar.value_label}
+          </text>
         </g>
         <line
           :if={@chart.baseline_y}
@@ -579,8 +600,8 @@ defmodule TryggWeb.ReportComponents do
           x={label.x}
           y={@chart.bottom + 12}
           text-anchor="middle"
-          class="fill-base-content/55"
-          font-size="8"
+          class="fill-base-content/70"
+          font-size="10"
         >
           {label.label}
         </text>
@@ -625,7 +646,9 @@ defmodule TryggWeb.ReportComponents do
           h: h,
           mid_x: @bars_left + i * slot + slot / 2,
           last?: i == n - 1,
-          caption: "#{Calendar.strftime(point.date, "%a %-d %b")} · #{format.(v)}"
+          caption: "#{Calendar.strftime(point.date, "%a %-d %b")} · #{format.(v)}",
+          value_label: format.(v),
+          label_y: max(@bars_bottom - h - 3, @bars_top + 8)
         }
       end)
 
@@ -662,7 +685,8 @@ defmodule TryggWeb.ReportComponents do
       bars: bars,
       x_labels: x_labels,
       y_ticks: y_ticks,
-      baseline_y: baseline && y.(baseline)
+      baseline_y: baseline && y.(baseline),
+      show_value_labels?: n <= 14
     }
   end
 
@@ -707,8 +731,8 @@ defmodule TryggWeb.ReportComponents do
           x={@chart.left - 4}
           y={tick.y + 3}
           text-anchor="end"
-          class="fill-base-content/55"
-          font-size="8"
+          class="fill-base-content/70"
+          font-size="10"
         >
           {tick.label}
         </text>
@@ -743,8 +767,8 @@ defmodule TryggWeb.ReportComponents do
           x={label.x}
           y={@chart.bottom + 14}
           text-anchor="middle"
-          class="fill-base-content/55"
-          font-size="8"
+          class="fill-base-content/70"
+          font-size="10"
         >
           {label.label}
         </text>
@@ -927,7 +951,7 @@ defmodule TryggWeb.ReportComponents do
     assigns = assign(assigns, :plot, plot)
 
     ~H"""
-    <div id={@id}>
+    <div id={@id} phx-hook={!@static && @plot && "ChartScrub"}>
       <p :if={!@plot} class="opacity-60 text-sm py-6 text-center">Not enough days yet.</p>
       <svg
         :if={@plot}
@@ -953,8 +977,8 @@ defmodule TryggWeb.ReportComponents do
             x={band.cx}
             y="16"
             text-anchor="middle"
-            class="fill-base-content/55"
-            font-size="10"
+            class="fill-base-content/70"
+            font-size="11"
           >
             {band.label}
           </text>
@@ -983,8 +1007,9 @@ defmodule TryggWeb.ReportComponents do
           y1={@plot.strip_top}
           x2={tick.x}
           y2={@plot.strip_bottom}
-          class={if(tick.major?, do: "stroke-base-content/20", else: "stroke-base-content/10")}
+          class={if(tick.major?, do: "stroke-base-content/25", else: "stroke-base-content/10")}
           stroke-width="1"
+          stroke-dasharray={tick.major? && "3 2.5"}
         />
         <g :for={marker <- @plot.markers}>
           <line
@@ -1011,6 +1036,7 @@ defmodule TryggWeb.ReportComponents do
           class={["fill-transparent", !@static && "cursor-pointer"]}
           phx-click={!@static && "select_heat"}
           phx-value-index={bin.index}
+          data-selected={to_string(bin.selected?)}
         >
           <title>{bin.title}</title>
         </rect>
@@ -1029,8 +1055,8 @@ defmodule TryggWeb.ReportComponents do
             x={tick.x}
             y={@plot.strip_bottom + 18}
             text-anchor={tick.anchor}
-            class={if(tick.major?, do: "fill-base-content/70", else: "fill-base-content/45")}
-            font-size={if(tick.major?, do: "11", else: "9")}
+            class={if(tick.major?, do: "fill-base-content/80", else: "fill-base-content/60")}
+            font-size={if(tick.major?, do: "12", else: "10")}
           >
             {tick.label}
           </text>
@@ -1266,6 +1292,7 @@ defmodule TryggWeb.ReportComponents do
       |> Enum.map(fn d -> (d.total || 0) + (Map.get(d, :awake) || 0) end)
       |> Enum.max()
       |> max(86_400)
+      |> Kernel.*(1.12)
 
     y_max = max_y
     span = @chart_right - @chart_left
@@ -1303,7 +1330,9 @@ defmodule TryggWeb.ReportComponents do
           mid_x: x + bar_w / 2,
           rolling_y: d.rolling && y.(d.rolling),
           selected?: selected == iso,
-          caption: sleep_bar_caption(d)
+          caption: sleep_bar_caption(d),
+          value_label: compact_duration(round(d.total || 0)),
+          label_y: max(wake_y - 4, @chart_top + 9)
         }
       end)
 
@@ -1347,7 +1376,8 @@ defmodule TryggWeb.ReportComponents do
       y_ticks: y_tick_marks(y_max, y),
       bars: bars,
       polyline: polyline,
-      x_labels: x_labels
+      x_labels: x_labels,
+      show_value_labels?: n <= 14
     }
   end
 
