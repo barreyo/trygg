@@ -790,9 +790,29 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#glance-feed", "No feeds yet")
+      assert has_element?(lv, "#glance-feed", "none today")
       assert has_element?(lv, "#glance-diaper")
+      assert has_element?(lv, "#glance-diaper", "none today")
       assert has_element?(lv, "#glance-sleep")
       refute has_element?(lv, "#home-alerts")
+    end
+
+    test "today's totals show inside the glance cards, not a separate row", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      entry_fixture(scope, child, %{"data" => %{"amount_ml" => 90}, :type => :feeding})
+      entry_fixture(scope, child, %{"data" => %{"kind" => "pee"}, :type => :diaper})
+      entry_fixture(scope, child, %{"data" => %{"kind" => "poo"}, :type => :diaper})
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#glance-feed", "1 feed · 90 ml today")
+      assert has_element?(lv, "#glance-diaper", "2 diapers")
+      assert has_element?(lv, "#glance-diaper", "💧 1")
+      assert has_element?(lv, "#glance-diaper", "💩 1")
+      assert has_element?(lv, "#glance-sleep", "slept today")
     end
 
     test "regular bottles produce a next-feed estimate on the feed card", %{
