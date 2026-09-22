@@ -32,6 +32,10 @@ defmodule TryggWeb.LogComponents do
     default: nil,
     doc: "short call-out rendered in the card's tone colour, e.g. \"40m later than usual\""
 
+  attr :today, :string,
+    default: nil,
+    doc: "quiet running total for the day, e.g. \"4 feeds · 215 ml today\""
+
   attr :badge, :string, default: nil
   attr :badge_label, :string, default: nil
   attr :badge_id, :string, default: nil
@@ -67,6 +71,9 @@ defmodule TryggWeb.LogComponents do
           <div class="text-lg font-semibold leading-tight tabular-nums">{@badge}</div>
           <div :if={@badge_label} class="text-xs opacity-60">{@badge_label}</div>
         </div>
+      </div>
+      <div :if={@today} class="text-[11px] opacity-50 leading-snug break-words tabular-nums">
+        {@today}
       </div>
       <div
         :if={@status}
