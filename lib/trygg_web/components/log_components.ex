@@ -37,13 +37,19 @@ defmodule TryggWeb.LogComponents do
   attr :badge_id, :string, default: nil
   attr :tone, :string, default: "base", values: ~w(base warning success)
 
+  attr :category, :string,
+    default: nil,
+    values: [nil, "feed", "diaper", "sleep"],
+    doc:
+      "subtle identity tint for the card's resting state, so it's recognizable by colour alone; overridden by :tone when there's something to call out"
+
   def since_card(assigns) do
     ~H"""
     <div class={[
-      "rounded-box border p-3 h-full min-w-0 flex flex-col gap-1",
-      @tone == "base" && "bg-base-200 border-base-300",
-      @tone == "warning" && "bg-warning/10 border-warning/40",
-      @tone == "success" && "bg-success/10 border-success/40"
+      "rounded-box p-2 h-full min-w-0 flex flex-col gap-1",
+      @tone == "base" && category_bg(@category),
+      @tone == "warning" && "bg-warning/15",
+      @tone == "success" && "bg-success/10"
     ]}>
       <div class="flex items-center gap-1.5 text-xs opacity-70 min-w-0">
         <span :if={@emoji} class="text-sm leading-none shrink-0" aria-hidden="true">{@emoji}</span>
@@ -77,6 +83,11 @@ defmodule TryggWeb.LogComponents do
     </div>
     """
   end
+
+  defp category_bg("feed"), do: "bg-info/10"
+  defp category_bg("diaper"), do: "tint-diaper"
+  defp category_bg("sleep"), do: "bg-primary/10"
+  defp category_bg(_), do: "bg-base-200"
 
   @doc """
   The running-timer card: a live-ticking duration, a Stop button, and an
@@ -145,19 +156,9 @@ defmodule TryggWeb.LogComponents do
 
   def entry_row(assigns) do
     ~H"""
-    <div
-      class={[
-        "py-2.5",
-        @on_click && "cursor-pointer active:bg-base-200 -mx-2 px-2 rounded-lg"
-      ]}
-      phx-click={@on_click}
-      {@rest}
-    >
+    <div class={["py-3", @on_click && "cursor-pointer"]} phx-click={@on_click} {@rest}>
       <div class="flex items-center gap-3">
-        <div class={[
-          "size-9 rounded-full grid place-items-center shrink-0",
-          if(asleep_now?(@entry), do: "bg-primary/15 text-primary", else: "bg-base-200 opacity-70")
-        ]}>
+        <div class="size-9 rounded-full grid place-items-center shrink-0 bg-base-200">
           <span
             :if={@entry.type == :diaper}
             class="text-base leading-none"
@@ -168,7 +169,10 @@ defmodule TryggWeb.LogComponents do
           <.icon
             :if={@entry.type != :diaper}
             name={entry_icon(@entry.type)}
-            class={"size-5 " <> if(asleep_now?(@entry), do: "motion-safe:animate-pulse", else: "")}
+            class={
+              "size-5 #{entry_icon_color(@entry.type)}" <>
+                if(asleep_now?(@entry), do: " motion-safe:animate-pulse", else: "")
+            }
           />
         </div>
         <div class="flex-1 min-w-0">
@@ -218,6 +222,13 @@ defmodule TryggWeb.LogComponents do
   def entry_icon(:diaper), do: "hero-sparkles"
   def entry_icon(:sleep), do: "hero-moon"
   def entry_icon(_), do: "hero-clipboard-document-list"
+
+  # The one accent color that marks an entry's activity type in the timeline
+  # row's otherwise-uniform grey circle — same colors as the Home screen's
+  # glance cards, so "blue" reads as "feeding" everywhere in the app.
+  defp entry_icon_color(:feeding), do: "text-info"
+  defp entry_icon_color(:sleep), do: "text-primary"
+  defp entry_icon_color(_), do: "opacity-60"
 
   # {emoji, stored kind, label} — the single source of truth for how each
   # diaper kind is shown, used by the quick buttons, the "log from earlier"

@@ -831,6 +831,22 @@ defmodule TryggWeb.DashboardLive do
         </.timer_banner>
       </div>
 
+      <%!-- Health alerts — the first thing a caregiver should see after the
+           header/active timer, so this sits above everything else, including
+           the glance cards. --%>
+      <div :if={@outlook.alerts != []} class="mb-4">
+        <.alerts_list
+          id="home-alerts"
+          alerts={@outlook.alerts}
+          links={
+            %{
+              vitals: ~p"/c/#{@current_child}/vitals",
+              reports: ~p"/c/#{@current_child}/reports"
+            }
+          }
+        />
+      </div>
+
       <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
       <div
         :if={@weight_reminder}
@@ -852,63 +868,16 @@ defmodule TryggWeb.DashboardLive do
         </div>
       </div>
 
-      <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
-           PushPrompt hook reveals it only when the browser supports Web Push,
-           permission is still undecided, and the caregiver hasn't answered
-           before. Re-enabling later lives on Preferences. --%>
-      <div
-        :if={@vapid_public_key}
-        id="push-prompt"
-        phx-hook="PushPrompt"
-        phx-update="ignore"
-        hidden
-        data-vapid-key={@vapid_public_key}
-        class="mb-4 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
-      >
-        <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
-        <div class="flex-1 min-w-0 space-y-2">
-          <p class="font-medium">Turn on notifications?</p>
-          <p class="opacity-70">
-            Get a gentle heads-up on this device — like a weight check coming due — even when Trygg is closed.
-          </p>
-          <div class="flex gap-2">
-            <.button
-              type="button"
-              variant="primary"
-              size="sm"
-              data-push-prompt-action="enable"
-            >
-              Turn on
-            </.button>
-            <.button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-push-prompt-action="dismiss"
-            >
-              Not now
-            </.button>
-          </div>
-        </div>
-        <button
-          type="button"
-          class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
-          aria-label="Dismiss"
-          data-push-prompt-action="dismiss"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-      </div>
-
       <%!-- At a glance --%>
-      <section class="rounded-box border border-base-300 bg-base-200/40 p-2 space-y-2">
+      <section class="bg-base-200/40 rounded-box p-2 space-y-2">
         <div id="glance-cards" class="grid grid-cols-3 gap-2">
           <div id="glance-feed">
             <.since_card
               icon="hero-beaker"
-              label="Last feed"
+              label="Feeding"
+              category="feed"
               tone={feed_tone(@outlook)}
-              value={relative_time(feed_time(@summary.last_feeding))}
+              value={feed_value(@summary.last_feeding, @outlook)}
               sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
               status={feed_status(@summary.last_feeding, @outlook)}
             />
@@ -916,7 +885,8 @@ defmodule TryggWeb.DashboardLive do
           <div id="glance-diaper">
             <.since_card
               emoji={last_diaper_emoji(@summary.last_diaper)}
-              label="Last diaper"
+              label="Diaper"
+              category="diaper"
               tone={diaper_tone(@outlook)}
               value={relative_time(time_of(@summary.last_diaper))}
               sub={diaper_sub(@summary.last_diaper)}
@@ -927,53 +897,41 @@ defmodule TryggWeb.DashboardLive do
             <.since_card
               icon={sleep_icon(@summary)}
               label={sleep_label(@summary)}
+              category="sleep"
               tone={sleep_tone(@summary, @outlook)}
-              value={sleep_value(@summary)}
+              value={sleep_value(@summary, @outlook)}
               sub={sleep_sub(@summary, @outlook, @current_child)}
               status={sleep_status(@summary, @outlook)}
             />
           </div>
         </div>
 
-        <p
-          :if={next_nap(@summary, @outlook)}
-          id="glance-next-nap"
-          class="text-xs text-center opacity-70 tabular-nums text-balance px-1"
-        >
-          {next_nap(@summary, @outlook)}
-        </p>
-
-        <div class="grid grid-cols-3 gap-2 text-center text-sm">
-          <div class="rounded-box bg-base-100 border border-base-300 py-2">
-            <div class="font-semibold text-lg">{@summary.today.feedings}</div>
-            <div class="opacity-60 text-xs">feeds today</div>
-            <div class="opacity-50 text-[11px] tabular-nums">
-              {Units.format(@summary.today.volume_ml, :volume, @unit_system)}
-            </div>
+        <div class="flex items-center justify-around text-center text-xs px-1 py-0.5">
+          <div class="opacity-70">
+            <span class="text-sm font-semibold text-base-content tabular-nums">
+              {@summary.today.feedings}
+            </span>
+            Feeds
+            <span class="opacity-70 tabular-nums">
+              ({Units.format(@summary.today.volume_ml, :volume, @unit_system)})
+            </span>
           </div>
-          <div class="rounded-box bg-base-100 border border-base-300 py-2">
-            <div class="font-semibold text-lg">{@summary.today.diapers}</div>
-            <div class="opacity-60 text-xs">diapers today</div>
+          <div class="h-3 w-px bg-base-300"></div>
+          <div class="opacity-70">
+            <span class="text-sm font-semibold text-base-content tabular-nums">
+              {@summary.today.diapers}
+            </span>
+            Diapers
           </div>
-          <div class="rounded-box bg-base-100 border border-base-300 py-2">
-            <div class="font-semibold text-lg">{format_duration(@summary.today.sleep_seconds)}</div>
-            <div class="opacity-60 text-xs">slept today</div>
+          <div class="h-3 w-px bg-base-300"></div>
+          <div class="opacity-70">
+            <span class="text-sm font-semibold text-base-content tabular-nums">
+              {format_duration(@summary.today.sleep_seconds)}
+            </span>
+            Sleep
           </div>
         </div>
       </section>
-
-      <div :if={@outlook.alerts != []} class="mt-4">
-        <.alerts_list
-          id="home-alerts"
-          alerts={@outlook.alerts}
-          links={
-            %{
-              vitals: ~p"/c/#{@current_child}/vitals",
-              reports: ~p"/c/#{@current_child}/reports"
-            }
-          }
-        />
-      </div>
 
       <%!-- Log something --%>
       <div
@@ -1024,6 +982,55 @@ defmodule TryggWeb.DashboardLive do
         >
           <.icon name="hero-clock" class="size-4" /> Log from earlier
         </.button>
+      </div>
+
+      <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
+           PushPrompt hook reveals it only when the browser supports Web Push,
+           permission is still undecided, and the caregiver hasn't answered
+           before. Re-enabling later lives on Preferences. Placed below the
+           quick actions so it never pushes vital stats down the screen. --%>
+      <div
+        :if={@vapid_public_key}
+        id="push-prompt"
+        phx-hook="PushPrompt"
+        phx-update="ignore"
+        hidden
+        data-vapid-key={@vapid_public_key}
+        class="mt-6 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+      >
+        <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
+        <div class="flex-1 min-w-0 space-y-2">
+          <p class="font-medium">Turn on notifications?</p>
+          <p class="opacity-70">
+            Get a gentle heads-up on this device — like a weight check coming due — even when Trygg is closed.
+          </p>
+          <div class="flex gap-2">
+            <.button
+              type="button"
+              variant="primary"
+              size="sm"
+              data-push-prompt-action="enable"
+            >
+              Turn on
+            </.button>
+            <.button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-push-prompt-action="dismiss"
+            >
+              Not now
+            </.button>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
+          aria-label="Dismiss"
+          data-push-prompt-action="dismiss"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
       </div>
 
       <div class="mt-8 flex items-center justify-between border-b border-base-300 pb-2">
@@ -1422,31 +1429,40 @@ defmodule TryggWeb.DashboardLive do
   defp last_bottle_contents(%Entry{data: %{"bottle_contents" => c}}) when is_binary(c), do: c
   defp last_bottle_contents(_last), do: "formula"
 
-  defp feed_time(nil), do: nil
   defp feed_time(%Entry{started_at: at}), do: at
 
   defp time_of(nil), do: nil
   defp time_of(%Entry{started_at: at}), do: at
 
-  # Feed card. The neutral `sub` says what comes next; the tone-coloured
-  # `status` only appears when something needs attention (a cluster in
-  # progress, or a feed running later than the baby's own rhythm). The
-  # estimate comes from their pattern, not a schedule, so the copy says
-  # "usual", never "overdue" or "missed".
-  @due_soon_seconds 15 * 60
+  # Feed card. The primary `value` is plain time since the last feed — the
+  # single most-checked fact — in the card's biggest text; the next-feed
+  # estimate demotes to the neutral `sub` line. The tone-coloured `status`
+  # only appears when something needs attention (a cluster in progress, or a
+  # feed running later than the baby's own rhythm) — the sub line alone
+  # doesn't carry enough weight to flag that on its own. The estimate comes
+  # from their pattern, not a schedule, so the copy says "usual", never
+  # "overdue" or "missed".
   @late_seconds -30 * 60
 
-  defp feed_sub(nil, _outlook, _units), do: "no feeds yet"
+  defp feed_value(nil, _outlook), do: "No feeds yet"
+
+  defp feed_value(%Entry{} = e, outlook) do
+    if match?(%{active?: true}, outlook.cluster) do
+      "#{outlook.cluster.count} feeds in 2h"
+    else
+      relative_time(feed_time(e))
+    end
+  end
+
+  defp feed_sub(nil, _outlook, _units), do: nil
 
   defp feed_sub(%Entry{} = e, outlook, units) do
     cond do
       match?(%{active?: true}, outlook.cluster) ->
-        "#{outlook.cluster.count} feeds in 2h"
+        "Last fed #{relative_time(feed_time(e))}"
 
       next = outlook.next_feed ->
-        if next.in_seconds >= @due_soon_seconds,
-          do: "Next ≈ #{next.label} · in #{format_duration(next.in_seconds)}",
-          else: "Next ≈ #{next.label}"
+        "Next ~#{next.label} · #{due_label(next.in_seconds)}"
 
       true ->
         entry_title(e, units)
@@ -1464,7 +1480,6 @@ defmodule TryggWeb.DashboardLive do
   end
 
   defp due_status(s) when s <= @late_seconds, do: "#{format_duration(-s)} later than usual"
-  defp due_status(s) when s < @due_soon_seconds, do: "usually fed around now"
   defp due_status(_), do: nil
 
   defp feed_tone(%{next_feed: %{in_seconds: s}}) when is_integer(s) and s <= @late_seconds,
@@ -1494,7 +1509,9 @@ defmodule TryggWeb.DashboardLive do
   defp diaper_tone(_), do: "base"
 
   # Sleep card. The label carries the state ("Asleep" / "Awake") so the value
-  # can be a plain duration instead of an ambiguous "1h 41m ago".
+  # can be a plain duration instead of an ambiguous "1h 41m ago". Once a next
+  # nap can be predicted, that becomes the primary `value` (mirroring the
+  # feed card) and the awake duration moves down to `sub`.
   defp sleeping?(%{running: running}), do: Enum.any?(running, &(&1.type == :sleep))
 
   defp running_sleep_entry(%{running: running}), do: Enum.find(running, &(&1.type == :sleep))
@@ -1513,11 +1530,19 @@ defmodule TryggWeb.DashboardLive do
     end
   end
 
-  defp sleep_value(summary) do
-    case {running_sleep_entry(summary), woke_at(summary)} do
-      {%Entry{} = e, _} -> format_duration(Entry.duration_seconds(e))
-      {nil, %DateTime{} = woke} -> format_duration(DateTime.diff(now(), woke, :second))
-      _ -> "—"
+  defp sleep_value(summary, outlook) do
+    cond do
+      e = running_sleep_entry(summary) ->
+        format_duration(Entry.duration_seconds(e))
+
+      nap = awake_next_nap(outlook) ->
+        "Nap · #{due_label(nap.in_seconds)}"
+
+      woke = woke_at(summary) ->
+        format_duration(DateTime.diff(now(), woke, :second))
+
+      true ->
+        "—"
     end
   end
 
@@ -1525,6 +1550,15 @@ defmodule TryggWeb.DashboardLive do
     cond do
       e = running_sleep_entry(summary) ->
         "since #{Child.local_clock(child, e.started_at)}"
+
+      nap = awake_next_nap(outlook) ->
+        case woke_at(summary) do
+          %DateTime{} = woke ->
+            "~#{nap.label} · awake #{format_duration(DateTime.diff(now(), woke, :second))}"
+
+          nil ->
+            "~#{nap.label}"
+        end
 
       pressure = wake_pressure(outlook) ->
         "usually up #{format_duration(pressure.typical_seconds)}" <>
@@ -1563,17 +1597,6 @@ defmodule TryggWeb.DashboardLive do
        do: p
 
   defp wake_pressure(_), do: nil
-
-  defp next_nap(summary, outlook) do
-    with false <- sleeping?(summary),
-         %{state: :awake, next_nap: %{} = nap} <- outlook.prediction do
-      range = if nap.range, do: " (#{nap.range.label})", else: ""
-      source = if nap.source == :age_prior, do: " · typical for age", else: ""
-      "Next nap ≈ #{nap.label}#{range} · #{due_label(nap.in_seconds)}#{source}"
-    else
-      _ -> nil
-    end
-  end
 
   defp trim(f) when is_float(f) do
     if f == Float.round(f), do: trunc(f), else: Float.round(f, 1)
