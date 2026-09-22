@@ -473,6 +473,7 @@ defmodule TryggWeb.ReportComponents do
         "rounded-box overflow-hidden",
         @tone == :warning && "border-2 border-warning bg-warning/20",
         @tone == :notice && "border border-info/50 bg-info/10",
+        @tone == :info && "border border-primary/40 bg-primary/10",
         @tone == :none && "border border-base-300"
       ]}
     >
@@ -508,17 +509,22 @@ defmodule TryggWeb.ReportComponents do
 
   # The container's overall visual weight follows the single most severe
   # alert in the list — a mix of a warning and a notice should still read as
-  # urgent, not get watered down to the milder tone.
+  # urgent, not get watered down to the milder tone. `:info` (reassuring
+  # findings like "eating more than usual, not a problem") still gets its own
+  # subtle tint so it doesn't look identical to "no alert at all", but stays
+  # a step quieter than `:notice`.
   defp alerts_tone(alerts) do
     cond do
       Enum.any?(alerts, &(&1.severity == :warning)) -> :warning
       Enum.any?(alerts, &(&1.severity == :notice)) -> :notice
+      Enum.any?(alerts, &(&1.severity == :info)) -> :info
       true -> :none
     end
   end
 
   defp severity_dot(:warning), do: "bg-warning"
   defp severity_dot(:notice), do: "bg-info"
+  defp severity_dot(:info), do: "bg-primary"
   defp severity_dot(_), do: "bg-base-content/30"
 
   defp link_label(:vitals), do: "Open Vitals"
