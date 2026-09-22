@@ -152,9 +152,13 @@ config :web_push_elixir,
 # Reports PDF export. `on_demand` launches Chrome per print job (and shuts it
 # down afterwards) so environments without a browser still boot. Production
 # adds `no_sandbox` and the Chromium path in config/runtime.exs.
+#
+# `init_timeout`/`checkout_timeout` default to 5s in ChromicPDF, which isn't
+# always enough for a cold Chrome launch under `on_demand`; raise them to
+# match `timeout` so a slow boot doesn't 500 the request.
 config :trygg, ChromicPDF,
   on_demand: true,
-  session_pool: [timeout: 20_000],
+  session_pool: [timeout: 20_000, init_timeout: 20_000, checkout_timeout: 20_000],
   chrome_args: "--disable-dev-shm-usage"
 
 # Import environment specific config. This must remain at the bottom

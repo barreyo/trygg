@@ -171,7 +171,7 @@ if config_env() == :prod do
   config :trygg, ChromicPDF,
     on_demand: true,
     no_sandbox: true,
-    session_pool: [timeout: 20_000],
+    session_pool: [timeout: 20_000, init_timeout: 20_000, checkout_timeout: 20_000],
     chrome_args: "--disable-dev-shm-usage",
     chrome_executable: System.get_env("CHROME_EXECUTABLE") || "/usr/bin/chromium-browser"
 end
