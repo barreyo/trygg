@@ -7,6 +7,18 @@ defmodule TryggWeb.DashboardLiveTest do
 
   alias Trygg.{Families, Log}
 
+  # A "-N minute" quick-time chip bakes `now() - N*60` into the form at click
+  # time, then round-trips through a minute-granularity datetime-local input.
+  # `before`/`after_` must bracket the click itself (captured immediately
+  # around the `render_click` call) — asserting only what that ordering
+  # guarantees keeps this immune to CI scheduler jitter, however long the
+  # click itself takes to actually run.
+  defp assert_nudged_to(before, after_, entry_time, offset_seconds) do
+    assert DateTime.diff(after_, entry_time, :second) >= offset_seconds
+    assert DateTime.diff(after_, entry_time, :second) < offset_seconds + 300
+    assert DateTime.diff(before, entry_time, :second) < offset_seconds + 60
+  end
+
   describe "auth boundary" do
     test "GET / redirects anonymous users to log in", %{conn: conn} do
       assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(conn, ~p"/")
@@ -239,14 +251,18 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
 
+      before_click = DateTime.utc_now()
+
       lv
       |> element(~s(button[phx-value-field="started_at"][phx-value-by="-15"]))
       |> render_click()
 
+      after_click = DateTime.utc_now()
+
       lv |> form("#diaper-form", entry: %{kind: "pee", note: ""}) |> render_submit()
 
       assert [%{type: :diaper} = entry] = Log.list_entries(scope, child)
-      assert DateTime.diff(DateTime.utc_now(), entry.started_at, :second) in 850..950
+      assert_nudged_to(before_click, after_click, entry.started_at, 900)
     end
 
     test "a future diaper time is rejected", %{conn: conn, scope: scope, child: child} do
@@ -509,20 +525,28 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
 
+      before_start = DateTime.utc_now()
+
       lv
       |> element(~s(button[phx-value-field="started_at"][phx-value-by="-30"]))
       |> render_click()
 
+      after_start = DateTime.utc_now()
+      before_end = DateTime.utc_now()
+
       lv
       |> element(~s(button[phx-value-field="ended_at"][phx-value-by="-5"]))
       |> render_click()
+
+      after_end = DateTime.utc_now()
 
       lv |> form("#sleep-form", sleep: %{note: "quick chips"}) |> render_submit()
 
       assert [%{type: :sleep, ended_at: %DateTime{}, note: "quick chips"} = nap] =
                Log.list_entries(scope, child)
 
-      assert DateTime.diff(DateTime.utc_now(), nap.ended_at, :second) in 250..350
+      assert_nudged_to(before_start, after_start, nap.started_at, 1800)
+      assert_nudged_to(before_end, after_end, nap.ended_at, 300)
       assert DateTime.diff(nap.ended_at, nap.started_at, :second) in 1450..1550
     end
 
