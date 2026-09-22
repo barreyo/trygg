@@ -1434,27 +1434,23 @@ defmodule TryggWeb.DashboardLive do
   defp time_of(nil), do: nil
   defp time_of(%Entry{started_at: at}), do: at
 
-  # Feed card. The primary `value` leads with the relative countdown — the
-  # single most-checked fact — in the card's biggest text; the absolute time
-  # and the previous feed are demoted to the neutral `sub` line. The
-  # tone-coloured `status` is reserved for a cluster in progress: the due/late
-  # timing is already carried by `value` + `tone`, so repeating it there would
-  # just be noise. The estimate comes from their pattern, not a schedule, so
-  # the copy says "usual", never "overdue" or "missed".
+  # Feed card. The primary `value` is plain time since the last feed — the
+  # single most-checked fact — in the card's biggest text; the next-feed
+  # estimate demotes to the neutral `sub` line. The tone-coloured `status`
+  # only appears when something needs attention (a cluster in progress, or a
+  # feed running later than the baby's own rhythm) — the sub line alone
+  # doesn't carry enough weight to flag that on its own. The estimate comes
+  # from their pattern, not a schedule, so the copy says "usual", never
+  # "overdue" or "missed".
   @late_seconds -30 * 60
 
   defp feed_value(nil, _outlook), do: "No feeds yet"
 
   defp feed_value(%Entry{} = e, outlook) do
-    cond do
-      match?(%{active?: true}, outlook.cluster) ->
-        "#{outlook.cluster.count} feeds in 2h"
-
-      next = outlook.next_feed ->
-        due_label(next.in_seconds) |> String.capitalize()
-
-      true ->
-        relative_time(feed_time(e))
+    if match?(%{active?: true}, outlook.cluster) do
+      "#{outlook.cluster.count} feeds in 2h"
+    else
+      relative_time(feed_time(e))
     end
   end
 
@@ -1466,7 +1462,7 @@ defmodule TryggWeb.DashboardLive do
         "Last fed #{relative_time(feed_time(e))}"
 
       next = outlook.next_feed ->
-        "~#{next.label} · last fed #{relative_time(feed_time(e))}"
+        "Next ~#{next.label} · #{due_label(next.in_seconds)}"
 
       true ->
         entry_title(e, units)
@@ -1476,8 +1472,15 @@ defmodule TryggWeb.DashboardLive do
   defp feed_status(nil, _outlook), do: nil
 
   defp feed_status(%Entry{}, outlook) do
-    if match?(%{active?: true}, outlook.cluster), do: "cluster feeding?"
+    cond do
+      match?(%{active?: true}, outlook.cluster) -> "cluster feeding?"
+      next = outlook.next_feed -> due_status(next.in_seconds)
+      true -> nil
+    end
   end
+
+  defp due_status(s) when s <= @late_seconds, do: "#{format_duration(-s)} later than usual"
+  defp due_status(_), do: nil
 
   defp feed_tone(%{next_feed: %{in_seconds: s}}) when is_integer(s) and s <= @late_seconds,
     do: "warning"

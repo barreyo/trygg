@@ -803,8 +803,8 @@ defmodule TryggWeb.DashboardLiveTest do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
-      assert has_element?(lv, "#glance-feed", "In ")
-      refute has_element?(lv, "#glance-feed", "past usual")
+      assert has_element?(lv, "#glance-feed", "Next ~")
+      refute has_element?(lv, "#glance-feed", "later than usual")
     end
 
     test "a feed well past its usual time is framed against their rhythm, not a schedule", %{
@@ -815,7 +815,7 @@ defmodule TryggWeb.DashboardLiveTest do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 5)
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
-      assert has_element?(lv, "#glance-feed", "past usual")
+      assert has_element?(lv, "#glance-feed", "later than usual")
       refute has_element?(lv, "#glance-feed", "overdue")
     end
 
