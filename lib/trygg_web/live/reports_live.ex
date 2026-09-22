@@ -47,46 +47,6 @@ defmodule TryggWeb.ReportsLive do
         </.button>
       </div>
 
-      <.button
-        id="download-pdf"
-        href={~p"/c/#{@current_child}/reports.pdf?#{[window: @window]}"}
-        download
-        phx-hook="DownloadPdf"
-        aria-busy="false"
-        variant="outline"
-        size="sm"
-        class="group w-full min-h-11 mt-3 aria-busy:pointer-events-none aria-busy:opacity-70"
-      >
-        <.icon name="hero-arrow-down-tray" class="size-5 group-aria-busy:hidden" />
-        <span class="loading loading-spinner loading-sm hidden group-aria-busy:inline-block"></span>
-        <span class="group-aria-busy:hidden">Download PDF report</span>
-        <span class="hidden group-aria-busy:inline">Preparing PDF…</span>
-      </.button>
-
-      <div
-        id="day-night-def"
-        class="mt-3 flex items-center justify-between gap-2 rounded-box border border-base-300 bg-base-200/40 px-3 py-2"
-      >
-        <p class="text-sm">
-          <span class="opacity-60">Day</span>
-          <span class="font-semibold tabular-nums">
-            {Child.format_clock(@current_child.day_start)} – {Child.format_clock(
-              @current_child.night_start
-            )}
-          </span>
-        </p>
-        <.button
-          :if={@can_edit_schedule}
-          id="change-day-night"
-          type="button"
-          variant="ghost"
-          size="sm"
-          phx-click="open_sheet"
-        >
-          Change
-        </.button>
-      </div>
-
       <.today_view
         :if={@view == :today}
         day={@day}
@@ -114,7 +74,24 @@ defmodule TryggWeb.ReportsLive do
         bar_caption={@bar_caption}
         heat_selected={@heat_selected}
         heat_caption={@heat_caption}
+        can_edit_schedule={@can_edit_schedule}
       />
+
+      <.button
+        id="download-pdf"
+        href={~p"/c/#{@current_child}/reports.pdf?#{[window: @window]}"}
+        download
+        phx-hook="DownloadPdf"
+        aria-busy="false"
+        variant="outline"
+        size="sm"
+        class="group w-full min-h-11 mt-6 aria-busy:pointer-events-none aria-busy:opacity-70"
+      >
+        <.icon name="hero-arrow-down-tray" class="size-5 group-aria-busy:hidden" />
+        <span class="loading loading-spinner loading-sm hidden group-aria-busy:inline-block"></span>
+        <span class="group-aria-busy:hidden">Download PDF report</span>
+        <span class="hidden group-aria-busy:inline">Preparing PDF…</span>
+      </.button>
 
       <.sheet :if={@sheet} form={@form} />
     </Layouts.app>
@@ -291,47 +268,21 @@ defmodule TryggWeb.ReportsLive do
   attr :bar_caption, :string, default: nil
   attr :heat_selected, :string, default: nil
   attr :heat_caption, :string, default: nil
+  attr :can_edit_schedule, :boolean, required: true
 
   defp trends_view(assigns) do
     assigns = assign(assigns, :windows, windows())
 
     ~H"""
-    <section id="report-trends" class="mt-4 space-y-4">
-      <p :if={!@insights.ready?} id="trends-sparse" class="opacity-60 text-sm text-center py-2">
-        Keep logging — insights appear after {@insights.min_sample} days.
-      </p>
-
-      <div class="grid grid-cols-2 gap-2">
-        <.since_card
-          icon="hero-sun"
-          label="Morning wake"
-          value={@insights.morning_wake.median_label || "—"}
-          sub={@insights.morning_wake.consistency_label}
-        />
-        <.since_card
-          icon="hero-moon"
-          label="Bedtime"
-          value={@insights.bedtime.median_label || "—"}
-          sub={@insights.bedtime.consistency_label}
-        />
-        <.since_card
-          icon="hero-clock"
-          label="Total sleep"
-          value={format_duration(@insights.totals.total.median)}
-          sub={longest_night_sub(@insights.longest_night)}
-        />
-        <.since_card
-          icon="hero-sparkles"
-          label="Night stretch"
-          value={format_duration(overnight_median(@insights))}
-          sub={night_waking_sub(@insights.night_wakings)}
-        />
-      </div>
-
+    <section id="report-trends" class="mt-4 space-y-6">
       <div id="todays-outlook" class="rounded-box border border-base-300 p-3">
         <h3 class="font-semibold text-sm mb-2">Today's outlook</h3>
         <.outlook prediction={@insights.prediction} next_feed={@insights.feeding.next_feed} />
       </div>
+
+      <p :if={!@insights.ready?} id="trends-sparse" class="opacity-60 text-sm text-center py-2">
+        Keep logging — insights appear after {@insights.min_sample} days.
+      </p>
 
       <.alerts_list
         id="trend-alerts"
@@ -340,108 +291,167 @@ defmodule TryggWeb.ReportsLive do
         links={%{vitals: ~p"/c/#{@child}/vitals"}}
       />
 
-      <.feeding_card feeding={@insights.feeding} unit_system={@unit_system} />
-      <.diapers_card diapers={@insights.diapers} />
       <.changes_card shifts={@insights.shifts} />
 
-      <div id="sleep-trend-card" class="rounded-box border border-base-300 overflow-hidden">
-        <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <h3 class="font-semibold text-sm">Sleep trend</h3>
-              <p id="trend-window" class="text-xs opacity-60 tabular-nums mt-0.5">
-                {@window_label}
-              </p>
-            </div>
-            <div class="flex gap-2 shrink-0">
-              <.button
-                id="trend-zoom-out"
-                type="button"
-                variant="outline"
-                size="sm"
-                phx-click="chart_zoom"
-                phx-value-dir="out"
-                disabled={@window == :all}
-                aria-label="Zoom out"
-                class="min-h-11 min-w-11 px-0"
-              >
-                <.icon name="hero-minus" class="size-5" />
-              </.button>
-              <.button
-                id="trend-zoom-in"
-                type="button"
-                variant="outline"
-                size="sm"
-                phx-click="chart_zoom"
-                phx-value-dir="in"
-                disabled={@window == 7}
-                aria-label="Zoom in"
-                class="min-h-11 min-w-11 px-0"
-              >
-                <.icon name="hero-plus" class="size-5" />
-              </.button>
-            </div>
-          </div>
-          <div id="trend-range" class="grid grid-cols-5 gap-1.5">
+      <div id="section-feeding" class="space-y-2">
+        <.feeding_card feeding={@insights.feeding} unit_system={@unit_system} />
+      </div>
+
+      <div id="section-diapers" class="space-y-2">
+        <.diapers_card diapers={@insights.diapers} />
+      </div>
+
+      <div id="section-sleep" class="space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="flex items-center gap-1.5 text-base font-bold">
+            <.icon name="hero-moon" class="size-5 opacity-70" /> Sleep
+          </h2>
+          <div id="day-night-def" class="flex items-center gap-1 text-xs">
+            <span class="opacity-60">Day</span>
+            <span class="font-semibold tabular-nums">
+              {Child.format_clock(@child.day_start)} – {Child.format_clock(@child.night_start)}
+            </span>
             <.button
-              :for={{id, label} <- @windows}
-              id={"trend-period-#{id}"}
+              :if={@can_edit_schedule}
+              id="change-day-night"
               type="button"
-              variant={if @window == id, do: "primary", else: "outline"}
+              variant="ghost"
               size="sm"
-              phx-click="set_window"
-              phx-value-window={id}
-              class="min-h-11 px-0"
+              phx-click="open_sheet"
+              aria-label="Change day and night"
+              class="min-h-11 min-w-11 px-0"
             >
-              {label}
+              <.icon name="hero-cog-6-tooth" class="size-4" />
             </.button>
           </div>
         </div>
-        <div class="p-3">
-          <.sleep_bar_chart
-            id="sleep-trend"
-            series={@insights.totals.per_day}
-            slope_label={@insights.totals.slope && slope_copy(@insights.totals.slope)}
-            selected={@bar_selected}
-            caption={@bar_caption}
+
+        <div class="grid grid-cols-2 gap-2">
+          <.since_card
+            icon="hero-sun"
+            label="Morning wake"
+            value={@insights.morning_wake.median_label || "—"}
+            sub={clock_stat_sub(@insights.morning_wake, @insights)}
+          />
+          <.since_card
+            icon="hero-moon"
+            label="Bedtime"
+            value={@insights.bedtime.median_label || "—"}
+            sub={clock_stat_sub(@insights.bedtime, @insights)}
+          />
+          <.since_card
+            icon="hero-clock"
+            label="Total sleep"
+            value={format_duration(@insights.totals.total.median)}
+            sub={longest_night_sub(@insights.longest_night)}
+          />
+          <.since_card
+            icon="hero-sparkles"
+            label="Night stretch"
+            value={night_stretch_value(@insights)}
+            sub={night_waking_sub(@insights.night_wakings)}
           />
         </div>
-      </div>
 
-      <div class="rounded-box border border-base-300 overflow-hidden">
-        <div class="bg-base-200/40 px-3 py-2">
-          <h3 class="font-semibold text-sm">Typical day</h3>
-          <p class="text-xs opacity-60">When they're usually asleep over 24 hours</p>
+        <div id="sleep-trend-card" class="rounded-box border border-base-300 overflow-hidden">
+          <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="font-semibold text-sm">Sleep trend</h3>
+                <p id="trend-window" class="text-xs opacity-60 tabular-nums mt-0.5">
+                  {@window_label}
+                </p>
+              </div>
+              <div class="flex gap-2 shrink-0">
+                <.button
+                  id="trend-zoom-out"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  phx-click="chart_zoom"
+                  phx-value-dir="out"
+                  disabled={@window == :all}
+                  aria-label="Zoom out"
+                  class="min-h-11 min-w-11 px-0"
+                >
+                  <.icon name="hero-minus" class="size-5" />
+                </.button>
+                <.button
+                  id="trend-zoom-in"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  phx-click="chart_zoom"
+                  phx-value-dir="in"
+                  disabled={@window == 7}
+                  aria-label="Zoom in"
+                  class="min-h-11 min-w-11 px-0"
+                >
+                  <.icon name="hero-plus" class="size-5" />
+                </.button>
+              </div>
+            </div>
+            <div id="trend-range" class="grid grid-cols-5 gap-1.5">
+              <.button
+                :for={{id, label} <- @windows}
+                id={"trend-period-#{id}"}
+                type="button"
+                variant={if @window == id, do: "primary", else: "outline"}
+                size="sm"
+                phx-click="set_window"
+                phx-value-window={id}
+                class="min-h-11 px-0"
+              >
+                {label}
+              </.button>
+            </div>
+          </div>
+          <div class="p-3">
+            <.sleep_bar_chart
+              id="sleep-trend"
+              series={@insights.totals.per_day}
+              slope_label={@insights.totals.slope && slope_copy(@insights.totals.slope)}
+              selected={@bar_selected}
+              caption={@bar_caption}
+            />
+          </div>
         </div>
-        <div class="p-3">
-          <.heat_strip
-            id="sleep-heat"
-            heatmap={@insights.heatmap}
-            child={@child}
-            morning_wake={@insights.morning_wake}
-            bedtime={@insights.bedtime}
-            selected={@heat_selected}
-            caption={@heat_caption}
-          />
-        </div>
-      </div>
 
-      <.stat_table
-        id="wake-windows-table"
-        title="Wake windows"
-        hint="How long they're typically up before the next sleep"
-        empty="No completed wake windows yet."
-        rows={@insights.wake_windows.by_ordinal}
-        label_fn={&wake_window_label/1}
-      />
-      <.stat_table
-        id="naps-table"
-        title="Naps"
-        hint="How long each nap typically lasts"
-        empty="No naps logged yet."
-        rows={@insights.naps.by_ordinal}
-        label_fn={&"Nap #{ordinal(&1.ordinal)}"}
-      />
+        <div class="rounded-box border border-base-300 overflow-hidden">
+          <div class="bg-base-200/40 px-3 py-2">
+            <h3 class="font-semibold text-sm">Typical day</h3>
+            <p class="text-xs opacity-60">When they're usually asleep over 24 hours</p>
+          </div>
+          <div class="p-3">
+            <.heat_strip
+              id="sleep-heat"
+              heatmap={@insights.heatmap}
+              child={@child}
+              morning_wake={@insights.morning_wake}
+              bedtime={@insights.bedtime}
+              selected={@heat_selected}
+              caption={@heat_caption}
+            />
+          </div>
+        </div>
+
+        <.stat_table
+          id="wake-windows-table"
+          title="Wake windows"
+          hint="How long they're typically up before the next sleep"
+          empty="No completed wake windows yet."
+          rows={@insights.wake_windows.by_ordinal}
+          label_fn={&wake_window_label/1}
+        />
+        <.stat_table
+          id="naps-table"
+          title="Naps"
+          hint="How long each nap typically lasts"
+          empty="No naps logged yet."
+          rows={@insights.naps.by_ordinal}
+          label_fn={&"Nap #{ordinal(&1.ordinal)}"}
+        />
+      </div>
     </section>
     """
   end
@@ -1206,8 +1216,20 @@ defmodule TryggWeb.ReportsLive do
     end
   end
 
-  defp overnight_median(%{totals: %{overnight: %{median: med}}}), do: med
-  defp overnight_median(_), do: nil
+  # "0s" for a duration reads like missing data, so a genuine zero-length
+  # typical overnight stretch (no completed nights in the window yet) shows
+  # as pending rather than a bare zero.
+  defp night_stretch_value(%{totals: %{overnight: %{median: nil}}}), do: "—"
+
+  defp night_stretch_value(%{totals: %{overnight: %{median: med}}}) when med == 0.0,
+    do: "Pending"
+
+  defp night_stretch_value(%{totals: %{overnight: %{median: med}}}), do: format_duration(med)
+
+  defp clock_stat_sub(%{median_label: nil}, insights),
+    do: "Needs about #{insights.min_sample} days of sleep logs to find a pattern."
+
+  defp clock_stat_sub(%{consistency_label: label}, _insights), do: label
 
   defp longest_night_sub(nil), do: nil
 
