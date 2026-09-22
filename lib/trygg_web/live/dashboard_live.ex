@@ -937,10 +937,7 @@ defmodule TryggWeb.DashboardLive do
       </section>
 
       <%!-- Log something --%>
-      <div
-        :if={@can_write}
-        class="mt-6 rounded-box border border-base-300 bg-base-200/40 p-3 space-y-3"
-      >
+      <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
         <.button
           :if={!sleeping?(@summary)}
           variant="primary"
