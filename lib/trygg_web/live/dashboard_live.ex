@@ -880,6 +880,7 @@ defmodule TryggWeb.DashboardLive do
               value={feed_value(@summary.last_feeding, @outlook)}
               sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
               status={feed_status(@summary.last_feeding, @outlook)}
+              today={feed_today(@summary.today, @unit_system)}
             />
           </div>
           <div id="glance-diaper">
@@ -891,6 +892,7 @@ defmodule TryggWeb.DashboardLive do
               value={relative_time(time_of(@summary.last_diaper))}
               sub={diaper_sub(@summary.last_diaper)}
               status={diaper_status(@outlook)}
+              today={diaper_today(@summary.today)}
             />
           </div>
           <div id="glance-sleep">
@@ -902,36 +904,8 @@ defmodule TryggWeb.DashboardLive do
               value={sleep_value(@summary, @outlook)}
               sub={sleep_sub(@summary, @outlook, @current_child)}
               status={sleep_status(@summary, @outlook)}
+              today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
             />
-          </div>
-        </div>
-
-        <div class="flex items-center justify-around text-center text-xs px-1 py-0.5">
-          <div class="opacity-70">
-            <span class="text-sm font-semibold text-base-content tabular-nums">
-              {@summary.today.feedings}
-            </span>
-            Feeds
-            <span class="opacity-70 tabular-nums">
-              ({Units.format(@summary.today.volume_ml, :volume, @unit_system)})
-            </span>
-          </div>
-          <div class="h-3 w-px bg-base-300"></div>
-          <div class="opacity-70">
-            <span class="text-sm font-semibold text-base-content tabular-nums">
-              {@summary.today.diapers}
-            </span>
-            Diapers
-            <span class="opacity-70 tabular-nums">
-              ({diaper_emoji("pee")} {@summary.today.diapers_wet} · {diaper_emoji("poo")} {@summary.today.diapers_dirty})
-            </span>
-          </div>
-          <div class="h-3 w-px bg-base-300"></div>
-          <div class="opacity-70">
-            <span class="text-sm font-semibold text-base-content tabular-nums">
-              {format_duration(@summary.today.sleep_seconds)}
-            </span>
-            Sleep
           </div>
         </div>
       </section>
@@ -1494,9 +1468,23 @@ defmodule TryggWeb.DashboardLive do
   defp due_label(seconds) when seconds < 60, do: "about now"
   defp due_label(seconds), do: "in #{format_duration(seconds)}"
 
+  defp feed_today(%{feedings: 0}, _units), do: "none today"
+
+  defp feed_today(%{feedings: n, volume_ml: ml}, units),
+    do: "#{n} #{plural(n, "feed")} · #{Units.format(ml, :volume, units)} today"
+
+  defp plural(1, word), do: word
+  defp plural(_n, word), do: word <> "s"
+
   defp diaper_sub(nil), do: "none yet"
   defp diaper_sub(%Entry{data: %{"kind" => k}}), do: String.capitalize(k)
   defp diaper_sub(_), do: nil
+
+  defp diaper_today(%{diapers: 0}), do: "none today"
+
+  defp diaper_today(%{diapers: n, diapers_wet: wet, diapers_dirty: dirty}),
+    do:
+      "#{n} #{plural(n, "diaper")} · #{diaper_emoji("pee")} #{wet} · #{diaper_emoji("poo")} #{dirty}"
 
   defp diaper_status(%{diapers: %{flags: flags} = diapers}) do
     cond do
