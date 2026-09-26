@@ -518,6 +518,37 @@ defmodule TryggWeb.ReportComponents do
     """
   end
 
+  @doc """
+  A one-line pointer that there are informational alerts, for screens where
+  the full `alerts_list/1` would take too much room. Names the first alert
+  and links to where the rest can be read. Renders nothing when empty.
+  """
+  attr :id, :string, required: true
+  attr :alerts, :list, required: true
+  attr :navigate, :string, required: true
+
+  def alerts_note(assigns) do
+    ~H"""
+    <.link
+      :if={@alerts != []}
+      id={@id}
+      navigate={@navigate}
+      class="flex items-center gap-2 rounded-box border border-primary/30 bg-primary/5 px-3 py-2 text-xs hover:bg-primary/10"
+    >
+      <.icon name="hero-information-circle" class="size-4 shrink-0 text-primary" />
+      <span class="min-w-0 flex-1 truncate">
+        <span class="font-medium">{hd(@alerts).title}</span>
+        <span :if={length(@alerts) > 1} class="opacity-60">
+          +{length(@alerts) - 1} more
+        </span>
+      </span>
+      <span class="shrink-0 text-primary inline-flex items-center gap-0.5">
+        Reports <.icon name="hero-arrow-right" class="size-3" />
+      </span>
+    </.link>
+    """
+  end
+
   # The container's overall visual weight follows the single most severe
   # alert in the list — a mix of a warning and a notice should still read as
   # urgent, not get watered down to the milder tone. `:info` (reassuring

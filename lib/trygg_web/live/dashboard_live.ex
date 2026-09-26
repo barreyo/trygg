@@ -833,17 +833,24 @@ defmodule TryggWeb.DashboardLive do
 
       <%!-- Health alerts — the first thing a caregiver should see after the
            header/active timer, so this sits above everything else, including
-           the glance cards. --%>
-      <div :if={@outlook.alerts != []} class="mb-4">
+           the glance cards. Only warnings and notices get the full card;
+           informational ones ("eating more than usual") collapse to a
+           one-line pointer to Reports so they don't crowd the screen. --%>
+      <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
         <.alerts_list
           id="home-alerts"
-          alerts={@outlook.alerts}
+          alerts={Enum.reject(@outlook.alerts, &(&1.severity == :info))}
           links={
             %{
               vitals: ~p"/c/#{@current_child}/vitals",
               reports: ~p"/c/#{@current_child}/reports"
             }
           }
+        />
+        <.alerts_note
+          id="home-info-alerts"
+          alerts={Enum.filter(@outlook.alerts, &(&1.severity == :info))}
+          navigate={~p"/c/#{@current_child}/reports?view=trends"}
         />
       </div>
 
