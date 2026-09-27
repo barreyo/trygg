@@ -105,8 +105,11 @@ defmodule TryggWeb.ReportPdfHTMLTest do
     scope: scope,
     child: child
   } do
-    feed_days(scope, child, 5, every_hours: 3, last_hours_ago: 1)
-    diaper_days(scope, child, 5, every_hours: 3, last_hours_ago: 1.25)
+    # One clock read for both helpers, or a second ticking over between them
+    # shifts every gap to 14m59s.
+    now = DateTime.utc_now()
+    feed_days(scope, child, 5, every_hours: 3, last_hours_ago: 1, now: now)
+    diaper_days(scope, child, 5, every_hours: 3, last_hours_ago: 1.25, now: now)
 
     doc = render(scope, child)
 
