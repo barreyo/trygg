@@ -19,12 +19,13 @@ defmodule Trygg.LogFixtures do
 
   @doc """
   Lays down `days` days of bottles, one every `:every_hours` (3), the most
-  recent `:last_hours_ago` (1) hours ago, `:ml` (90) each. Returns the entries.
+  recent `:last_hours_ago` (1) hours before `:now` (current time), `:ml` (90)
+  each. Returns the entries.
   """
   def feed_days(scope, child, days, opts \\ []) do
     every = Keyword.get(opts, :every_hours, 3)
     ml = Keyword.get(opts, :ml, 90)
-    last = hours_ago(Keyword.get(opts, :last_hours_ago, 1))
+    last = hours_ago(Keyword.get(opts, :last_hours_ago, 1), Keyword.get(opts, :now))
     count = div(days * 24, every)
 
     for i <- (count - 1)..0//-1 do
@@ -38,12 +39,13 @@ defmodule Trygg.LogFixtures do
 
   @doc """
   Lays down `days` days of diapers of `:kind` ("pee"), one every `:every_hours`
-  (3), the most recent `:last_hours_ago` (1) hours ago. Returns the entries.
+  (3), the most recent `:last_hours_ago` (1) hours before `:now` (current
+  time). Returns the entries.
   """
   def diaper_days(scope, child, days, opts \\ []) do
     every = Keyword.get(opts, :every_hours, 3)
     kind = Keyword.get(opts, :kind, "pee")
-    last = hours_ago(Keyword.get(opts, :last_hours_ago, 1))
+    last = hours_ago(Keyword.get(opts, :last_hours_ago, 1), Keyword.get(opts, :now))
     count = div(days * 24, every)
 
     for i <- (count - 1)..0//-1 do
@@ -119,8 +121,8 @@ defmodule Trygg.LogFixtures do
     )
   end
 
-  defp hours_ago(hours) do
-    DateTime.utc_now()
+  defp hours_ago(hours, now \\ nil) do
+    (now || DateTime.utc_now())
     |> DateTime.truncate(:second)
     |> DateTime.add(-round(hours * 3600), :second)
   end
