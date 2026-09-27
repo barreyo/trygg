@@ -205,7 +205,59 @@ defmodule Trygg.Reports.FeedingTest do
       now = at(@today, ~T[09:00:00])
       summary = Feeding.summarize(child(), timed_days([10 * 60, 10 * 60, nil, nil]), now)
 
-      assert summary.duration == %{n: 0, median: nil, mean: nil, iqr: nil}
+      assert %{n: 0, mean: nil, trend: nil} = summary.duration
+    end
+
+    # One bottle at 08:00 on each of the last `length(befores)` days before
+    # @today, timed `before` seconds after a diaper change (`nil` = untimed).
+    defp daily_timed(befores) do
+      dates = dates_ending(Date.add(@today, -1), length(befores)) ++ [@today]
+      now = at(@today, ~T[07:00:00])
+
+      entries =
+        befores
+        |> Enum.with_index()
+        |> Enum.flat_map(fn {before, i} ->
+          feed_at = at(Enum.at(dates, i), ~T[08:00:00])
+          diapers = if before, do: [diaper(100 + i, DateTime.add(feed_at, -before))], else: []
+          [feed(i + 1, feed_at) | diapers]
+        end)
+
+      {build_days(child(), dates, entries, now), now}
+    end
+
+    test "averages feed length per day, leaving untimed days empty" do
+      {days, now} = daily_timed([10 * 60, nil, 20 * 60, 30 * 60])
+      per_day = Feeding.summarize(child(), days, now).duration.per_day
+
+      assert Enum.map(per_day, & &1.seconds) == [600.0, nil, 1200.0, 1800.0, nil]
+      assert Enum.map(per_day, & &1.n) == [1, 0, 1, 1, 0]
+    end
+
+    test "fits the trend against calendar days, not just the timed ones" do
+      # +5 min every day, with a gap: 10, _, 20, 25, 30 min.
+      {days, now} = daily_timed([10 * 60, nil, 20 * 60, 25 * 60, 30 * 60])
+      trend = Feeding.summarize(child(), days, now).duration.trend
+
+      assert trend.direction == :longer
+      assert trend.days == 4
+      assert_in_delta trend.seconds_per_week, 5 * 60 * 7, 1.0e-6
+    end
+
+    test "calls a flat or tiny slope steady and a falling one shorter" do
+      {days, now} = daily_timed([15 * 60, 15 * 60, 15 * 60 + 5, 15 * 60])
+      assert Feeding.summarize(child(), days, now).duration.trend.direction == :steady
+
+      {days, now} = daily_timed([30 * 60, 25 * 60, 20 * 60, 15 * 60])
+      assert Feeding.summarize(child(), days, now).duration.trend.direction == :shorter
+    end
+
+    test "no trend until four days have timed feeds" do
+      {days, now} = daily_timed([10 * 60, 20 * 60, 30 * 60])
+      summary = Feeding.summarize(child(), days, now)
+
+      assert summary.duration.mean == 20 * 60.0
+      assert summary.duration.trend == nil
     end
   end
 end
