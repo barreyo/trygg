@@ -130,4 +130,82 @@ defmodule Trygg.Reports.FeedingTest do
     child = child(%{birth_date: Date.add(@today, -40)})
     assert Feeding.summarize(child, days, now, weight: stale).intake == nil
   end
+
+  describe "feed length" do
+    # Bottles at 08/12/16/20 on @today - 1, each with a diaper `before` it.
+    defp timed_days(befores, now \\ at(@today, ~T[09:00:00])) do
+      date = Date.add(@today, -1)
+      times = [~T[08:00:00], ~T[12:00:00], ~T[16:00:00], ~T[20:00:00]]
+
+      entries =
+        times
+        |> Enum.zip(befores)
+        |> Enum.with_index()
+        |> Enum.flat_map(fn {{time, before}, i} ->
+          feed_at = at(date, time)
+
+          diaper_entries =
+            if before, do: [diaper(100 + i, DateTime.add(feed_at, -before))], else: []
+
+          [feed(i + 1, feed_at) | diaper_entries]
+        end)
+
+      build_days(child(), [date, @today], entries, now)
+    end
+
+    test "averages the gap from the diaper change to the feed that follows it" do
+      now = at(@today, ~T[09:00:00])
+      summary = Feeding.summarize(child(), timed_days([10 * 60, 20 * 60, 15 * 60, 15 * 60]), now)
+
+      assert summary.duration.n == 4
+      assert summary.duration.mean == 15 * 60.0
+    end
+
+    test "ignores diaper changes within three minutes of the feed and implausibly long gaps" do
+      now = at(@today, ~T[09:00:00])
+
+      for skipped <- [2 * 60, 61 * 60] do
+        summary =
+          Feeding.summarize(child(), timed_days([skipped, 10 * 60, 20 * 60, 30 * 60], now), now)
+
+        assert summary.duration.n == 3
+        assert summary.duration.mean == 20 * 60.0
+      end
+    end
+
+    test "exactly three minutes still counts" do
+      now = at(@today, ~T[09:00:00])
+      summary = Feeding.summarize(child(), timed_days([3 * 60, 3 * 60, 3 * 60, nil]), now)
+
+      assert summary.duration.n == 3
+      assert summary.duration.mean == 180.0
+    end
+
+    test "a top-up bottle is not timed from the same diaper change" do
+      date = Date.add(@today, -1)
+      now = at(@today, ~T[09:00:00])
+
+      entries =
+        for {time, i} <- Enum.with_index([~T[08:00:00], ~T[12:00:00], ~T[16:00:00]]),
+            feed_at = at(date, time),
+            entry <- [
+              diaper(100 + i, DateTime.add(feed_at, -10 * 60)),
+              feed(i * 10 + 1, feed_at),
+              feed(i * 10 + 2, DateTime.add(feed_at, 15 * 60))
+            ],
+            do: entry
+
+      summary = Feeding.summarize(child(), build_days(child(), [date, @today], entries, now), now)
+
+      assert summary.duration.n == 3
+      assert summary.duration.mean == 10 * 60.0
+    end
+
+    test "not ready with fewer than three timed feeds" do
+      now = at(@today, ~T[09:00:00])
+      summary = Feeding.summarize(child(), timed_days([10 * 60, 10 * 60, nil, nil]), now)
+
+      assert summary.duration == %{n: 0, median: nil, mean: nil, iqr: nil}
+    end
+  end
 end

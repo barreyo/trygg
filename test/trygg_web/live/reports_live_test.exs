@@ -300,6 +300,19 @@ defmodule TryggWeb.ReportsLiveTest do
       refute has_element?(lv, "#feeding-sparse")
     end
 
+    test "diaper changes just before feeds time the average feed length", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      feed_days(scope, child, 2, every_hours: 3, last_hours_ago: 1)
+      diaper_days(scope, child, 2, every_hours: 3, last_hours_ago: 1.25)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+
+      assert has_element?(lv, "#feeding-duration", "15m")
+    end
+
     test "the feeding card shows the typical-for-age pattern as labelled context", %{
       conn: conn,
       scope: scope,
