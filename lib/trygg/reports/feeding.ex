@@ -5,7 +5,7 @@ defmodule Trygg.Reports.Feeding do
   cluster-feeding note, an informational intake-per-kilo guide when a recent
   weight exists, the "typical for age" feeds/day and ml/feed from
   `Trygg.Reports.Norms` as labelled population context, and how long a feed
-  takes.
+  takes — overall, per day and its trend over the window.
 
   Feeds are logged when the bottle is finished, so feed length is inferred
   from a diaper change logged just before it: the gap from that change to the
@@ -36,6 +36,8 @@ defmodule Trygg.Reports.Feeding do
   @min_feed_duration 3 * 60
   # Longer gaps are the change and feed being unrelated, not a long feed.
   @max_feed_duration 60 * 60
+  # Days with at least one timed feed needed before fitting a trend line.
+  @min_trend_days 4
 
   @doc """
   Summarizes feeding over `days`.
@@ -49,7 +51,8 @@ defmodule Trygg.Reports.Feeding do
     intervals = intervals(child, episodes)
     ready? = length(intervals) >= @min_intervals
 
-    per_day = Enum.map(days, &day_row/1)
+    timed = feed_durations(feeds, days)
+    per_day = Enum.map(days, &day_row(&1, timed))
     feed_days = Enum.filter(per_day, &(&1.count > 0))
     last = List.last(feeds)
     today = today_date(child, days)
@@ -61,7 +64,7 @@ defmodule Trygg.Reports.Feeding do
     }
 
     per_feed_ml = episodes |> Enum.map(& &1.ml) |> Enum.filter(&(&1 > 0))
-    durations = durations(feeds, days)
+    durations = Map.values(timed)
 
     %{
       ready?: ready?,
@@ -70,7 +73,7 @@ defmodule Trygg.Reports.Feeding do
       count: Stats.sample(Enum.map(feed_days, & &1.count), feed_days != []),
       ml: Stats.sample(Enum.map(feed_days, & &1.ml), feed_days != []),
       per_feed: Stats.sample(per_feed_ml, length(per_feed_ml) >= @min_intervals),
-      duration: Stats.sample(durations, length(durations) >= @min_intervals),
+      duration: duration(durations, per_day),
       intervals: by_period,
       last_feed_at: last && last.at,
       next_feed: next_feed(child, last, by_period, now),
@@ -146,11 +149,15 @@ defmodule Trygg.Reports.Feeding do
     |> Map.put(:quartiles, if(ready?, do: Stats.quartiles(seconds)))
   end
 
-  defp day_row(%Day{} = day) do
+  defp day_row(%Day{} = day, timed) do
+    durations = day.feeds |> Enum.map(&timed[&1.id]) |> Enum.reject(&is_nil/1)
+
     %{
       date: day.date,
       count: length(day.feeds),
       ml: day.feeds |> Enum.map(&ml/1) |> Enum.sum(),
+      duration: Stats.mean(durations),
+      timed: length(durations),
       complete?: not day.now?
     }
   end
@@ -160,9 +167,10 @@ defmodule Trygg.Reports.Feeding do
 
   ## Feed length ----------------------------------------------------------
 
-  # Seconds from a diaper change to the feed that directly follows it (no other
-  # feed in between, so a top-up bottle is never timed from the same change).
-  defp durations(feeds, days) do
+  # Feed id => seconds from a diaper change to the feed that directly follows
+  # it (no other feed in between, so a top-up bottle is never timed from the
+  # same change).
+  defp feed_durations(feeds, days) do
     diapers = Enum.flat_map(days, & &1.diapers)
 
     (Enum.map(feeds, &{:feed, &1}) ++ Enum.map(diapers, &{:diaper, &1}))
@@ -173,13 +181,50 @@ defmodule Trygg.Reports.Feeding do
         seconds = DateTime.diff(feed.at, diaper.at, :second)
 
         if seconds >= @min_feed_duration and seconds <= @max_feed_duration,
-          do: [seconds],
+          do: [{feed.id, seconds}],
           else: []
 
       _ ->
         []
     end)
+    |> Map.new()
   end
+
+  defp duration(durations, per_day) do
+    ready? = length(durations) >= @min_intervals
+
+    durations
+    |> Stats.sample(ready?)
+    |> Map.merge(%{
+      per_day: Enum.map(per_day, &%{date: &1.date, seconds: &1.duration, n: &1.timed}),
+      trend: if(ready?, do: duration_trend(per_day))
+    })
+  end
+
+  # Least-squares slope of the daily averages against the calendar day, so
+  # days without a timed feed leave a gap instead of squashing the line.
+  defp duration_trend(per_day) do
+    points =
+      per_day
+      |> Enum.with_index()
+      |> Enum.filter(fn {row, _i} -> is_number(row.duration) end)
+
+    if length(points) >= @min_trend_days do
+      xs = Enum.map(points, fn {_row, i} -> i end)
+      ys = Enum.map(points, fn {row, _i} -> row.duration end)
+      per_week = Stats.slope(xs, ys) * 7
+
+      %{
+        seconds_per_week: per_week,
+        direction: trend_direction(per_week),
+        days: length(points)
+      }
+    end
+  end
+
+  defp trend_direction(per_week) when abs(per_week) < 60, do: :steady
+  defp trend_direction(per_week) when per_week > 0, do: :longer
+  defp trend_direction(_per_week), do: :shorter
 
   ## Next feed --------------------------------------------------------------
 

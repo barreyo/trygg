@@ -577,8 +577,9 @@ defmodule TryggWeb.ReportComponents do
 
   @doc """
   A compact per-day bar chart for counts or volumes. `series` is a list of
-  `%{date, value}`; `baseline` draws a dashed reference line; `format` turns a
-  value into a label for tooltips and the axis.
+  `%{date, value}`, where a `nil` value leaves an empty slot (no data that
+  day); `baseline` draws a dashed reference line; `format` turns a value into
+  a label for tooltips and the axis.
   """
   attr :id, :string, required: true
   attr :series, :list, required: true
@@ -696,6 +697,7 @@ defmodule TryggWeb.ReportComponents do
         v = point.value || 0
         h = v / max_y * plot_h
         iso = Date.to_iso8601(point.date)
+        label = if is_nil(point.value), do: "", else: format.(v)
 
         %{
           iso: iso,
@@ -705,8 +707,9 @@ defmodule TryggWeb.ReportComponents do
           h: h,
           mid_x: @bars_left + i * slot + slot / 2,
           last?: i == n - 1,
-          caption: "#{Calendar.strftime(point.date, "%a %-d %b")} · #{format.(v)}",
-          value_label: format.(v),
+          caption:
+            "#{Calendar.strftime(point.date, "%a %-d %b")} · #{if label == "", do: "—", else: label}",
+          value_label: label,
           label_y: max(@bars_bottom - h - 3, @bars_top + 8)
         }
       end)

@@ -305,12 +305,28 @@ defmodule TryggWeb.ReportsLiveTest do
       scope: scope,
       child: child
     } do
-      feed_days(scope, child, 2, every_hours: 3, last_hours_ago: 1)
-      diaper_days(scope, child, 2, every_hours: 3, last_hours_ago: 1.25)
+      feed_days(scope, child, 5, every_hours: 3, last_hours_ago: 1)
+      diaper_days(scope, child, 5, every_hours: 3, last_hours_ago: 1.25)
 
       {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#feeding-duration", "15m")
+      assert has_element?(lv, "#feeding-duration-trend", "Steady")
+      assert has_element?(lv, "#feed-length-chart-baseline", "average 15m")
+      refute has_element?(lv, "#feed-length-sparse")
+    end
+
+    test "feed length asks for diaper changes before it has any timed feeds", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      feed_days(scope, child, 2, every_hours: 3, last_hours_ago: 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+
+      assert has_element?(lv, "#feed-length-sparse")
+      refute has_element?(lv, "#feed-length-chart")
     end
 
     test "the feeding card shows the typical-for-age pattern as labelled context", %{
