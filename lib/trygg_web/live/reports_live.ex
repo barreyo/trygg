@@ -295,6 +295,7 @@ defmodule TryggWeb.ReportsLive do
 
       <div id="section-feeding" class="space-y-2">
         <.feeding_card feeding={@insights.feeding} unit_system={@unit_system} />
+        <.feed_length_card duration={@insights.feeding.duration} />
       </div>
 
       <div id="section-diapers" class="space-y-2">
@@ -604,14 +605,6 @@ defmodule TryggWeb.ReportsLive do
               typical {volume_range_label(@feeding.typical.ml_per_feed, @unit_system)}
             </div>
           </div>
-          <div
-            id="feeding-duration"
-            class="col-span-2 sm:col-span-4 rounded-box bg-base-200 border border-base-300 py-2"
-          >
-            <div class="font-semibold tabular-nums">{duration_label(@feeding.duration)}</div>
-            <div class="opacity-60 text-xs">average feed length</div>
-            <div class="opacity-60 text-xs">{duration_sub(@feeding.duration)}</div>
-          </div>
         </div>
         <p :if={@feeding.typical} id="feeding-age-guide" class="text-xs opacity-70 leading-snug">
           <span class="font-medium">Typical for age:</span>
@@ -647,6 +640,56 @@ defmodule TryggWeb.ReportsLive do
     """
   end
 
+  ## Feed length card ------------------------------------------------------
+
+  attr :duration, :map, required: true
+
+  defp feed_length_card(assigns) do
+    assigns = assign(assigns, :series, feed_length_series(assigns.duration))
+
+    ~H"""
+    <div id="trend-feed-length" class="rounded-box border border-base-300 overflow-hidden">
+      <div class="bg-base-200/40 px-3 py-2">
+        <h3 class="font-semibold text-sm">Feed length</h3>
+        <p class="text-xs opacity-60">Timed from the diaper change just before each feed</p>
+      </div>
+      <div class="p-3 space-y-3">
+        <p
+          :if={!@duration.mean}
+          id="feed-length-sparse"
+          class="opacity-60 text-sm text-center py-2"
+        >
+          Log a diaper change just before a few feeds and their length will show up here.
+        </p>
+        <div :if={@duration.mean} class="grid grid-cols-2 gap-2 text-center text-sm">
+          <div id="feeding-duration" class="rounded-box bg-base-200 border border-base-300 py-2">
+            <div class="font-semibold tabular-nums">{format_duration(@duration.mean)}</div>
+            <div class="opacity-60 text-xs">average, {@duration.n} feeds</div>
+          </div>
+          <div
+            id="feeding-duration-trend"
+            class="rounded-box bg-base-200 border border-base-300 py-2"
+          >
+            <div class="font-semibold tabular-nums">
+              {feed_length_trend_value(@duration.trend)}
+            </div>
+            <div class="opacity-60 text-xs">{feed_length_trend_sub(@duration.trend)}</div>
+          </div>
+        </div>
+        <.count_bar_chart
+          :if={@duration.mean}
+          id="feed-length-chart"
+          series={@series}
+          baseline={@duration.mean / 60}
+          baseline_label={"average #{format_duration(@duration.mean)}"}
+          format={&feed_length_axis/1}
+          label="Average feed length per day in minutes"
+        />
+      </div>
+    </div>
+    """
+  end
+
   defp axis_volume(ml, units) do
     case Units.to_display(ml, :volume, units) do
       nil -> ""
@@ -656,12 +699,6 @@ defmodule TryggWeb.ReportsLive do
 
   defp interval_label(%{median: nil}), do: "—"
   defp interval_label(%{median: med}), do: "~#{format_duration(med)}"
-
-  defp duration_label(%{mean: nil}), do: "—"
-  defp duration_label(%{mean: mean}), do: format_duration(mean)
-
-  defp duration_sub(%{n: 0}), do: "log a diaper change just before a few feeds to time them"
-  defp duration_sub(%{n: n}), do: "from #{n} feeds timed from the diaper change before them"
 
   defp count_label(%{median: nil}), do: "—"
   defp count_label(%{median: med}), do: "~#{round(med)}"

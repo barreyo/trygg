@@ -37,5 +37,7 @@ defmodule Trygg.Reports.StatsTest do
     assert Stats.slope([1]) == nil
     assert_in_delta Stats.slope([0, 2, 4, 6]), 2.0, 1.0e-9
     assert_in_delta Stats.slope([5, 5, 5]), 0.0, 1.0e-9
+    assert_in_delta Stats.slope([0, 2, 3], [0, 4, 6]), 2.0, 1.0e-9
+    assert Stats.slope([0, 1], [1]) == nil
   end
 end

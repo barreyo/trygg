@@ -185,10 +185,13 @@ defmodule Trygg.Reports.Stats do
 
   @doc "Ordinary least squares slope of `ys` against their index, or `nil`."
   def slope(ys) when length(ys) < 2, do: nil
+  def slope(ys), do: slope(Enum.to_list(0..(length(ys) - 1)), ys)
 
-  def slope(ys) do
+  @doc "Ordinary least squares slope of `ys` against `xs`, or `nil`."
+  def slope(xs, ys) when length(xs) != length(ys) or length(ys) < 2, do: nil
+
+  def slope(xs, ys) do
     n = length(ys)
-    xs = Enum.to_list(0..(n - 1))
     sum_x = Enum.sum(xs)
     sum_y = Enum.sum(ys)
     sum_xy = xs |> Enum.zip(ys) |> Enum.reduce(0, fn {x, y}, acc -> acc + x * y end)

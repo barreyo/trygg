@@ -577,8 +577,9 @@ defmodule TryggWeb.ReportComponents do
 
   @doc """
   A compact per-day bar chart for counts or volumes. `series` is a list of
-  `%{date, value}`; `baseline` draws a dashed reference line; `format` turns a
-  value into a label for tooltips and the axis.
+  `%{date, value}`, where a `nil` value leaves an empty slot (no data that
+  day); `baseline` draws a dashed reference line; `format` turns a value into
+  a label for tooltips and the axis.
   """
   attr :id, :string, required: true
   attr :series, :list, required: true
@@ -696,6 +697,7 @@ defmodule TryggWeb.ReportComponents do
         v = point.value || 0
         h = v / max_y * plot_h
         iso = Date.to_iso8601(point.date)
+        label = if is_nil(point.value), do: "", else: format.(v)
 
         %{
           iso: iso,
@@ -705,8 +707,9 @@ defmodule TryggWeb.ReportComponents do
           h: h,
           mid_x: @bars_left + i * slot + slot / 2,
           last?: i == n - 1,
-          caption: "#{Calendar.strftime(point.date, "%a %-d %b")} · #{format.(v)}",
-          value_label: format.(v),
+          caption:
+            "#{Calendar.strftime(point.date, "%a %-d %b")} · #{if label == "", do: "—", else: label}",
+          value_label: label,
           label_y: max(@bars_bottom - h - 3, @bars_top + 8)
         }
       end)
@@ -748,6 +751,34 @@ defmodule TryggWeb.ReportComponents do
       show_value_labels?: n <= 14
     }
   end
+
+  ## Feed length ------------------------------------------------------------
+
+  @doc """
+  `Trygg.Reports.Feeding`'s `duration.per_day` as a `count_bar_chart/1`
+  series in minutes (`nil` on days with no timed feed).
+  """
+  def feed_length_series(%{per_day: per_day}) do
+    Enum.map(per_day, &%{date: &1.date, value: &1.seconds && &1.seconds / 60})
+  end
+
+  @doc "Axis/tooltip label for a feed length in minutes."
+  def feed_length_axis(minutes), do: "#{round(minutes)}m"
+
+  @doc "Headline for a feed-length trend: `Steady`, `+2m/wk`, `−1m/wk` or `—`."
+  def feed_length_trend_value(nil), do: "—"
+  def feed_length_trend_value(%{direction: :steady}), do: "Steady"
+
+  def feed_length_trend_value(%{seconds_per_week: s}) do
+    sign = if s > 0, do: "+", else: "−"
+    "#{sign}#{LogComponents.format_duration(abs(s))}/wk"
+  end
+
+  @doc "Caption under `feed_length_trend_value/1`."
+  def feed_length_trend_sub(nil), do: "trend needs a few more days"
+  def feed_length_trend_sub(%{direction: :steady}), do: "trend, holding steady"
+  def feed_length_trend_sub(%{direction: :longer}), do: "trend, feeds getting longer"
+  def feed_length_trend_sub(%{direction: :shorter}), do: "trend, feeds getting shorter"
 
   ## Wake / bedtime clock chart --------------------------------------------
 
