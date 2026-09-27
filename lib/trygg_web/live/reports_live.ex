@@ -645,10 +645,7 @@ defmodule TryggWeb.ReportsLive do
   attr :duration, :map, required: true
 
   defp feed_length_card(assigns) do
-    series =
-      Enum.map(assigns.duration.per_day, &%{date: &1.date, value: &1.seconds && &1.seconds / 60})
-
-    assigns = assign(assigns, :series, series)
+    assigns = assign(assigns, :series, feed_length_series(assigns.duration))
 
     ~H"""
     <div id="trend-feed-length" class="rounded-box border border-base-300 overflow-hidden">
@@ -673,8 +670,10 @@ defmodule TryggWeb.ReportsLive do
             id="feeding-duration-trend"
             class="rounded-box bg-base-200 border border-base-300 py-2"
           >
-            <div class="font-semibold tabular-nums">{trend_value(@duration.trend)}</div>
-            <div class="opacity-60 text-xs">{trend_sub(@duration.trend)}</div>
+            <div class="font-semibold tabular-nums">
+              {feed_length_trend_value(@duration.trend)}
+            </div>
+            <div class="opacity-60 text-xs">{feed_length_trend_sub(@duration.trend)}</div>
           </div>
         </div>
         <.count_bar_chart
@@ -683,26 +682,13 @@ defmodule TryggWeb.ReportsLive do
           series={@series}
           baseline={@duration.mean / 60}
           baseline_label={"average #{format_duration(@duration.mean)}"}
-          format={&"#{round(&1)}m"}
+          format={&feed_length_axis/1}
           label="Average feed length per day in minutes"
         />
       </div>
     </div>
     """
   end
-
-  defp trend_value(nil), do: "—"
-  defp trend_value(%{direction: :steady}), do: "Steady"
-
-  defp trend_value(%{seconds_per_week: s}) do
-    sign = if s > 0, do: "+", else: "−"
-    "#{sign}#{format_duration(abs(s))}/wk"
-  end
-
-  defp trend_sub(nil), do: "trend needs a few more days"
-  defp trend_sub(%{direction: :steady}), do: "trend, holding steady"
-  defp trend_sub(%{direction: :longer}), do: "trend, feeds getting longer"
-  defp trend_sub(%{direction: :shorter}), do: "trend, feeds getting shorter"
 
   defp axis_volume(ml, units) do
     case Units.to_display(ml, :volume, units) do
