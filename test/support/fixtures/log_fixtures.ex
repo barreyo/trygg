@@ -121,7 +121,7 @@ defmodule Trygg.LogFixtures do
     )
   end
 
-  defp hours_ago(hours, now \\ nil) do
+  defp hours_ago(hours, now) do
     (now || DateTime.utc_now())
     |> DateTime.truncate(:second)
     |> DateTime.add(-round(hours * 3600), :second)
