@@ -3,8 +3,13 @@ defmodule Trygg.Reports.Feeding do
   Bottle-feeding rhythm over a window of `%Trygg.Reports.Day{}`: intervals by
   day and night, daily volume, volume per feed, a next-feed estimate, a
   cluster-feeding note, an informational intake-per-kilo guide when a recent
-  weight exists, and the "typical for age" feeds/day and ml/feed from
-  `Trygg.Reports.Norms` as labelled population context.
+  weight exists, the "typical for age" feeds/day and ml/feed from
+  `Trygg.Reports.Norms` as labelled population context, and how long a feed
+  takes.
+
+  Feeds are logged when the bottle is finished, so feed length is inferred
+  from a diaper change logged just before it: the gap from that change to the
+  feed is taken as the feeding time.
 
   Pure: takes the child, the days (oldest first, today last), `now`, and an
   optional recent weight. Feeds logged within `@episode_gap` of each other are
@@ -26,6 +31,11 @@ defmodule Trygg.Reports.Feeding do
   @weight_max_age_days 14
   @intake_days 3
   @intake_tolerance 0.15
+  # A diaper logged closer to the feed than this was probably logged after the
+  # fact alongside it, so the gap says nothing about how long the feed took.
+  @min_feed_duration 3 * 60
+  # Longer gaps are the change and feed being unrelated, not a long feed.
+  @max_feed_duration 60 * 60
 
   @doc """
   Summarizes feeding over `days`.
@@ -51,6 +61,7 @@ defmodule Trygg.Reports.Feeding do
     }
 
     per_feed_ml = episodes |> Enum.map(& &1.ml) |> Enum.filter(&(&1 > 0))
+    durations = durations(feeds, days)
 
     %{
       ready?: ready?,
@@ -59,6 +70,7 @@ defmodule Trygg.Reports.Feeding do
       count: Stats.sample(Enum.map(feed_days, & &1.count), feed_days != []),
       ml: Stats.sample(Enum.map(feed_days, & &1.ml), feed_days != []),
       per_feed: Stats.sample(per_feed_ml, length(per_feed_ml) >= @min_intervals),
+      duration: Stats.sample(durations, length(durations) >= @min_intervals),
       intervals: by_period,
       last_feed_at: last && last.at,
       next_feed: next_feed(child, last, by_period, now),
@@ -145,6 +157,29 @@ defmodule Trygg.Reports.Feeding do
 
   defp ml(%{data: %{"amount_ml" => n}}) when is_number(n), do: n
   defp ml(_), do: 0
+
+  ## Feed length ----------------------------------------------------------
+
+  # Seconds from a diaper change to the feed that directly follows it (no other
+  # feed in between, so a top-up bottle is never timed from the same change).
+  defp durations(feeds, days) do
+    diapers = Enum.flat_map(days, & &1.diapers)
+
+    (Enum.map(feeds, &{:feed, &1}) ++ Enum.map(diapers, &{:diaper, &1}))
+    |> Enum.sort_by(fn {_kind, marker} -> marker.at end, DateTime)
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(fn
+      [{:diaper, diaper}, {:feed, feed}] ->
+        seconds = DateTime.diff(feed.at, diaper.at, :second)
+
+        if seconds >= @min_feed_duration and seconds <= @max_feed_duration,
+          do: [seconds],
+          else: []
+
+      _ ->
+        []
+    end)
+  end
 
   ## Next feed --------------------------------------------------------------
 

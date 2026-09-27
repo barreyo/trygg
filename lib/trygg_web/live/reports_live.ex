@@ -604,6 +604,14 @@ defmodule TryggWeb.ReportsLive do
               typical {volume_range_label(@feeding.typical.ml_per_feed, @unit_system)}
             </div>
           </div>
+          <div
+            id="feeding-duration"
+            class="col-span-2 sm:col-span-4 rounded-box bg-base-200 border border-base-300 py-2"
+          >
+            <div class="font-semibold tabular-nums">{duration_label(@feeding.duration)}</div>
+            <div class="opacity-60 text-xs">average feed length</div>
+            <div class="opacity-60 text-xs">{duration_sub(@feeding.duration)}</div>
+          </div>
         </div>
         <p :if={@feeding.typical} id="feeding-age-guide" class="text-xs opacity-70 leading-snug">
           <span class="font-medium">Typical for age:</span>
@@ -648,6 +656,12 @@ defmodule TryggWeb.ReportsLive do
 
   defp interval_label(%{median: nil}), do: "—"
   defp interval_label(%{median: med}), do: "~#{format_duration(med)}"
+
+  defp duration_label(%{mean: nil}), do: "—"
+  defp duration_label(%{mean: mean}), do: format_duration(mean)
+
+  defp duration_sub(%{n: 0}), do: "log a diaper change just before a few feeds to time them"
+  defp duration_sub(%{n: n}), do: "from #{n} feeds timed from the diaper change before them"
 
   defp count_label(%{median: nil}), do: "—"
   defp count_label(%{median: med}), do: "~#{round(med)}"
