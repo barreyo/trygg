@@ -101,12 +101,30 @@ defmodule TryggWeb.ReportPdfHTMLTest do
     refute text(doc, "#pdf-report") =~ "Tap "
   end
 
+  test "charts feed length when diaper changes come just before feeds", %{
+    scope: scope,
+    child: child
+  } do
+    feed_days(scope, child, 5, every_hours: 3, last_hours_ago: 1)
+    diaper_days(scope, child, 5, every_hours: 3, last_hours_ago: 1.25)
+
+    doc = render(scope, child)
+
+    assert has?(doc, "#pdf-feed-length-chart svg")
+    assert text(doc, "#pdf-feed-length-chart-baseline") =~ "average 15m"
+    assert text(doc, "#pdf-feed-length-average") =~ "15m"
+    assert text(doc, "#pdf-feed-length-trend") =~ "Steady"
+    refute has?(doc, "#pdf-feed-length-sparse")
+  end
+
   test "renders gracefully for a child with no data at all", %{scope: scope, child: child} do
     doc = render(scope, child, :all)
 
     assert text(doc, "#pdf-child-name") =~ "Astrid"
     assert has?(doc, "#pdf-sleep-sparse")
     assert has?(doc, "#pdf-feeding-sparse")
+    assert has?(doc, "#pdf-feed-length-sparse")
+    refute has?(doc, "#pdf-feed-length-chart")
     assert text(doc, "#pdf-measurements") =~ "No height or weight"
     refute has?(doc, "#pdf-alerts")
     refute has?(doc, "#pdf-changes")

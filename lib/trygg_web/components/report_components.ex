@@ -752,6 +752,34 @@ defmodule TryggWeb.ReportComponents do
     }
   end
 
+  ## Feed length ------------------------------------------------------------
+
+  @doc """
+  `Trygg.Reports.Feeding`'s `duration.per_day` as a `count_bar_chart/1`
+  series in minutes (`nil` on days with no timed feed).
+  """
+  def feed_length_series(%{per_day: per_day}) do
+    Enum.map(per_day, &%{date: &1.date, value: &1.seconds && &1.seconds / 60})
+  end
+
+  @doc "Axis/tooltip label for a feed length in minutes."
+  def feed_length_axis(minutes), do: "#{round(minutes)}m"
+
+  @doc "Headline for a feed-length trend: `Steady`, `+2m/wk`, `−1m/wk` or `—`."
+  def feed_length_trend_value(nil), do: "—"
+  def feed_length_trend_value(%{direction: :steady}), do: "Steady"
+
+  def feed_length_trend_value(%{seconds_per_week: s}) do
+    sign = if s > 0, do: "+", else: "−"
+    "#{sign}#{LogComponents.format_duration(abs(s))}/wk"
+  end
+
+  @doc "Caption under `feed_length_trend_value/1`."
+  def feed_length_trend_sub(nil), do: "trend needs a few more days"
+  def feed_length_trend_sub(%{direction: :steady}), do: "trend, holding steady"
+  def feed_length_trend_sub(%{direction: :longer}), do: "trend, feeds getting longer"
+  def feed_length_trend_sub(%{direction: :shorter}), do: "trend, feeds getting shorter"
+
   ## Wake / bedtime clock chart --------------------------------------------
 
   @doc """
