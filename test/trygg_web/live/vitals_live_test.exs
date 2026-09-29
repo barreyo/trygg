@@ -323,7 +323,7 @@ defmodule TryggWeb.VitalsLiveTest do
     refute has_element?(lv, "#age-basis")
   end
 
-  test "before a preterm baby's term date, explains when percentiles start", %{
+  test "before a preterm baby's term date, shows INTERGROWTH-21st percentiles", %{
     conn: conn,
     scope: scope
   } do
@@ -333,9 +333,35 @@ defmodule TryggWeb.VitalsLiveTest do
       child_fixture(scope, %{sex: :male, birth_date: Date.add(today, -10), gestation_weeks: 30})
 
     measurement_fixture(scope, child, %{"weight_g" => 1800})
+
+    expected =
+      child
+      |> Trygg.Growth.Percentiles.percentile(:weight, 1800, today)
+      |> Trygg.Growth.Percentiles.format_percentile()
+
     {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
 
-    assert has_element?(lv, "#percentile-hint", "30+0 weeks")
+    assert has_element?(lv, "#latest-weight-percentile", expected)
+    assert has_element?(lv, "#weight-chart-bands")
+    assert has_element?(lv, "#percentile-source", "INTERGROWTH-21st")
+    assert has_element?(lv, "#corrected-age", "31+3 weeks postmenstrual")
+    refute has_element?(lv, "#percentile-hint")
+  end
+
+  test "a baby still under 27 weeks explains when percentiles begin", %{
+    conn: conn,
+    scope: scope
+  } do
+    today = Date.utc_today()
+
+    child =
+      child_fixture(scope, %{sex: :male, birth_date: Date.add(today, -5), gestation_weeks: 25})
+
+    measurement_fixture(scope, child, %{"weight_g" => 800})
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+
+    assert has_element?(lv, "#percentile-hint", "25+0 weeks")
+    assert has_element?(lv, "#percentile-hint", "27 weeks")
     refute has_element?(lv, "#latest-weight-percentile")
   end
 
