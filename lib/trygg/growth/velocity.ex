@@ -100,8 +100,7 @@ defmodule Trygg.Growth.Velocity do
         end
       end
 
-    age_days = Norms.age_days(child, latest.date)
-    guide = Norms.weight_gain_g_per_day(age_days)
+    guide = Norms.weight_gain_g_per_day(Norms.corrected_age_days(child, latest.date))
 
     %{
       days: days,

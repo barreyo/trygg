@@ -158,4 +158,21 @@ defmodule Trygg.Growth.VelocityTest do
     assert_in_delta velocity.delta_z, 0.0, 0.1
     refute velocity.percentile_drop?
   end
+
+  test "the g/day guide uses a preterm baby's corrected age" do
+    # 100 days old, born at 30+0 weeks: corrected age is 30 days.
+    dob = ~D[2026-01-01]
+
+    measurements = [
+      measurement(1, ~D[2026-03-12], 4000.0),
+      measurement(2, ~D[2026-04-11], 4600.0)
+    ]
+
+    term = Velocity.summarize(child(birth_date: dob), measurements).velocity
+    preterm = Velocity.summarize(child(birth_date: dob, gestational_age_days: 210), measurements)
+
+    assert term.guide_g_per_day == {15, 25}
+    assert preterm.velocity.guide_g_per_day == {20, 30}
+    assert preterm.velocity.guide_status == :within
+  end
 end
