@@ -74,6 +74,27 @@ defmodule Trygg.Reports.FeedingTest do
              Feeding.summarize(child, days, now).typical
   end
 
+  test "a preterm baby's typical pattern and intake guide use corrected age" do
+    now = at(@today, ~T[12:30:00])
+    days = regular_days(4, now: now)
+    weight = %{grams: 4000.0, date: @today}
+
+    # 100 days old, born at 30+0 weeks: corrected age is 30 days.
+    preterm = child(%{birth_date: Date.add(@today, -100), gestational_age_days: 210})
+    term = child(%{birth_date: Date.add(@today, -100)})
+
+    assert %{feeds_per_day: {6, 8}, ml_per_feed: {60, 120}} =
+             Feeding.summarize(preterm, days, now).typical
+
+    assert %{feeds_per_day: {5, 6}, ml_per_feed: {180, 210}} =
+             Feeding.summarize(term, days, now).typical
+
+    assert Feeding.summarize(preterm, days, now, weight: weight).intake.guide_per_kg ==
+             {150, 180}
+
+    assert Feeding.summarize(term, days, now, weight: weight).intake.guide_per_kg == {120, 150}
+  end
+
   test "feeds within 30 minutes count as one episode" do
     now = at(@today, ~T[13:00:00])
     dates = dates_ending(@today, 3)

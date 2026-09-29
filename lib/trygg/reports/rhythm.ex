@@ -80,7 +80,7 @@ defmodule Trygg.Reports.Rhythm do
   end
 
   defp typical_naps(child, days, latest_date) do
-    age_days = latest_date && Norms.sleep_age_days(child, latest_date)
+    age_days = latest_date && Norms.corrected_age_days(child, latest_date)
     max_ordinal = Norms.max_naps(age_days)
 
     days

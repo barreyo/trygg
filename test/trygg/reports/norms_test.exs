@@ -11,19 +11,19 @@ defmodule Trygg.Reports.NormsTest do
     assert Norms.age_days(%Child{timezone: "Etc/UTC"}, ~D[2026-01-11]) == nil
   end
 
-  test "sleep_age_days/2 uses corrected age for a preterm baby until two" do
+  test "corrected_age_days/2 uses corrected age for a preterm baby until two" do
     # Born at 32+0 weeks: term date is 2026-02-26.
     baby = %Child{timezone: "Etc/UTC", birth_date: ~D[2026-01-01], gestational_age_days: 224}
 
-    assert Norms.sleep_age_days(baby, ~D[2026-01-11]) == 0
-    assert Norms.sleep_age_days(baby, ~D[2026-03-08]) == 10
-    assert Norms.sleep_age_days(baby, ~D[2027-12-31]) == 729 - 56
+    assert Norms.corrected_age_days(baby, ~D[2026-01-11]) == 0
+    assert Norms.corrected_age_days(baby, ~D[2026-03-08]) == 10
+    assert Norms.corrected_age_days(baby, ~D[2027-12-31]) == 729 - 56
     # Chronological from the second birthday.
-    assert Norms.sleep_age_days(baby, ~D[2028-01-01]) == 730
+    assert Norms.corrected_age_days(baby, ~D[2028-01-01]) == 730
 
     term = %{baby | gestational_age_days: 275}
-    assert Norms.sleep_age_days(term, ~D[2026-03-08]) == 66
-    assert Norms.sleep_age_days(%{baby | birth_date: nil}, ~D[2026-03-08]) == nil
+    assert Norms.corrected_age_days(term, ~D[2026-03-08]) == 66
+    assert Norms.corrected_age_days(%{baby | birth_date: nil}, ~D[2026-03-08]) == nil
   end
 
   test "wake windows widen with age and stop after three years" do
