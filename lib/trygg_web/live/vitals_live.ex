@@ -25,196 +25,215 @@ defmodule TryggWeb.VitalsLive do
       child_switch_to={:vitals}
       title="Vitals"
       back={~p"/c/#{@current_child}"}
+      wide
     >
-      <section class="rounded-box border border-base-300 bg-base-200/40 p-2">
-        <div class="grid grid-cols-2 gap-2">
-          <div id="latest-weight">
-            <.since_card
-              icon="hero-scale"
-              label="Weight"
-              value={metric_value(@latest_weight, :weight_g, :weight, @unit_system)}
-              sub={metric_sub(@latest_weight, @current_child)}
-              badge={@weight_percentile}
-              badge_label={@weight_percentile && "percentile"}
-              badge_id="latest-weight-percentile"
-            />
-          </div>
-          <div id="latest-height">
-            <.since_card
-              icon="hero-arrows-up-down"
-              label="Height"
-              value={metric_value(@latest_height, :height_cm, :length, @unit_system)}
-              sub={metric_sub(@latest_height, @current_child)}
-              badge={@height_percentile}
-              badge_label={@height_percentile && "percentile"}
-              badge_id="latest-height-percentile"
-            />
-          </div>
-        </div>
-      </section>
-
-      <.weight_gain_card
-        velocity={@velocity}
-        growth_burst={@growth_burst}
-        child={@current_child}
-        unit_system={@unit_system}
-        can_write={@can_write}
-      />
-
-      <.button
-        :if={@can_write}
-        id="add-measurement"
-        type="button"
-        variant="primary"
-        size="lg"
-        class="w-full mt-4 min-h-12 text-base"
-        phx-click="open_sheet"
+      <%!-- Phone order is stats → charts → history. From md the charts take
+           the right column, spanning both rows, with history under the stats;
+           the `1fr` row soaks up the charts' extra height so history doesn't
+           drift down. --%>
+      <div
+        id="vitals-columns"
+        class="md:grid md:grid-cols-2 md:grid-rows-[auto_1fr] md:items-start md:gap-x-6"
       >
-        Log height and weight
-      </.button>
+        <div class="md:col-start-1 min-w-0">
+          <section class="rounded-box border border-base-300 bg-base-200/40 p-2">
+            <div class="grid grid-cols-2 gap-2">
+              <div id="latest-weight">
+                <.since_card
+                  icon="hero-scale"
+                  label="Weight"
+                  value={metric_value(@latest_weight, :weight_g, :weight, @unit_system)}
+                  sub={metric_sub(@latest_weight, @current_child)}
+                  badge={@weight_percentile}
+                  badge_label={@weight_percentile && "percentile"}
+                  badge_id="latest-weight-percentile"
+                />
+              </div>
+              <div id="latest-height">
+                <.since_card
+                  icon="hero-arrows-up-down"
+                  label="Height"
+                  value={metric_value(@latest_height, :height_cm, :length, @unit_system)}
+                  sub={metric_sub(@latest_height, @current_child)}
+                  badge={@height_percentile}
+                  badge_label={@height_percentile && "percentile"}
+                  badge_id="latest-height-percentile"
+                />
+              </div>
+            </div>
+          </section>
 
-      <section id="growth-charts" class="mt-6 rounded-box border border-base-300 overflow-hidden">
-        <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <h2 class="font-semibold">Growth</h2>
-              <p id="chart-window" class="text-xs opacity-60 tabular-nums mt-0.5">
-                {@chart_window_label}
-              </p>
+          <.weight_gain_card
+            velocity={@velocity}
+            growth_burst={@growth_burst}
+            child={@current_child}
+            unit_system={@unit_system}
+            can_write={@can_write}
+          />
+
+          <.button
+            :if={@can_write}
+            id="add-measurement"
+            type="button"
+            variant="primary"
+            size="lg"
+            class="w-full mt-4 min-h-12 text-base"
+            phx-click="open_sheet"
+          >
+            Log height and weight
+          </.button>
+        </div>
+
+        <section
+          id="growth-charts"
+          class="mt-6 md:mt-0 md:col-start-2 md:row-span-2 md:row-start-1 min-w-0 rounded-box border border-base-300 overflow-hidden"
+        >
+          <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h2 class="font-semibold">Growth</h2>
+                <p id="chart-window" class="text-xs opacity-60 tabular-nums mt-0.5">
+                  {@chart_window_label}
+                </p>
+              </div>
+              <div class="flex gap-2 shrink-0">
+                <.button
+                  id="chart-zoom-out"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  phx-click="chart_zoom"
+                  phx-value-dir="out"
+                  disabled={@chart_period == :all}
+                  aria-label="Zoom out"
+                  class="min-h-11 min-w-11 px-0"
+                >
+                  <.icon name="hero-minus" class="size-5" />
+                </.button>
+                <.button
+                  id="chart-zoom-in"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  phx-click="chart_zoom"
+                  phx-value-dir="in"
+                  disabled={@chart_period == :weeks_2}
+                  aria-label="Zoom in"
+                  class="min-h-11 min-w-11 px-0"
+                >
+                  <.icon name="hero-plus" class="size-5" />
+                </.button>
+              </div>
             </div>
-            <div class="flex gap-2 shrink-0">
-              <.button
-                id="chart-zoom-out"
-                type="button"
-                variant="outline"
-                size="sm"
-                phx-click="chart_zoom"
-                phx-value-dir="out"
-                disabled={@chart_period == :all}
-                aria-label="Zoom out"
-                class="min-h-11 min-w-11 px-0"
-              >
-                <.icon name="hero-minus" class="size-5" />
-              </.button>
-              <.button
-                id="chart-zoom-in"
-                type="button"
-                variant="outline"
-                size="sm"
-                phx-click="chart_zoom"
-                phx-value-dir="in"
-                disabled={@chart_period == :weeks_2}
-                aria-label="Zoom in"
-                class="min-h-11 min-w-11 px-0"
-              >
-                <.icon name="hero-plus" class="size-5" />
-              </.button>
-            </div>
+            <.chart_toolbar period={@chart_period} />
+            <.age_basis_toggle :if={@age_basis_toggle?} basis={@age_basis} />
           </div>
-          <.chart_toolbar period={@chart_period} />
-          <.age_basis_toggle :if={@age_basis_toggle?} basis={@age_basis} />
-        </div>
-        <div class="divide-y divide-base-300">
-          <.trend_chart
-            id="weight-chart"
-            kind="weight"
-            title="Weight"
-            unit={Units.unit_label(:weight, @unit_system)}
-            chart={@weight_chart}
-          />
-          <.trend_chart
-            id="height-chart"
-            kind="height"
-            title="Height"
-            unit={Units.unit_label(:length, @unit_system)}
-            chart={@height_chart}
-          />
-        </div>
-        <p
-          :if={@percentile_note}
-          id="percentile-source"
-          class="text-xs opacity-50 px-3 py-2 border-t border-base-300"
-        >
-          {@percentile_note} · 5th–95th
-          <span :if={@corrected_age} id="corrected-age">· corrected age {@corrected_age}</span>
-        </p>
-        <p
-          :if={@age_basis == :actual and @age_basis_toggle?}
-          id="percentile-actual-age"
-          class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
-        >
-          Showing actual age, not corrected for birth at {Child.gestation_label(@current_child)}.
-        </p>
-        <p
-          :if={@percentile_hint == :before_term}
-          id="percentile-hint"
-          class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
-        >
-          Born at {Child.gestation_label(@current_child)}, so percentiles start on {Calendar.strftime(
-            Child.term_date(@current_child),
-            "%b %-d"
-          )}, when {@current_child.name} reaches 40 weeks — the CDC charts begin at a full-term birth.
-        </p>
-        <p
-          :if={@percentile_hint == :unspecified_sex}
-          id="percentile-hint"
-          class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
-        >
-          Set this child's sex to girl or boy to see CDC growth percentiles.
-          <.link navigate={~p"/children/#{@current_child}/edit"} class="underline">Edit child</.link>
-        </p>
-        <p
-          :if={@percentile_hint == :no_birth_date}
-          id="percentile-hint"
-          class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
-        >
-          Add a birth date to see CDC growth percentiles.
-          <.link navigate={~p"/children/#{@current_child}/edit"} class="underline">Edit child</.link>
-        </p>
-      </section>
+          <div class="divide-y divide-base-300">
+            <.trend_chart
+              id="weight-chart"
+              kind="weight"
+              title="Weight"
+              unit={Units.unit_label(:weight, @unit_system)}
+              chart={@weight_chart}
+            />
+            <.trend_chart
+              id="height-chart"
+              kind="height"
+              title="Height"
+              unit={Units.unit_label(:length, @unit_system)}
+              chart={@height_chart}
+            />
+          </div>
+          <p
+            :if={@percentile_note}
+            id="percentile-source"
+            class="text-xs opacity-50 px-3 py-2 border-t border-base-300"
+          >
+            {@percentile_note} · 5th–95th
+            <span :if={@corrected_age} id="corrected-age">· corrected age {@corrected_age}</span>
+          </p>
+          <p
+            :if={@age_basis == :actual and @age_basis_toggle?}
+            id="percentile-actual-age"
+            class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+          >
+            Showing actual age, not corrected for birth at {Child.gestation_label(@current_child)}.
+          </p>
+          <p
+            :if={@percentile_hint == :before_term}
+            id="percentile-hint"
+            class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+          >
+            Born at {Child.gestation_label(@current_child)}, so percentiles start on {Calendar.strftime(
+              Child.term_date(@current_child),
+              "%b %-d"
+            )}, when {@current_child.name} reaches 40 weeks — the CDC charts begin at a full-term birth.
+          </p>
+          <p
+            :if={@percentile_hint == :unspecified_sex}
+            id="percentile-hint"
+            class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+          >
+            Set this child's sex to girl or boy to see CDC growth percentiles.
+            <.link navigate={~p"/children/#{@current_child}/edit"} class="underline">
+              Edit child
+            </.link>
+          </p>
+          <p
+            :if={@percentile_hint == :no_birth_date}
+            id="percentile-hint"
+            class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+          >
+            Add a birth date to see CDC growth percentiles.
+            <.link navigate={~p"/children/#{@current_child}/edit"} class="underline">
+              Edit child
+            </.link>
+          </p>
+        </section>
 
-      <section class="mt-6 rounded-box border border-base-300 overflow-hidden">
-        <div class="px-3 py-2.5 border-b border-base-300 bg-base-200/40">
-          <h2 class="font-semibold">History</h2>
-        </div>
-        <p :if={@measurements == []} class="opacity-60 text-sm py-10 text-center px-3">
-          No measurements yet.
-        </p>
-        <div :if={@measurements != []} id="growth-table" class="overflow-x-auto">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Weight</th>
-                <th>Height</th>
-                <th>By</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                :for={m <- @measurements}
-                id={"measurement-#{m.id}"}
-                class={[
-                  "h-12",
-                  @can_write && "cursor-pointer active:bg-base-200"
-                ]}
-                phx-click={@can_write && JS.push("edit", value: %{id: m.id})}
-              >
-                <td class="whitespace-nowrap tabular-nums">{format_date(m, @current_child)}</td>
-                <td class="tabular-nums">
-                  {Units.format(m.weight_g, :weight, @unit_system) || "—"}
-                </td>
-                <td class="tabular-nums">
-                  {Units.format(m.height_cm, :length, @unit_system) || "—"}
-                </td>
-                <td class="opacity-60 truncate max-w-20">
-                  {m.logged_by && User.capitalize_name(m.logged_by.first_name)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <section class="mt-6 md:col-start-1 min-w-0 rounded-box border border-base-300 overflow-hidden">
+          <div class="px-3 py-2.5 border-b border-base-300 bg-base-200/40">
+            <h2 class="font-semibold">History</h2>
+          </div>
+          <p :if={@measurements == []} class="opacity-60 text-sm py-10 text-center px-3">
+            No measurements yet.
+          </p>
+          <div :if={@measurements != []} id="growth-table" class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Weight</th>
+                  <th>Height</th>
+                  <th>By</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  :for={m <- @measurements}
+                  id={"measurement-#{m.id}"}
+                  class={[
+                    "h-12",
+                    @can_write && "cursor-pointer active:bg-base-200"
+                  ]}
+                  phx-click={@can_write && JS.push("edit", value: %{id: m.id})}
+                >
+                  <td class="whitespace-nowrap tabular-nums">{format_date(m, @current_child)}</td>
+                  <td class="tabular-nums">
+                    {Units.format(m.weight_g, :weight, @unit_system) || "—"}
+                  </td>
+                  <td class="tabular-nums">
+                    {Units.format(m.height_cm, :length, @unit_system) || "—"}
+                  </td>
+                  <td class="opacity-60 truncate max-w-20">
+                    {m.logged_by && User.capitalize_name(m.logged_by.first_name)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
 
       <.sheet :if={@sheet} form={@form} editing={@editing} unit_system={@unit_system} />
     </Layouts.app>

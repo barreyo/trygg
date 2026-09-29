@@ -155,11 +155,29 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
     end
 
+    test "has a desktop sidebar with the same tabs, marking the current one", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+
+      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Home")
+      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
+      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
+
+      assert has_element?(
+               lv,
+               "#side-nav a[aria-current=page][href='#{~p"/c/#{child}/vitals"}']",
+               "Vitals"
+             )
+    end
+
     test "is replaced by a back arrow on account-level pages", %{conn: conn} do
       for path <- [~p"/preferences", ~p"/children", ~p"/users/settings"] do
         {:ok, lv, _html} = live(conn, path)
 
         refute has_element?(lv, "#bottom-nav")
+        refute has_element?(lv, "#side-nav")
         assert has_element?(lv, "header a[aria-label=Back][href='/']")
         assert has_element?(lv, "#app-menu")
       end
