@@ -13,6 +13,7 @@ defmodule TryggWeb.ReportPdfHTML do
 
   alias Trygg.Families.Child
   alias Trygg.Growth.Percentiles
+  alias Trygg.Growth.Velocity
   alias Trygg.Reports.Alerts
   alias Trygg.Reports.Norms
   alias Trygg.Reports.Shifts
@@ -96,7 +97,8 @@ defmodule TryggWeb.ReportPdfHTML do
       |> assign(:measurements, measurements)
       |> assign(:window_label, series_label(summary.totals.per_day) || window_name(export.window))
       |> assign(:growth_label, GrowthComponents.window_label(from, to))
-      |> assign(:percentile_note, Percentiles.source_label(child))
+      |> assign(:percentile_note, percentile_note(child))
+      |> assign(:actual_velocity, actual_velocity(child, measurements))
       |> assign(
         :weight_chart,
         GrowthComponents.build_chart(measurements, :weight_g, :weight, units, child, from, to)
@@ -106,12 +108,12 @@ defmodule TryggWeb.ReportPdfHTML do
         GrowthComponents.build_chart(measurements, :height_cm, :length, units, child, from, to)
       )
       |> assign(
-        :weight_percentile,
-        measurement_percentile(export.latest_weight, :weight_g, child)
+        :weight_percentiles,
+        measurement_percentiles(export.latest_weight, :weight_g, child)
       )
       |> assign(
-        :height_percentile,
-        measurement_percentile(export.latest_height, :height_cm, child)
+        :height_percentiles,
+        measurement_percentiles(export.latest_height, :height_cm, child)
       )
 
     ~H"""
@@ -128,8 +130,8 @@ defmodule TryggWeb.ReportPdfHTML do
         feeding={@feeding}
         latest_weight={@export.latest_weight}
         latest_height={@export.latest_height}
-        weight_percentile={@weight_percentile}
-        height_percentile={@height_percentile}
+        weight_percentiles={@weight_percentiles}
+        height_percentiles={@height_percentiles}
         child={@child}
         unit_system={@unit_system}
       />
@@ -140,6 +142,7 @@ defmodule TryggWeb.ReportPdfHTML do
         weight_chart={@weight_chart}
         height_chart={@height_chart}
         velocity={@velocity}
+        actual_velocity={@actual_velocity}
         measurements={@measurements}
         growth_label={@growth_label}
         percentile_note={@percentile_note}
@@ -197,7 +200,7 @@ defmodule TryggWeb.ReportPdfHTML do
             {[
               @sex_label,
               @age_label,
-              @child.birth_date && "born #{Calendar.strftime(@child.birth_date, "%-d %b %Y")}"
+              @child.birth_date && born_label(@child)
             ]
             |> Enum.reject(&is_nil/1)
             |> Enum.join(" · ")}
@@ -230,8 +233,8 @@ defmodule TryggWeb.ReportPdfHTML do
   attr :feeding, :map, required: true
   attr :latest_weight, :any, default: nil
   attr :latest_height, :any, default: nil
-  attr :weight_percentile, :string, default: nil
-  attr :height_percentile, :string, default: nil
+  attr :weight_percentiles, :any, default: nil
+  attr :height_percentiles, :any, default: nil
   attr :child, Child, required: true
   attr :unit_system, :atom, required: true
 
@@ -245,18 +248,18 @@ defmodule TryggWeb.ReportPdfHTML do
         icon="hero-scale"
         label="Weight"
         value={measurement_value(@latest_weight, :weight_g, :weight, @unit_system)}
-        sub={measurement_date(@latest_weight, @child)}
-        badge={@weight_percentile}
-        badge_label={@weight_percentile && "percentile"}
+        sub={measurement_sub(@latest_weight, @child, @weight_percentiles)}
+        badge={badge_percentile(@weight_percentiles)}
+        badge_label={percentiles_label(@weight_percentiles)}
         badge_id="pdf-weight-percentile"
       />
       <.since_card
         icon="hero-arrows-up-down"
         label="Height"
         value={measurement_value(@latest_height, :height_cm, :length, @unit_system)}
-        sub={measurement_date(@latest_height, @child)}
-        badge={@height_percentile}
-        badge_label={@height_percentile && "percentile"}
+        sub={measurement_sub(@latest_height, @child, @height_percentiles)}
+        badge={badge_percentile(@height_percentiles)}
+        badge_label={percentiles_label(@height_percentiles)}
         badge_id="pdf-height-percentile"
       />
       <.since_card
@@ -306,11 +309,14 @@ defmodule TryggWeb.ReportPdfHTML do
   attr :weight_chart, :map, required: true
   attr :height_chart, :map, required: true
   attr :velocity, :map, required: true
+  attr :actual_velocity, :map, default: nil
   attr :measurements, :list, required: true
   attr :growth_label, :string, required: true
   attr :percentile_note, :string, default: nil
 
   defp growth_section(assigns) do
+    assigns = assign(assigns, :dual?, dual_percentiles?(assigns.child))
+
     ~H"""
     <section id="pdf-growth" class="space-y-3">
       <.section_title title="Growth" hint={@growth_label} />
@@ -363,6 +369,9 @@ defmodule TryggWeb.ReportPdfHTML do
           <span :if={@velocity.velocity.percentile_drop?} class="text-warning">
             · crossed a major band
           </span>
+          <span :if={actual_movement(@velocity, @actual_velocity)} id="pdf-weight-gain-actual">
+            (actual age: {actual_movement(@velocity, @actual_velocity)})
+          </span>
         </p>
         <p
           :if={
@@ -391,9 +400,9 @@ defmodule TryggWeb.ReportPdfHTML do
               <th>Date</th>
               <th>Age</th>
               <th>Weight</th>
-              <th>Percentile</th>
+              <th>{if @dual?, do: "Percentile (corr. / actual)", else: "Percentile"}</th>
               <th>Height</th>
-              <th>Percentile</th>
+              <th>{if @dual?, do: "Percentile (corr. / actual)", else: "Percentile"}</th>
             </tr>
           </thead>
           <tbody>
@@ -402,17 +411,16 @@ defmodule TryggWeb.ReportPdfHTML do
                 {Calendar.strftime(GrowthComponents.local_date(@child, m.measured_at), "%-d %b %Y")}
               </td>
               <td class="tabular-nums">
-                {GrowthComponents.compact_age(
-                  Child.age(@child, GrowthComponents.local_date(@child, m.measured_at))
-                )}
+                {age_cell(@child, GrowthComponents.local_date(@child, m.measured_at))}
               </td>
               <td class="tabular-nums">{Units.format(m.weight_g, :weight, @unit_system) || "—"}</td>
               <td class="tabular-nums opacity-70">
-                {percentile_on(@child, :weight, m.weight_g, m.measured_at) || "—"}
+                {format_percentiles(percentiles_on(@child, :weight, m.weight_g, m.measured_at)) || "—"}
               </td>
               <td class="tabular-nums">{Units.format(m.height_cm, :length, @unit_system) || "—"}</td>
               <td class="tabular-nums opacity-70">
-                {percentile_on(@child, :length, m.height_cm, m.measured_at) || "—"}
+                {format_percentiles(percentiles_on(@child, :length, m.height_cm, m.measured_at)) ||
+                  "—"}
               </td>
             </tr>
           </tbody>
@@ -815,6 +823,15 @@ defmodule TryggWeb.ReportPdfHTML do
     Units.format(Map.get(measurement, field), kind, units) || "—"
   end
 
+  defp born_label(%Child{birth_date: dob} = child) do
+    born = "born #{Calendar.strftime(dob, "%-d %b %Y")}"
+
+    case Child.gestation_label(child) do
+      nil -> born
+      gestation -> "#{born} at #{gestation}"
+    end
+  end
+
   defp measurement_date(nil, _child), do: "Not logged yet"
 
   defp measurement_date(measurement, child) do
@@ -823,12 +840,88 @@ defmodule TryggWeb.ReportPdfHTML do
     |> Calendar.strftime("%-d %b %Y")
   end
 
-  defp measurement_percentile(nil, _field, _child), do: nil
+  defp measurement_percentiles(nil, _field, _child), do: nil
 
-  defp measurement_percentile(measurement, field, child) do
+  defp measurement_percentiles(measurement, field, child) do
     kind = if field == :weight_g, do: :weight, else: :length
-    percentile_on(child, kind, Map.get(measurement, field), measurement.measured_at)
+    percentiles_on(child, kind, Map.get(measurement, field), measurement.measured_at)
   end
+
+  # Babies born early get their actual-age percentile next to the corrected
+  # one, so the report lines up with whichever chart the doctor uses.
+  defp dual_percentiles?(child), do: Child.born_early?(child) and Percentiles.available?(child)
+
+  # `{corrected, actual}`, with `actual` nil when there's only one to show
+  # (born at term, or past the age correction stops).
+  defp percentiles_on(child, kind, value, at) do
+    corrected = percentile_on(child, kind, value, at)
+
+    actual =
+      if dual_percentiles?(child),
+        do: percentile_on(Child.uncorrected(child), kind, value, at),
+        else: corrected
+
+    if actual == corrected, do: {corrected, nil}, else: {corrected, actual}
+  end
+
+  defp format_percentiles(nil), do: nil
+  defp format_percentiles({corrected, nil}), do: corrected
+  defp format_percentiles({corrected, actual}), do: "#{corrected || "—"} / #{actual || "—"}"
+
+  # The summary cards are narrow: the badge carries the corrected percentile
+  # and the actual-age one rides along in the sub-line.
+  defp badge_percentile(nil), do: nil
+  defp badge_percentile({nil, actual}), do: actual && "—"
+  defp badge_percentile({corrected, _actual}), do: corrected
+
+  defp percentiles_label(nil), do: nil
+  defp percentiles_label({nil, nil}), do: nil
+  defp percentiles_label({_corrected, nil}), do: "percentile"
+  defp percentiles_label({_corrected, _actual}), do: "corrected"
+
+  defp measurement_sub(measurement, child, {_corrected, actual}) when is_binary(actual),
+    do: "#{measurement_date(measurement, child)} · #{actual} on actual age"
+
+  defp measurement_sub(measurement, child, _percentiles), do: measurement_date(measurement, child)
+
+  defp age_cell(child, date) do
+    age = GrowthComponents.compact_age(Child.age(child, date))
+
+    if Child.corrects_age?(child, date) do
+      case GrowthComponents.compact_age(Child.corrected_age(child, date)) do
+        nil -> age
+        corrected -> "#{age} · corr. #{corrected}"
+      end
+    else
+      age
+    end
+  end
+
+  defp percentile_note(child) do
+    note = Percentiles.source_label(child)
+
+    if note && dual_percentiles?(child) do
+      "#{note}. Where two percentiles are shown, the first uses corrected age (born at " <>
+        "#{Child.gestation_label(child)}) and the second actual age; charts use corrected age"
+    else
+      note
+    end
+  end
+
+  defp actual_velocity(child, measurements) do
+    if dual_percentiles?(child), do: Velocity.summarize(Child.uncorrected(child), measurements)
+  end
+
+  # "20th → 24th" on actual age, when it reads differently from the corrected line.
+  defp actual_movement(%{available?: true, velocity: v}, %{available?: true, velocity: a}) do
+    prev = Percentiles.format_percentile(a.percentile_prev)
+    now = Percentiles.format_percentile(a.percentile_now)
+
+    if now && {a.percentile_prev, a.percentile_now} != {v.percentile_prev, v.percentile_now},
+      do: "#{prev || "—"} → #{now}"
+  end
+
+  defp actual_movement(_velocity, _actual), do: nil
 
   defp percentile_on(_child, _kind, nil, _at), do: nil
 

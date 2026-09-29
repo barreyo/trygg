@@ -120,6 +120,49 @@ defmodule TryggWeb.ReportPdfHTMLTest do
     refute has?(doc, "#pdf-feed-length-sparse")
   end
 
+  test "a baby born early gets corrected and actual-age percentiles side by side", %{
+    scope: scope,
+    child: term_child
+  } do
+    today = Date.utc_today()
+
+    child =
+      child_fixture(scope, %{
+        name: "Early",
+        sex: :female,
+        birth_date: Date.add(today, -84),
+        gestation_weeks: 32,
+        timezone: "Etc/UTC"
+      })
+
+    earlier =
+      measurement_fixture(scope, child, %{
+        measured_on: Date.add(today, -28),
+        weight_g: 3000.0,
+        height_cm: 49.0
+      })
+
+    measurement_fixture(scope, child, %{measured_on: today, weight_g: 4200.0, height_cm: 54.0})
+
+    doc = render(scope, child)
+
+    assert text(doc, "#pdf-weight-percentile") =~ "corrected"
+    assert text(doc, "#pdf-height-percentile") =~ "corrected"
+    assert text(doc, "#pdf-summary") =~ "on actual age"
+    assert text(doc, "#pdf-measurements thead") =~ "Percentile (corr. / actual)"
+    assert text(doc, "#pdf-measurement-#{earlier.id}") =~ "corr. 0d"
+    assert text(doc, "#pdf-footer") =~ "first uses corrected age (born at 32+0 weeks)"
+    assert text(doc, "#pdf-header") =~ "at 32+0 weeks"
+    assert has?(doc, "#pdf-weight-gain-actual")
+
+    # A term baby keeps the single column.
+    measurement_fixture(scope, term_child)
+    term_doc = render(scope, term_child)
+    refute text(term_doc, "#pdf-measurements thead") =~ "corr."
+    assert text(term_doc, "#pdf-weight-percentile") =~ "percentile"
+    refute text(term_doc, "#pdf-summary") =~ "actual age"
+  end
+
   test "renders gracefully for a child with no data at all", %{scope: scope, child: child} do
     doc = render(scope, child, :all)
 
