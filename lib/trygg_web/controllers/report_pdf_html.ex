@@ -864,7 +864,6 @@ defmodule TryggWeb.ReportPdfHTML do
     if actual == corrected, do: {corrected, nil}, else: {corrected, actual}
   end
 
-  defp format_percentiles(nil), do: nil
   defp format_percentiles({corrected, nil}), do: corrected
   defp format_percentiles({corrected, actual}), do: "#{corrected || "—"} / #{actual || "—"}"
 
