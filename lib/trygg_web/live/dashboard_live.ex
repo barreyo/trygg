@@ -42,6 +42,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
       |> assign(:vapid_public_key, Push.vapid_public_key())
+      |> assign(:dismissed_notices, MapSet.new())
       |> assign(summary: nil, outlook: nil, weight_reminder: nil, rhythm_center: nil)
       |> assign(:entries_empty?, false)
       |> stream(:entries, [])
@@ -204,6 +205,25 @@ defmodule TryggWeb.DashboardLive do
       end
 
     {:noreply, socket}
+  end
+
+  # Home alerts and the weight-check banner can be dismissed. The server keeps
+  # the set for this session; the `DismissedNotices` hook mirrors it to
+  # localStorage (per child, per local day) and hands it back on mount, so a
+  # dismissed notice stays gone for the day but returns tomorrow if it still applies.
+  def handle_event("dismiss_notice", %{"key" => key}, socket) when is_binary(key) do
+    dismissed =
+      Enum.reduce(String.split(key, ","), socket.assigns.dismissed_notices, &MapSet.put(&2, &1))
+
+    {:noreply,
+     socket
+     |> assign(:dismissed_notices, dismissed)
+     |> push_event("notices:save", %{keys: MapSet.to_list(dismissed)})}
+  end
+
+  def handle_event("restore_notices", %{"keys" => keys}, socket) when is_list(keys) do
+    restored = keys |> Enum.filter(&is_binary/1) |> Enum.take(50) |> MapSet.new()
+    {:noreply, update(socket, :dismissed_notices, &MapSet.union(&1, restored))}
   end
 
   def handle_event("request_stop", _params, socket) do
@@ -897,42 +917,65 @@ defmodule TryggWeb.DashboardLive do
                the glance cards. Only warnings and notices get the full card;
                informational ones ("eating more than usual") collapse to a
                one-line pointer to Reports so they don't crowd the screen. --%>
-            <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
-              <.alerts_list
-                id="home-alerts"
-                alerts={Enum.reject(@outlook.alerts, &(&1.severity == :info))}
-                links={
-                  %{
-                    vitals: ~p"/c/#{@current_child}/vitals",
-                    reports: ~p"/c/#{@current_child}/reports"
-                  }
-                }
-              />
-              <.alerts_note
-                id="home-info-alerts"
-                alerts={Enum.filter(@outlook.alerts, &(&1.severity == :info))}
-                navigate={~p"/c/#{@current_child}/reports?view=trends"}
-              />
-            </div>
-
-            <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
             <div
-              :if={@weight_reminder}
-              id="weight-check-reminder"
-              class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
+              id="home-notices"
+              phx-hook="DismissedNotices"
+              data-storage-key={"trygg:dismissed-notices:#{@current_child.id}"}
+              data-day={Date.to_iso8601(Child.local_today(@current_child))}
             >
-              <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
-                <p class="text-xs opacity-70 mt-0.5 leading-snug">
-                  {weight_reminder_detail(@weight_reminder)}
-                </p>
-                <.link
-                  navigate={~p"/c/#{@current_child}/vitals"}
-                  class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+              <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
+                <.alerts_list
+                  id="home-alerts"
+                  alerts={
+                    visible_alerts(@outlook.alerts, @dismissed_notices, &(&1.severity != :info))
+                  }
+                  on_dismiss="dismiss_notice"
+                  links={
+                    %{
+                      vitals: ~p"/c/#{@current_child}/vitals",
+                      reports: ~p"/c/#{@current_child}/reports"
+                    }
+                  }
+                />
+                <.alerts_note
+                  id="home-info-alerts"
+                  alerts={
+                    visible_alerts(@outlook.alerts, @dismissed_notices, &(&1.severity == :info))
+                  }
+                  navigate={~p"/c/#{@current_child}/reports?view=trends"}
+                  on_dismiss="dismiss_notice"
+                />
+              </div>
+
+              <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
+              <div
+                :if={@weight_reminder && "weight-check" not in @dismissed_notices}
+                id="weight-check-reminder"
+                class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
+              >
+                <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
+                  <p class="text-xs opacity-70 mt-0.5 leading-snug">
+                    {weight_reminder_detail(@weight_reminder)}
+                  </p>
+                  <.link
+                    navigate={~p"/c/#{@current_child}/vitals"}
+                    class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+                  >
+                    Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
+                  </.link>
+                </div>
+                <button
+                  id="weight-check-reminder-dismiss"
+                  type="button"
+                  phx-click="dismiss_notice"
+                  phx-value-key="weight-check"
+                  class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1 shrink-0"
+                  aria-label="Dismiss weight check reminder"
                 >
-                  Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
-                </.link>
+                  <.icon name="hero-x-mark" class="size-4" />
+                </button>
               </div>
             </div>
 
@@ -1666,6 +1709,10 @@ defmodule TryggWeb.DashboardLive do
 
   defp trim(f) when is_float(f) do
     if f == Float.round(f), do: trunc(f), else: Float.round(f, 1)
+  end
+
+  defp visible_alerts(alerts, dismissed, filter) do
+    Enum.filter(alerts, &(filter.(&1) and to_string(&1.id) not in dismissed))
   end
 
   # Copy for the home weight-check banner. `never_measured?` means we're
