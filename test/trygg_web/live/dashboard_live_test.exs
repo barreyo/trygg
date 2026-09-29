@@ -1022,10 +1022,9 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("#weight-check-reminder-dismiss") |> render_click()
 
       refute has_element?(lv, "#weight-check-reminder")
-      assert_push_event(lv, "notices:save", %{keys: ["weight-check"]})
     end
 
-    test "dismissals restored from the device stay hidden", %{
+    test "a dismissed banner stays hidden after a reload", %{
       conn: conn,
       scope: scope,
       child: child
@@ -1033,10 +1032,9 @@ defmodule TryggWeb.DashboardLiveTest do
       measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -120)})
 
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
-      assert has_element?(lv, "#weight-check-reminder")
+      lv |> element("#weight-check-reminder-dismiss") |> render_click()
 
-      render_hook(lv, "restore_notices", %{"keys" => ["weight-check"]})
-
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       refute has_element?(lv, "#weight-check-reminder")
     end
 
