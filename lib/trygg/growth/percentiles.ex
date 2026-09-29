@@ -1,7 +1,9 @@
 defmodule Trygg.Growth.Percentiles do
   @moduledoc """
   CDC 2000 infant (birth–36 months) weight-for-age and length-for-age
-  percentiles, using the published LMS parameters.
+  percentiles, using the published LMS parameters, with the INTERGROWTH-21st
+  preterm standard (`Trygg.Growth.PretermStandard`) for babies born early
+  before they reach 40 weeks.
 
   Charts are sex-specific (`:female` / `:male`). Returns `nil` when the child
   has no birth date, sex is `:unspecified`, age is outside 0–36 months, or the
@@ -13,14 +15,20 @@ defmodule Trygg.Growth.Percentiles do
   For babies born before 39+0 weeks — preterm or early term, see
   `Child.born_early?/1` — age is corrected (counted from the date they reached
   40+0 weeks) until they turn two. Clinicians usually only correct preterm
-  babies; early term is included here on purpose. Before that term date the CDC charts
-  (which start at a full-term birth) don't apply and everything returns `nil`.
+  babies; early term is included here on purpose.
+
+  Before that term date the CDC charts (which start at a full-term birth)
+  don't apply, so measurements are scored on the INTERGROWTH-21st preterm
+  standard by postmenstrual age instead. It starts at 27+0 weeks; earlier than
+  that everything returns `nil`. On actual age (`corrected: false`, or
+  `Child.uncorrected/1`) the CDC charts are used from birth, as before.
 
   Source: [CDC growth chart data files](https://www.cdc.gov/growthcharts/cdc-data-files.htm)
   (`wtageinf.csv`, `lenageinf.csv`).
   """
 
   alias Trygg.Families.Child
+  alias Trygg.Growth.PretermStandard
 
   @type kind :: :weight | :length
   @type percentile :: pos_integer() | {:below, 1} | {:above, 99}
@@ -93,18 +101,33 @@ defmodule Trygg.Growth.Percentiles do
   Why percentiles are unavailable, or `nil` when they can be computed.
 
   `:unspecified_sex` and `:no_birth_date` are the cases the UI explains.
-  `:before_term` means a child born early hasn't reached their term date yet
-  (on `date`, defaulting to the child's local today).
+  `:before_preterm_chart` means a baby born very early is still younger than
+  27 weeks postmenstrual age on `date` (defaulting to the child's local
+  today), where no chart applies; see `first_date/1`.
   """
-  @spec hint(%Child{}, Date.t() | nil) :: :unspecified_sex | :no_birth_date | :before_term | nil
+  @spec hint(%Child{}, Date.t() | nil) ::
+          :unspecified_sex | :no_birth_date | :before_preterm_chart | nil
   def hint(child, date \\ nil)
   def hint(%Child{birth_date: nil}, _date), do: :no_birth_date
   def hint(%Child{sex: :unspecified}, _date), do: :unspecified_sex
 
   def hint(%Child{} = child, date) do
     date = date || Child.local_today(child)
-    term = Child.term_date(child)
-    if term && Date.before?(date, term), do: :before_term
+    if Date.before?(date, first_date(child)), do: :before_preterm_chart
+  end
+
+  @doc """
+  The first date corrected percentiles exist for: birth, or for a baby born
+  before 27 weeks the day they reach 27+0 weeks, where the INTERGROWTH-21st
+  preterm standard starts. `nil` without a birth date.
+  """
+  @spec first_date(%Child{}) :: Date.t() | nil
+  def first_date(%Child{birth_date: nil}), do: nil
+
+  def first_date(%Child{birth_date: dob, gestational_age_days: ga} = child) do
+    if Child.born_early?(child),
+      do: Date.add(dob, max(PretermStandard.range_days().first - ga, 0)),
+      else: dob
   end
 
   @doc """
@@ -121,7 +144,9 @@ defmodule Trygg.Growth.Percentiles do
         else: "CDC 2000 infant charts (boys), birth–36 months"
 
     if corrected?(child, date || Child.local_today(child)),
-      do: "#{chart}, using corrected age (born at #{Child.gestation_label(child)})",
+      do:
+        "#{chart}, using corrected age (born at #{Child.gestation_label(child)}), with the " <>
+          "INTERGROWTH-21st preterm standard before 40 weeks",
       else: chart
   end
 
@@ -151,10 +176,7 @@ defmodule Trygg.Growth.Percentiles do
       when is_number(value) and kind in [:weight, :length] do
     date = date || Child.local_today(child)
 
-    with %{l: l, m: m, s: s} <- lms(child, kind, date) do
-      x = to_lms_unit(kind, value)
-      z_to_percentile(z_score(x, l, m, s))
-    end
+    child |> reference(kind, date) |> ref_zscore(kind, value) |> z_to_percentile()
   end
 
   @doc """
@@ -175,9 +197,7 @@ defmodule Trygg.Growth.Percentiles do
       when is_number(value) and kind in [:weight, :length] do
     date = date || Child.local_today(child)
 
-    with %{l: l, m: m, s: s} <- lms(child, kind, date, opts[:corrected]) do
-      z_score(to_lms_unit(kind, value), l, m, s)
-    end
+    child |> reference(kind, date, opts[:corrected]) |> ref_zscore(kind, value)
   end
 
   @doc "Integer percentile (or below/above marker) for a z-score."
@@ -191,10 +211,7 @@ defmodule Trygg.Growth.Percentiles do
   @spec value_at_z(%Child{}, kind, float(), Date.t(), keyword()) :: float() | nil
   def value_at_z(%Child{} = child, kind, z, %Date{} = date, opts \\ [])
       when kind in [:weight, :length] and is_number(z) do
-    with %{l: l, m: m, s: s} <- lms(child, kind, date, opts[:corrected]),
-         raw when is_number(raw) <- value_from_z(z, l, m, s) do
-      from_lms_unit(kind, raw)
-    end
+    child |> reference(kind, date, opts[:corrected]) |> ref_value(kind, z)
   end
 
   @doc "Formats `42` as `\"42nd\"`, `{:below, 1}` as `\"<1st\"`, `nil` as `nil`."
@@ -208,22 +225,21 @@ defmodule Trygg.Growth.Percentiles do
   end
 
   @doc """
-  Canonical value (grams or centimetres) on a CDC percentile curve at `date`.
+  Canonical value (grams or centimetres) on a percentile curve at `date`.
   `percentile` is typically 5, 50, or 95.
   """
   @spec value_at(%Child{}, kind, pos_integer(), Date.t()) :: float() | nil
   def value_at(%Child{} = child, kind, percentile, %Date{} = date)
       when kind in [:weight, :length] and is_integer(percentile) do
-    with %{l: l, m: m, s: s} <- lms(child, kind, date),
-         z when is_float(z) <- z_for_percentile(percentile) do
-      from_lms_unit(kind, value_from_z(z, l, m, s))
+    with z when is_float(z) <- z_for_percentile(percentile) do
+      child |> reference(kind, date) |> ref_value(kind, z)
     end
   end
 
   @doc """
   Sampled `{date, canonical_value}` points along a percentile curve, clipped to
-  birth (or the term date, for a child born early) through 36 months and to
-  `[from, to]`.
+  `first_date/1` through 36 months and to `[from, to]`. For a child born early
+  the curve steps where the preterm standard hands over to CDC at 40 weeks.
   """
   @spec curve(%Child{}, kind, pos_integer(), Date.t(), Date.t()) :: [{Date.t(), float()}]
   def curve(%Child{} = child, kind, percentile, %Date{} = from, %Date{} = to)
@@ -260,7 +276,7 @@ defmodule Trygg.Growth.Percentiles do
   end
 
   defp curve_span(%Child{birth_date: dob} = child, from, to) do
-    first = Child.term_date(child) || dob
+    first = first_date(child)
     start = if Date.before?(from, first), do: first, else: from
     stop = min_date(to, shift_years(dob, 3))
     {start, stop}
@@ -274,35 +290,73 @@ defmodule Trygg.Growth.Percentiles do
     Date.new!(new_year, month, min(day, last))
   end
 
-  defp lms(child, kind, date, corrected \\ nil)
+  # The growth reference a measurement on `date` is scored against:
+  # `{:lms, lms}` for the CDC infant charts, `{:preterm, sex, pma_days}` for
+  # the INTERGROWTH-21st preterm standard, or `nil` when neither applies.
+  defp reference(child, kind, date, corrected \\ nil)
 
-  defp lms(%Child{sex: sex} = child, kind, date, corrected) when sex in [:female, :male] do
-    with months when is_float(months) <- age_months(child, date, corrected) do
-      interpolate_lms(@tables[kind][sex], months)
+  defp reference(%Child{sex: sex} = child, kind, date, corrected) when sex in [:female, :male] do
+    case age_basis(child, date, corrected) do
+      {:months, months} ->
+        with %{} = lms <- interpolate_lms(@tables[kind][sex], months), do: {:lms, lms}
+
+      {:postmenstrual, days} ->
+        if days in PretermStandard.range_days(), do: {:preterm, sex, days}
+
+      nil ->
+        nil
     end
   end
 
-  defp lms(_child, _kind, _date, _corrected), do: nil
-
-  defp age_months(%Child{birth_date: nil}, _date, _corrected), do: nil
+  defp reference(_child, _kind, _date, _corrected), do: nil
 
   # `corrected` is `nil` to pick the basis from `date`, or a boolean to force
-  # it (still only for children born early).
-  defp age_months(%Child{birth_date: dob} = child, %Date{} = date, corrected) do
+  # it (still only for children born early). Corrected age before the term
+  # date is postmenstrual age on the preterm standard.
+  defp age_basis(%Child{birth_date: nil}, _date, _corrected), do: nil
+
+  defp age_basis(%Child{birth_date: dob} = child, %Date{} = date, corrected) do
     corrected? =
       if is_nil(corrected),
         do: corrected?(child, date),
         else: corrected and Child.born_early?(child)
 
-    start = if corrected?, do: Child.term_date(child), else: dob
-    days = Date.diff(date, start)
+    term = Child.term_date(child)
+    start = if corrected?, do: term, else: dob
+    months = Date.diff(date, start) / @avg_days_per_month
 
     cond do
-      Date.before?(date, dob) -> nil
-      days < 0 -> nil
-      days / @avg_days_per_month > @max_months -> nil
-      true -> days / @avg_days_per_month
+      Date.before?(date, dob) ->
+        nil
+
+      corrected? and Date.before?(date, term) ->
+        {:postmenstrual, Child.postmenstrual_age_days(child, date)}
+
+      months > @max_months ->
+        nil
+
+      true ->
+        {:months, months}
     end
+  end
+
+  defp ref_zscore(nil, _kind, _value), do: nil
+
+  defp ref_zscore({:lms, %{l: l, m: m, s: s}}, kind, value),
+    do: z_score(to_lms_unit(kind, value), l, m, s)
+
+  defp ref_zscore({:preterm, sex, days}, kind, value),
+    do: PretermStandard.zscore(sex, kind, days, to_lms_unit(kind, value))
+
+  defp ref_value(nil, _kind, _z), do: nil
+
+  defp ref_value({:lms, %{l: l, m: m, s: s}}, kind, z) do
+    with raw when is_number(raw) <- value_from_z(z, l, m, s), do: from_lms_unit(kind, raw)
+  end
+
+  defp ref_value({:preterm, sex, days}, kind, z) do
+    with raw when is_number(raw) <- PretermStandard.value_at_z(sex, kind, days, z),
+         do: from_lms_unit(kind, raw)
   end
 
   defp interpolate_lms(_rows, months) when months < 0 or months > @max_months, do: nil

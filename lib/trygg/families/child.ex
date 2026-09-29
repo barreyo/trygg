@@ -278,6 +278,28 @@ defmodule Trygg.Families.Child do
 
   def corrects_age?(%__MODULE__{}, _date), do: false
 
+  @doc """
+  Postmenstrual age on `date` in days — gestational age at birth plus days
+  since birth — or `nil` without a gestational age or birth date, or before
+  birth.
+  """
+  def postmenstrual_age_days(
+        %__MODULE__{birth_date: %Date{} = dob, gestational_age_days: ga},
+        %Date{} = date
+      )
+      when is_integer(ga) do
+    days = Date.diff(date, dob)
+    if days >= 0, do: ga + days
+  end
+
+  def postmenstrual_age_days(%__MODULE__{}, _date), do: nil
+
+  @doc ~S'Postmenstrual age on `date` as `"38+2 weeks"`, or `nil`.'
+  def postmenstrual_age_label(%__MODULE__{} = child, %Date{} = date) do
+    with days when is_integer(days) <- postmenstrual_age_days(child, date),
+         do: "#{div(days, 7)}+#{rem(days, 7)} weeks"
+  end
+
   @doc ~S'Gestational age at birth as `"34+2 weeks"`, or `nil` when unknown.'
   def gestation_label(%__MODULE__{gestational_age_days: days}) when is_integer(days),
     do: "#{div(days, 7)}+#{rem(days, 7)} weeks"

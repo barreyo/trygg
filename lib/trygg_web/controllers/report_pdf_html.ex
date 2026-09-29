@@ -883,16 +883,22 @@ defmodule TryggWeb.ReportPdfHTML do
 
   defp measurement_sub(measurement, child, _percentiles), do: measurement_date(measurement, child)
 
+  # Actual age, plus the age the corrected percentile was read at: corrected
+  # age, or before the 40-week date the postmenstrual age on the preterm
+  # standard.
   defp age_cell(child, date) do
     age = GrowthComponents.compact_age(Child.age(child, date))
 
-    if Child.corrects_age?(child, date) do
-      case GrowthComponents.compact_age(Child.corrected_age(child, date)) do
-        nil -> age
-        corrected -> "#{age} · corr. #{corrected}"
-      end
-    else
-      age
+    cond do
+      not Child.corrects_age?(child, date) ->
+        age
+
+      Date.before?(date, Child.term_date(child)) ->
+        pma = Child.postmenstrual_age_days(child, date)
+        "#{age} · #{div(pma, 7)}+#{rem(pma, 7)} wk"
+
+      true ->
+        "#{age} · corr. #{GrowthComponents.compact_age(Child.corrected_age(child, date))}"
     end
   end
 
@@ -900,8 +906,8 @@ defmodule TryggWeb.ReportPdfHTML do
     note = Percentiles.source_label(child)
 
     if note && dual_percentiles?(child) do
-      "#{note}. Where two percentiles are shown, the first uses corrected age (born at " <>
-        "#{Child.gestation_label(child)}) and the second actual age; charts use corrected age"
+      "#{note}. Where two percentiles are shown, the first uses corrected age and the " <>
+        "second actual age; charts use corrected age"
     else
       note
     end
