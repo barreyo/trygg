@@ -189,9 +189,20 @@ defmodule Trygg.Growth.PercentilesTest do
                Percentiles.zscore(term, :weight, 12_000, date)
     end
 
-    test "babies born at 37 weeks or later aren't corrected" do
-      refute Percentiles.corrected?(preterm(gestational_age_days: 259), ~D[2026-03-01])
-      assert Percentiles.corrected?(preterm(gestational_age_days: 258), ~D[2026-03-01])
+    test "early-term babies are corrected; 39 weeks and later aren't" do
+      assert Percentiles.corrected?(preterm(gestational_age_days: 264), ~D[2026-03-01])
+      assert Percentiles.corrected?(preterm(gestational_age_days: 272), ~D[2026-03-01])
+      refute Percentiles.corrected?(preterm(gestational_age_days: 273), ~D[2026-03-01])
+    end
+
+    test "a 37+5 baby scores like a term baby born 16 days later" do
+      baby = preterm(gestational_age_days: 264)
+      twin = child(sex: :male, birth_date: ~D[2026-01-17])
+
+      assert Percentiles.percentile(baby, :weight, 4000, ~D[2026-01-31]) ==
+               Percentiles.percentile(twin, :weight, 4000, ~D[2026-01-31])
+
+      assert Percentiles.source_label(baby, ~D[2026-01-31]) =~ "born at 37+5 weeks"
     end
 
     test "curves start at the term date" do

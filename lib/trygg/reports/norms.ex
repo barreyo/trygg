@@ -20,7 +20,8 @@ defmodule Trygg.Reports.Norms do
     * Prematurity — sleep, feeding and growth rate track maturity rather than
       time since birth, so the sleep, feeding and weight-gain priors (wake
       windows, nap counts, typical feeds, intake per kg, grams per day) take
-      `corrected_age_days/2`: corrected age for a baby born preterm, until two
+      `corrected_age_days/2`: corrected age for a baby born before 39+0
+      weeks, until two
       (AAP / HealthyChildren "Corrected Age For Preemies"). Day-of-life
       ramps (wet diapers, regaining birth weight) stay on `age_days/2`.
     * Intake — AAP / HealthyChildren "Amount and Schedule of Formula Feedings"
@@ -57,7 +58,7 @@ defmodule Trygg.Reports.Norms do
 
   @doc """
   Age in days to look up the sleep, feeding and weight-gain priors with: corrected age
-  while `Child.corrects_age?/2`, else whole days since birth. A preterm baby before their term date counts as a
+  while `Child.corrects_age?/2`, else whole days since birth. A baby born early counts as a
   newborn (0). `nil` without a birth date.
   """
   def corrected_age_days(%Child{} = child, %Date{} = date) do

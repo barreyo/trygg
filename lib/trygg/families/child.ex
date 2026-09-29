@@ -7,9 +7,10 @@ defmodule Trygg.Families.Child do
   # PST/PDT automatically.
   @default_timezone "America/Los_Angeles"
 
-  # A full-term pregnancy is 40+0 weeks; before 37+0 is preterm.
+  # A full-term pregnancy is 40+0 weeks. Babies born before 39+0 — preterm
+  # (before 37+0) or early term (37+0 to 38+6) — get corrected age.
   @term_days 280
-  @preterm_days 259
+  @full_term_days 273
   # Chronological age at which corrected age stops being used.
   @correct_until_days 730
   @gestation_weeks 22..42
@@ -239,28 +240,40 @@ defmodule Trygg.Families.Child do
 
   def gestational_age_from_due_date(_birth_date, _due), do: nil
 
-  @doc "Whether the child was born before 37+0 weeks."
-  def preterm?(%__MODULE__{gestational_age_days: days}) when is_integer(days),
-    do: days < @preterm_days
+  @doc """
+  Whether the child was born before 39+0 weeks — preterm or early term — and
+  so gets corrected age.
+  """
+  def born_early?(%__MODULE__{gestational_age_days: days}) when is_integer(days),
+    do: days < @full_term_days
 
-  def preterm?(%__MODULE__{}), do: false
+  def born_early?(%__MODULE__{}), do: false
 
   @doc """
-  The date a preterm child reached 40+0 weeks — where corrected age starts
+  The date a child born early reached 40+0 weeks — where corrected age starts
   counting from. `nil` for term children or without a birth date.
   """
   def term_date(%__MODULE__{birth_date: %Date{} = dob, gestational_age_days: days} = child) do
-    if preterm?(child), do: Date.add(dob, @term_days - days)
+    if born_early?(child), do: Date.add(dob, @term_days - days)
   end
 
   def term_date(%__MODULE__{}), do: nil
 
   @doc """
+  The child with gestational age ignored, so percentiles and norms use actual
+  (chronological) age — for comparing with a chart that isn't corrected.
+  Display only; never persist the result.
+  """
+  def uncorrected(%__MODULE__{} = child), do: %{child | gestational_age_days: nil}
+
+  @doc """
   Whether age-based comparisons on `date` should use corrected age: the child
-  was born preterm and is younger than two, the usual clinical convention.
+  was born before 39+0 weeks and is younger than two. Two is the usual
+  clinical cut-off; correcting early-term (37–38 week) babies is a deliberate
+  choice beyond the usual preterm-only convention.
   """
   def corrects_age?(%__MODULE__{birth_date: %Date{} = dob} = child, %Date{} = date) do
-    preterm?(child) and Date.diff(date, dob) < @correct_until_days
+    born_early?(child) and Date.diff(date, dob) < @correct_until_days
   end
 
   def corrects_age?(%__MODULE__{}, _date), do: false
