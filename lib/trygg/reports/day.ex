@@ -15,6 +15,12 @@ defmodule Trygg.Reports.Day do
   @max_cluster_gap_seconds 120 * 60
   # Pre-bed catnaps starting after `night_start - this` can join bedtime.
   @evening_lookback_seconds 3 * 3600
+  # A feed logged inside an overnight sleep means the timer was left running
+  # through a waking. Feeds this close to the sleep's start or end are the
+  # bedtime / morning bottle logged a little early or late, not a waking.
+  @feed_waking_margin_seconds 15 * 60
+  # Feeds within this of each other inside one sleep are one waking (a top-up).
+  @feed_waking_episode_seconds 30 * 60
 
   defstruct [
     :date,
@@ -45,13 +51,20 @@ defmodule Trygg.Reports.Day do
     day_seconds = max(DateTime.diff(to, from, :second), 1)
 
     sleeps = Enum.filter(entries, &(&1.type == :sleep))
+
+    feed_times =
+      entries
+      |> Enum.filter(&(&1.type == :feeding))
+      |> Enum.map(& &1.started_at)
+      |> Enum.sort(DateTime)
+
     sleep_segments = clip_sleeps(sleeps, from, to, now)
     wake_segments = gaps(sleep_segments, from, to, now)
 
     {day_secs, night_secs} = split_day_night(child, date, sleep_segments)
 
-    last_night = night_cluster(child, Date.add(date, -1), sleeps, now)
-    tonight = night_cluster(child, date, sleeps, now)
+    last_night = night_cluster(child, Date.add(date, -1), sleeps, feed_times, now)
+    tonight = night_cluster(child, date, sleeps, feed_times, now)
 
     morning_wake = last_night && last_night.ended_at
     bedtime = tonight && tonight.started_at
@@ -256,7 +269,7 @@ defmodule Trygg.Reports.Day do
 
   ## Overnight cluster ----------------------------------------------------
 
-  defp night_cluster(child, night_date, sleeps, now) do
+  defp night_cluster(child, night_date, sleeps, feed_times, now) do
     {night_from, night_to} = Child.night_bounds(child, night_date)
     evening_from = DateTime.add(night_from, -@evening_lookback_seconds, :second)
     resolved = resolve_sleeps(sleeps, now)
@@ -272,7 +285,7 @@ defmodule Trygg.Reports.Day do
       cluster ->
         cluster
         |> prepend_evening(resolved, evening_from)
-        |> finalize_cluster()
+        |> finalize_cluster(feed_times)
     end
   end
 
@@ -312,11 +325,14 @@ defmodule Trygg.Reports.Day do
     end)
   end
 
-  defp finalize_cluster(cluster) do
+  # Wakings are the gaps between the cluster's sleeps, plus any feed logged
+  # while a sleep timer was left running. A feed waking has no known length,
+  # so its `seconds` is `nil`.
+  defp finalize_cluster(cluster, feed_times) do
     first = List.first(cluster)
     last = List.last(cluster)
 
-    wakings =
+    gap_wakings =
       cluster
       |> Enum.chunk_every(2, 1, :discard)
       |> Enum.flat_map(fn [a, b] ->
@@ -329,6 +345,16 @@ defmodule Trygg.Reports.Day do
         end
       end)
 
+    feed_wakings =
+      Enum.flat_map(cluster, fn s ->
+        s
+        |> feeds_during(feed_times)
+        |> feed_episodes()
+        |> Enum.map(&%{start: &1, end: &1, seconds: nil, feed?: true})
+      end)
+
+    wakings = Enum.sort_by(gap_wakings ++ feed_wakings, & &1.start, DateTime)
+
     %{
       started_at: first.start,
       ended_at: if(last.running?, do: nil, else: last.end),
@@ -336,6 +362,35 @@ defmodule Trygg.Reports.Day do
       sleeps: cluster,
       wakings: wakings
     }
+  end
+
+  defp feeds_during(sleep, feed_times) do
+    from = DateTime.add(sleep.start, @feed_waking_margin_seconds, :second)
+
+    # A running timer has no morning bottle yet: a feed just logged is the
+    # waking happening now.
+    to =
+      if sleep.running?,
+        do: sleep.end,
+        else: DateTime.add(sleep.end, -@feed_waking_margin_seconds, :second)
+
+    Enum.filter(feed_times, fn at ->
+      DateTime.compare(at, from) != :lt and DateTime.compare(at, to) != :gt
+    end)
+  end
+
+  defp feed_episodes(feed_times) do
+    feed_times
+    |> Enum.reduce([], fn
+      at, [prev | _] = acc ->
+        if DateTime.diff(at, prev, :second) < @feed_waking_episode_seconds,
+          do: acc,
+          else: [at | acc]
+
+      at, [] ->
+        [at]
+    end)
+    |> Enum.reverse()
   end
 
   defp clusters(resolved) do

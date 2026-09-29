@@ -144,6 +144,54 @@ defmodule Trygg.Reports.DayTest do
       assert waking.seconds == 30 * 60
     end
 
+    test "a feed logged while the sleep timer ran counts as a night waking" do
+      date = ~D[2026-03-01]
+      now = ~U[2026-03-03 12:00:00Z]
+
+      entries = [
+        sleep(1, ~U[2026-03-01 20:00:00Z], ~U[2026-03-02 02:00:00Z]),
+        sleep(2, ~U[2026-03-02 02:30:00Z], ~U[2026-03-02 07:00:00Z]),
+        # Timer left on through a 23:30 feed, topped up ten minutes later.
+        feed(10, ~U[2026-03-01 23:30:00Z], 90),
+        feed(11, ~U[2026-03-01 23:40:00Z], 30),
+        # In the 02:00-02:30 gap: already counted as that waking.
+        feed(12, ~U[2026-03-02 02:15:00Z], 120)
+      ]
+
+      day = Day.build(child(), date, entries, now)
+
+      assert [feed_waking, gap_waking] = day.night_wakings
+      assert feed_waking.start == ~U[2026-03-01 23:30:00Z]
+      assert feed_waking.seconds == nil
+      assert gap_waking.seconds == 30 * 60
+    end
+
+    test "bedtime and morning bottles at the edges of a sleep are not wakings" do
+      date = ~D[2026-03-01]
+      now = ~U[2026-03-03 12:00:00Z]
+
+      entries = [
+        sleep(1, ~U[2026-03-01 20:00:00Z], ~U[2026-03-02 07:00:00Z]),
+        feed(10, ~U[2026-03-01 20:05:00Z], 120),
+        feed(11, ~U[2026-03-02 06:50:00Z], 120)
+      ]
+
+      assert Day.build(child(), date, entries, now).night_wakings == []
+    end
+
+    test "a feed just logged during a running sleep is a waking now" do
+      date = ~D[2026-03-01]
+      now = ~U[2026-03-02 01:05:00Z]
+
+      entries = [
+        sleep(1, ~U[2026-03-01 20:00:00Z], nil),
+        feed(10, ~U[2026-03-02 01:00:00Z], 90)
+      ]
+
+      assert [%{start: ~U[2026-03-02 01:00:00Z]}] =
+               Day.build(child(), date, entries, now).night_wakings
+    end
+
     test "a long gap makes two clusters; the overnight one wins" do
       date = ~D[2026-03-02]
       now = ~U[2026-03-03 12:00:00Z]
