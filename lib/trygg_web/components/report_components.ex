@@ -467,11 +467,14 @@ defmodule TryggWeb.ReportComponents do
   @doc """
   The plain-language alert cards from `Trygg.Reports.Alerts`. Renders nothing
   when there are no alerts. `links` maps `:vitals` / `:reports` to paths.
+  When `on_dismiss` is set each card gets an X that fires that event with the
+  alert's id as `key`.
   """
   attr :id, :string, required: true
   attr :alerts, :list, required: true
   attr :links, :map, default: %{}
   attr :title, :string, default: nil
+  attr :on_dismiss, :string, default: nil
 
   def alerts_list(assigns) do
     assigns = assign(assigns, :tone, alerts_tone(assigns.alerts))
@@ -509,6 +512,17 @@ defmodule TryggWeb.ReportComponents do
               {link_label(alert.link)} <.icon name="hero-arrow-right" class="size-3" />
             </.link>
           </div>
+          <button
+            :if={@on_dismiss}
+            id={"#{@id}-#{alert.id}-dismiss"}
+            type="button"
+            phx-click={@on_dismiss}
+            phx-value-key={alert.id}
+            class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1 shrink-0"
+            aria-label={"Dismiss: #{alert.title}"}
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
         </li>
       </ul>
       <p class="text-[11px] opacity-50 px-3 py-1.5 border-t border-base-content/10">
@@ -526,26 +540,42 @@ defmodule TryggWeb.ReportComponents do
   attr :id, :string, required: true
   attr :alerts, :list, required: true
   attr :navigate, :string, required: true
+  attr :on_dismiss, :string, default: nil
 
   def alerts_note(assigns) do
     ~H"""
-    <.link
+    <div
       :if={@alerts != []}
-      id={@id}
-      navigate={@navigate}
-      class="flex items-center gap-2 rounded-box border border-primary/30 bg-primary/5 px-3 py-2 text-xs hover:bg-primary/10"
+      class="flex items-center rounded-box border border-primary/30 bg-primary/5 hover:bg-primary/10"
     >
-      <.icon name="hero-information-circle" class="size-4 shrink-0 text-primary" />
-      <span class="min-w-0 flex-1 truncate">
-        <span class="font-medium">{hd(@alerts).title}</span>
-        <span :if={length(@alerts) > 1} class="opacity-60">
-          +{length(@alerts) - 1} more
+      <.link
+        id={@id}
+        navigate={@navigate}
+        class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs"
+      >
+        <.icon name="hero-information-circle" class="size-4 shrink-0 text-primary" />
+        <span class="min-w-0 flex-1 truncate">
+          <span class="font-medium">{hd(@alerts).title}</span>
+          <span :if={length(@alerts) > 1} class="opacity-60">
+            +{length(@alerts) - 1} more
+          </span>
         </span>
-      </span>
-      <span class="shrink-0 text-primary inline-flex items-center gap-0.5">
-        Reports <.icon name="hero-arrow-right" class="size-3" />
-      </span>
-    </.link>
+        <span class="shrink-0 text-primary inline-flex items-center gap-0.5">
+          Reports <.icon name="hero-arrow-right" class="size-3" />
+        </span>
+      </.link>
+      <button
+        :if={@on_dismiss}
+        id={"#{@id}-dismiss"}
+        type="button"
+        phx-click={@on_dismiss}
+        phx-value-key={Enum.map_join(@alerts, ",", & &1.id)}
+        class="btn btn-ghost btn-xs btn-circle mr-1 shrink-0"
+        aria-label="Dismiss"
+      >
+        <.icon name="hero-x-mark" class="size-4" />
+      </button>
+    </div>
     """
   end
 

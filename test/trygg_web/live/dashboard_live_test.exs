@@ -906,6 +906,28 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#home-alerts", "Not medical advice")
     end
 
+    test "an alert can be dismissed", %{conn: conn, scope: scope, child: child} do
+      now = DateTime.utc_now()
+
+      entry_fixture(scope, child, %{
+        :type => :diaper,
+        "started_at" => DateTime.add(now, -7 * 3600, :second)
+      })
+
+      entry_fixture(scope, child, %{
+        :type => :feeding,
+        "started_at" => DateTime.add(now, -30 * 60, :second)
+      })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#home-alerts-no-wet-diaper")
+
+      lv |> element("#home-alerts-no-wet-diaper-dismiss") |> render_click()
+
+      refute has_element?(lv, "#home-alerts-no-wet-diaper")
+      refute has_element?(lv, "#home-alerts")
+    end
+
     test "a known age gives a next-nap estimate from the age prior", %{
       conn: conn,
       scope: scope,
@@ -990,6 +1012,32 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert has_element?(lv, "#weight-check-reminder", "Time for a weight check")
       assert has_element?(lv, "#weight-check-reminder a", "Log it in Vitals")
+    end
+
+    test "the banner can be dismissed", %{conn: conn, scope: scope, child: child} do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -120)})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#weight-check-reminder-dismiss") |> render_click()
+
+      refute has_element?(lv, "#weight-check-reminder")
+      assert_push_event(lv, "notices:save", %{keys: ["weight-check"]})
+    end
+
+    test "dismissals restored from the device stay hidden", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -120)})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#weight-check-reminder")
+
+      render_hook(lv, "restore_notices", %{"keys" => ["weight-check"]})
+
+      refute has_element?(lv, "#weight-check-reminder")
     end
 
     test "no banner when a recent weight is on file", %{conn: conn, scope: scope, child: child} do
