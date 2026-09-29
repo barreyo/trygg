@@ -247,7 +247,7 @@ defmodule Trygg.Reports.Insights do
 
   defp night_waking_stats(days, ready?) do
     counts = Enum.map(days, &length(&1.night_wakings))
-    # Feed wakings (timer left running) have no known length.
+    # A feed waking with no diaper change to time it from has no known length.
     durations =
       days
       |> Enum.flat_map(& &1.night_wakings)

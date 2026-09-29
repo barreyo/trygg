@@ -10,6 +10,7 @@ defmodule Trygg.Reports.Day do
   """
 
   alias Trygg.Families.Child
+  alias Trygg.Reports.FeedTiming
 
   # Night wakings shorter than this still count as the same overnight stretch.
   @max_cluster_gap_seconds 120 * 60
@@ -52,19 +53,16 @@ defmodule Trygg.Reports.Day do
 
     sleeps = Enum.filter(entries, &(&1.type == :sleep))
 
-    feed_times =
-      entries
-      |> Enum.filter(&(&1.type == :feeding))
-      |> Enum.map(& &1.started_at)
-      |> Enum.sort(DateTime)
+    feeds = moments(entries, :feeding)
+    feed_seconds = FeedTiming.durations(feeds, moments(entries, :diaper))
 
     sleep_segments = clip_sleeps(sleeps, from, to, now)
     wake_segments = gaps(sleep_segments, from, to, now)
 
     {day_secs, night_secs} = split_day_night(child, date, sleep_segments)
 
-    last_night = night_cluster(child, Date.add(date, -1), sleeps, feed_times, now)
-    tonight = night_cluster(child, date, sleeps, feed_times, now)
+    last_night = night_cluster(child, Date.add(date, -1), sleeps, {feeds, feed_seconds}, now)
+    tonight = night_cluster(child, date, sleeps, {feeds, feed_seconds}, now)
 
     morning_wake = last_night && last_night.ended_at
     bedtime = tonight && tonight.started_at
@@ -189,6 +187,13 @@ defmodule Trygg.Reports.Day do
     }
   end
 
+  defp moments(entries, type) do
+    entries
+    |> Enum.filter(&(&1.type == type))
+    |> Enum.map(&%{id: &1.id, at: &1.started_at})
+    |> Enum.sort_by(& &1.at, DateTime)
+  end
+
   defp annotate_offsets(segments, from, day_seconds) do
     Enum.map(segments, fn s ->
       offset = DateTime.diff(s.start, from, :second)
@@ -269,7 +274,7 @@ defmodule Trygg.Reports.Day do
 
   ## Overnight cluster ----------------------------------------------------
 
-  defp night_cluster(child, night_date, sleeps, feed_times, now) do
+  defp night_cluster(child, night_date, sleeps, feeds, now) do
     {night_from, night_to} = Child.night_bounds(child, night_date)
     evening_from = DateTime.add(night_from, -@evening_lookback_seconds, :second)
     resolved = resolve_sleeps(sleeps, now)
@@ -285,7 +290,7 @@ defmodule Trygg.Reports.Day do
       cluster ->
         cluster
         |> prepend_evening(resolved, evening_from)
-        |> finalize_cluster(feed_times)
+        |> finalize_cluster(feeds)
     end
   end
 
@@ -326,9 +331,8 @@ defmodule Trygg.Reports.Day do
   end
 
   # Wakings are the gaps between the cluster's sleeps, plus any feed logged
-  # while a sleep timer was left running. A feed waking has no known length,
-  # so its `seconds` is `nil`.
-  defp finalize_cluster(cluster, feed_times) do
+  # while a sleep timer was left running.
+  defp finalize_cluster(cluster, {feeds, feed_seconds}) do
     first = List.first(cluster)
     last = List.last(cluster)
 
@@ -348,9 +352,9 @@ defmodule Trygg.Reports.Day do
     feed_wakings =
       Enum.flat_map(cluster, fn s ->
         s
-        |> feeds_during(feed_times)
+        |> feeds_during(feeds)
         |> feed_episodes()
-        |> Enum.map(&%{start: &1, end: &1, seconds: nil, feed?: true})
+        |> Enum.flat_map(&feed_waking(&1, s, feed_seconds))
       end)
 
     wakings = Enum.sort_by(gap_wakings ++ feed_wakings, & &1.start, DateTime)
@@ -364,7 +368,7 @@ defmodule Trygg.Reports.Day do
     }
   end
 
-  defp feeds_during(sleep, feed_times) do
+  defp feeds_during(sleep, feeds) do
     from = DateTime.add(sleep.start, @feed_waking_margin_seconds, :second)
 
     # A running timer has no morning bottle yet: a feed just logged is the
@@ -374,23 +378,41 @@ defmodule Trygg.Reports.Day do
         do: sleep.end,
         else: DateTime.add(sleep.end, -@feed_waking_margin_seconds, :second)
 
-    Enum.filter(feed_times, fn at ->
-      DateTime.compare(at, from) != :lt and DateTime.compare(at, to) != :gt
+    Enum.filter(feeds, fn f ->
+      DateTime.compare(f.at, from) != :lt and DateTime.compare(f.at, to) != :gt
     end)
   end
 
-  defp feed_episodes(feed_times) do
-    feed_times
+  # First feed of each top-up episode.
+  defp feed_episodes(feeds) do
+    feeds
     |> Enum.reduce([], fn
-      at, [prev | _] = acc ->
-        if DateTime.diff(at, prev, :second) < @feed_waking_episode_seconds,
+      f, [prev | _] = acc ->
+        if DateTime.diff(f.at, prev.at, :second) < @feed_waking_episode_seconds,
           do: acc,
-          else: [at | acc]
+          else: [f | acc]
 
-      at, [] ->
-        [at]
+      f, [] ->
+        [f]
     end)
     |> Enum.reverse()
+  end
+
+  # A feed timed from the diaper change before it runs from that change to the
+  # feed. A change from before the sleep started means the feed was the
+  # bedtime routine, not a waking. Untimed feeds have no known length.
+  defp feed_waking(feed, sleep, feed_seconds) do
+    case feed_seconds[feed.id] do
+      nil ->
+        [%{start: feed.at, end: feed.at, seconds: nil, feed?: true}]
+
+      seconds ->
+        start = DateTime.add(feed.at, -seconds, :second)
+
+        if DateTime.compare(start, sleep.start) == :lt,
+          do: [],
+          else: [%{start: start, end: feed.at, seconds: seconds, feed?: true}]
+    end
   end
 
   defp clusters(resolved) do

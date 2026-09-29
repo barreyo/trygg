@@ -8,8 +8,7 @@ defmodule Trygg.Reports.Feeding do
   takes — overall, per day and its trend over the window.
 
   Feeds are logged when the bottle is finished, so feed length is inferred
-  from a diaper change logged just before it: the gap from that change to the
-  feed is taken as the feeding time.
+  from a diaper change logged just before it (see `Trygg.Reports.FeedTiming`).
 
   Pure: takes the child, the days (oldest first, today last), `now`, and an
   optional recent weight. Feeds logged within `@episode_gap` of each other are
@@ -19,6 +18,7 @@ defmodule Trygg.Reports.Feeding do
 
   alias Trygg.Families.Child
   alias Trygg.Reports.Day
+  alias Trygg.Reports.FeedTiming
   alias Trygg.Reports.Norms
   alias Trygg.Reports.Stats
 
@@ -31,11 +31,6 @@ defmodule Trygg.Reports.Feeding do
   @weight_max_age_days 14
   @intake_days 3
   @intake_tolerance 0.15
-  # A diaper logged closer to the feed than this was probably logged after the
-  # fact alongside it, so the gap says nothing about how long the feed took.
-  @min_feed_duration 3 * 60
-  # Longer gaps are the change and feed being unrelated, not a long feed.
-  @max_feed_duration 60 * 60
   # Days with at least one timed feed needed before fitting a trend line.
   @min_trend_days 4
 
@@ -167,28 +162,8 @@ defmodule Trygg.Reports.Feeding do
 
   ## Feed length ----------------------------------------------------------
 
-  # Feed id => seconds from a diaper change to the feed that directly follows
-  # it (no other feed in between, so a top-up bottle is never timed from the
-  # same change).
-  defp feed_durations(feeds, days) do
-    diapers = Enum.flat_map(days, & &1.diapers)
-
-    (Enum.map(feeds, &{:feed, &1}) ++ Enum.map(diapers, &{:diaper, &1}))
-    |> Enum.sort_by(fn {_kind, marker} -> marker.at end, DateTime)
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.flat_map(fn
-      [{:diaper, diaper}, {:feed, feed}] ->
-        seconds = DateTime.diff(feed.at, diaper.at, :second)
-
-        if seconds >= @min_feed_duration and seconds <= @max_feed_duration,
-          do: [{feed.id, seconds}],
-          else: []
-
-      _ ->
-        []
-    end)
-    |> Map.new()
-  end
+  defp feed_durations(feeds, days),
+    do: FeedTiming.durations(feeds, Enum.flat_map(days, & &1.diapers))
 
   defp duration(durations, per_day) do
     ready? = length(durations) >= @min_intervals

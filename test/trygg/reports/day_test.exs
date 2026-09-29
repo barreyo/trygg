@@ -166,6 +166,35 @@ defmodule Trygg.Reports.DayTest do
       assert gap_waking.seconds == 30 * 60
     end
 
+    test "a feed waking runs from the diaper change before it" do
+      date = ~D[2026-03-01]
+      now = ~U[2026-03-03 12:00:00Z]
+
+      entries = [
+        sleep(1, ~U[2026-03-01 20:00:00Z], ~U[2026-03-02 07:00:00Z]),
+        diaper(10, ~U[2026-03-02 01:00:00Z]),
+        feed(11, ~U[2026-03-02 01:20:00Z], 90)
+      ]
+
+      assert [waking] = Day.build(child(), date, entries, now).night_wakings
+      assert waking.start == ~U[2026-03-02 01:00:00Z]
+      assert waking.end == ~U[2026-03-02 01:20:00Z]
+      assert waking.seconds == 20 * 60
+    end
+
+    test "a feed timed from a change before the sleep started is the bedtime routine" do
+      date = ~D[2026-03-01]
+      now = ~U[2026-03-03 12:00:00Z]
+
+      entries = [
+        diaper(10, ~U[2026-03-01 19:55:00Z]),
+        sleep(1, ~U[2026-03-01 20:00:00Z], ~U[2026-03-02 07:00:00Z]),
+        feed(11, ~U[2026-03-01 20:20:00Z], 120)
+      ]
+
+      assert Day.build(child(), date, entries, now).night_wakings == []
+    end
+
     test "bedtime and morning bottles at the edges of a sleep are not wakings" do
       date = ~D[2026-03-01]
       now = ~U[2026-03-03 12:00:00Z]
