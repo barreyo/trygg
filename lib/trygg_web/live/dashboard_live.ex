@@ -1,7 +1,7 @@
 defmodule TryggWeb.DashboardLive do
   use TryggWeb, :live_view
 
-  alias Trygg.{Families, Growth, Log, Push, Reports}
+  alias Trygg.{Families, Growth, Log, Notices, Push, Reports}
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
@@ -207,23 +207,18 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  # Home alerts and the weight-check banner can be dismissed. The server keeps
-  # the set for this session; the `DismissedNotices` hook mirrors it to
-  # localStorage (per child, per local day) and hands it back on mount, so a
-  # dismissed notice stays gone for the day but returns tomorrow if it still applies.
+  # Home alerts and the weight-check banner can be dismissed for a week. Stored
+  # server-side (`Trygg.Notices`) rather than in localStorage so it holds in the
+  # installed PWA, whose storage is separate from the browser's.
   def handle_event("dismiss_notice", %{"key" => key}, socket) when is_binary(key) do
     dismissed =
-      Enum.reduce(String.split(key, ","), socket.assigns.dismissed_notices, &MapSet.put(&2, &1))
+      Notices.dismiss(
+        socket.assigns.current_scope,
+        socket.assigns.current_child,
+        String.split(key, ",")
+      )
 
-    {:noreply,
-     socket
-     |> assign(:dismissed_notices, dismissed)
-     |> push_event("notices:save", %{keys: MapSet.to_list(dismissed)})}
-  end
-
-  def handle_event("restore_notices", %{"keys" => keys}, socket) when is_list(keys) do
-    restored = keys |> Enum.filter(&is_binary/1) |> Enum.take(50) |> MapSet.new()
-    {:noreply, update(socket, :dismissed_notices, &MapSet.union(&1, restored))}
+    {:noreply, assign(socket, :dismissed_notices, dismissed)}
   end
 
   def handle_event("request_stop", _params, socket) do
@@ -628,7 +623,8 @@ defmodule TryggWeb.DashboardLive do
     %{
       summary: Log.summary(scope, child),
       outlook: Reports.outlook(scope, child),
-      weight_reminder: Growth.weight_check_reminder(scope, child)
+      weight_reminder: Growth.weight_check_reminder(scope, child),
+      dismissed_notices: Notices.dismissed(scope, child)
     }
   end
 
@@ -637,6 +633,7 @@ defmodule TryggWeb.DashboardLive do
     |> assign(:summary, summary)
     |> assign(:outlook, status.outlook)
     |> assign(:weight_reminder, status.weight_reminder)
+    |> assign(:dismissed_notices, status.dismissed_notices)
     |> assign_rhythm_center()
     |> push_offline_snapshot(socket.assigns.current_scope, socket.assigns.current_child, summary)
   end
@@ -917,12 +914,7 @@ defmodule TryggWeb.DashboardLive do
                the glance cards. Only warnings and notices get the full card;
                informational ones ("eating more than usual") collapse to a
                one-line pointer to Reports so they don't crowd the screen. --%>
-            <div
-              id="home-notices"
-              phx-hook="DismissedNotices"
-              data-storage-key={"trygg:dismissed-notices:#{@current_child.id}"}
-              data-day={Date.to_iso8601(Child.local_today(@current_child))}
-            >
+            <div id="home-notices">
               <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
                 <.alerts_list
                   id="home-alerts"

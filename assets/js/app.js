@@ -30,7 +30,6 @@ import DownloadPdf from "./hooks/download_pdf"
 import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
-import DismissedNotices from "./hooks/dismissed_notices"
 import ModalBack from "./hooks/modal_back"
 import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
@@ -51,7 +50,6 @@ const liveSocket = new LiveSocket("/live", Socket, {
     Theme,
     PushNotifications,
     PushPrompt,
-    DismissedNotices,
     ModalBack,
     PullToRefresh,
     ChildSwipe,
