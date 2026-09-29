@@ -11,7 +11,7 @@ defmodule TryggWeb.CaregiverLiveTest do
     %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
     child = child_fixture(scope)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/caregivers")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
 
     lv
     |> form("#invite-form", invite: %{email: "co@example.com", role: "caregiver"})
@@ -21,7 +21,7 @@ defmodule TryggWeb.CaregiverLiveTest do
     assert [invite] = Families.list_invites(scope, child)
     assert invite.email == "co@example.com"
 
-    {:ok, _lv, html} = live(conn, ~p"/c/#{child}/caregivers")
+    {:ok, _lv, html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
     assert html =~ "co@example.com"
     assert html =~ "Pending invites"
   end
@@ -30,7 +30,7 @@ defmodule TryggWeb.CaregiverLiveTest do
     %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
     child = child_fixture(scope)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/caregivers")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
 
     {:ok, _} = Families.update_child(scope, child, %{name: "Juniper"})
 
@@ -45,7 +45,7 @@ defmodule TryggWeb.CaregiverLiveTest do
     membership = membership_fixture(child, caregiver, :caregiver)
     conn = log_in_user(conn, caregiver)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/caregivers")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
 
     {:ok, _} = Families.remove_member(owner_scope, child, membership)
 
@@ -60,7 +60,7 @@ defmodule TryggWeb.CaregiverLiveTest do
     membership_fixture(child, caregiver, :caregiver)
     conn = log_in_user(conn, caregiver)
 
-    {:ok, _lv, html} = live(conn, ~p"/c/#{child}/caregivers")
+    {:ok, _lv, html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
 
     refute html =~ "invite-form"
     assert html =~ caregiver.email

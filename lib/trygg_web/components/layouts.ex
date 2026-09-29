@@ -390,6 +390,7 @@ defmodule TryggWeb.Layouts do
     <.link
       {@rest}
       aria-current={@active && "page"}
+      data-nav-tab
       class={[
         "flex items-center gap-3 rounded-box px-3 py-2.5 transition-colors",
         if(@active,
@@ -415,6 +416,7 @@ defmodule TryggWeb.Layouts do
     <.link
       {@rest}
       aria-current={@active && "page"}
+      data-nav-tab
       class={[
         "relative flex flex-col items-center gap-1 py-2.5 transition-colors",
         "hover:bg-base-300 active:bg-base-300",

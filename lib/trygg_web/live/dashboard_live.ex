@@ -6,6 +6,7 @@ defmodule TryggWeb.DashboardLive do
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
   alias Trygg.Units
+  alias TryggWeb.Loading
 
   @recent_limit 20
   @tick_ms 60_000
@@ -41,16 +42,34 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
       |> assign(:vapid_public_key, Push.vapid_public_key())
+      |> assign(summary: nil, outlook: nil, weight_reminder: nil, rhythm_center: nil)
+      |> assign(:entries_empty?, false)
+      |> stream(:entries, [])
       |> allow_upload(:photo,
         accept: Log.photo_accept(),
         max_entries: 1,
         max_file_size: Log.max_photo_bytes(),
         auto_upload: true
       )
-      |> refresh()
+      |> Loading.init()
+      |> load()
 
     {:ok, socket}
   end
+
+  # First load: skeleton on the static render, then fetched off the LiveView
+  # process so the page (and its tab bar) is interactive straight away. See
+  # `TryggWeb.Loading`.
+  defp load(socket) do
+    scope = socket.assigns.current_scope
+    child = socket.assigns.current_child
+
+    Loading.run(socket, fn -> fetch_home(scope, child) end, &apply_home/2)
+  end
+
+  @impl true
+  def handle_async(:load, result, socket),
+    do: {:noreply, Loading.done(socket, result, &apply_home/2)}
 
   # `/` has no child in the URL, so it reopens the one this caregiver was last
   # looking at (`users.last_child_id`) as long as they still have access —
@@ -234,6 +253,8 @@ defmodule TryggWeb.DashboardLive do
   # streams changes over the socket, so this is really a "did I miss anything?"
   # re-sync. The empty reply is the hook's cue to release the spinner.
   def handle_event("refresh", _params, socket), do: {:reply, %{}, refresh(socket)}
+
+  def handle_event("retry_load", _params, socket), do: {:noreply, load(socket)}
 
   def handle_event("open_sheet", %{"kind" => "earlier"}, socket) do
     {:noreply, assign(socket, sheet: :earlier, sheet_form: nil)}
@@ -553,22 +574,51 @@ defmodule TryggWeb.DashboardLive do
 
   defp consume_photo(socket), do: consume_photo(socket, socket.assigns.current_child)
 
+  # Anything that changes before the first load lands just restarts it, so
+  # the result that does land is never older than the change.
+  defp refresh(%{assigns: %{loaded?: false}} = socket), do: load(socket)
   defp refresh(socket), do: socket |> refresh_summary() |> refresh_entries()
+
+  defp fetch_home(scope, child) do
+    %{
+      status: fetch_status(scope, child),
+      entries: Log.recent_entries(scope, child, @recent_limit)
+    }
+  end
+
+  defp apply_home(socket, %{status: status, entries: entries}) do
+    socket
+    |> apply_status(status)
+    |> apply_entries(entries)
+  end
 
   # The at-a-glance numbers (counts, "slept today", "Xm ago") plus the outlook
   # (next nap / next feed / alerts). Recomputed on every minute tick so
   # time-derived figures advance without waiting for the next logged event.
-  defp refresh_summary(socket) do
-    scope = socket.assigns.current_scope
-    child = socket.assigns.current_child
-    summary = Log.summary(scope, child)
+  defp refresh_summary(%{assigns: %{loaded?: false}} = socket), do: load(socket)
 
+  defp refresh_summary(socket) do
+    apply_status(
+      socket,
+      fetch_status(socket.assigns.current_scope, socket.assigns.current_child)
+    )
+  end
+
+  defp fetch_status(scope, child) do
+    %{
+      summary: Log.summary(scope, child),
+      outlook: Reports.outlook(scope, child),
+      weight_reminder: Growth.weight_check_reminder(scope, child)
+    }
+  end
+
+  defp apply_status(socket, %{summary: summary} = status) do
     socket
     |> assign(:summary, summary)
-    |> assign(:outlook, Reports.outlook(scope, child))
-    |> assign(:weight_reminder, Growth.weight_check_reminder(scope, child))
+    |> assign(:outlook, status.outlook)
+    |> assign(:weight_reminder, status.weight_reminder)
     |> assign_rhythm_center()
-    |> push_offline_snapshot(scope, child, summary)
+    |> push_offline_snapshot(socket.assigns.current_scope, socket.assigns.current_child, summary)
   end
 
   # The single most actionable thing, for the middle of the rhythm dial: a
@@ -681,8 +731,10 @@ defmodule TryggWeb.DashboardLive do
   defp refresh_entries(socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
-    entries = Log.recent_entries(scope, child, @recent_limit)
+    apply_entries(socket, Log.recent_entries(scope, child, @recent_limit))
+  end
 
+  defp apply_entries(socket, entries) do
     socket
     |> assign(:entries_empty?, entries == [])
     |> stream(:entries, entries, reset: true)
@@ -739,7 +791,9 @@ defmodule TryggWeb.DashboardLive do
   def render(%{live_action: :index} = assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} title="Trygg">
-      <p class="opacity-60 text-center py-16">Loading…</p>
+      <.loadable id="home-resume" loaded={false}>
+        <:skeleton><.home_status_skeleton /></:skeleton>
+      </.loadable>
     </Layouts.app>
     """
   end
@@ -792,10 +846,12 @@ defmodule TryggWeb.DashboardLive do
            once there is room (stacked on phones). --%>
       <Layouts.columns id="home-columns">
         <:left>
-          <%!-- Typical-day dial: the child's rhythm at a glance, with the next
+          <.loadable id="home-status" loaded={@loaded?} failed={@load_failed?}>
+            <:skeleton><.home_status_skeleton can_write={@can_write} /></:skeleton>
+            <%!-- Typical-day dial: the child's rhythm at a glance, with the next
                actionable moment (or a running timer) called out in the middle.
                Hidden for now — not needed yet. --%>
-          <%!--
+            <%!--
           <.rhythm_dial
             rhythm={@outlook.rhythm}
             center={@rhythm_center}
@@ -803,172 +859,173 @@ defmodule TryggWeb.DashboardLive do
           />
           --%>
 
-          <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
-          <div :for={entry <- @summary.running} class="mb-6">
-            <.timer_banner
-              entry={entry}
-              can_write={@can_write}
-              on_stop="request_stop"
-              since_label={Child.local_clock(@current_child, entry.started_at)}
-            >
-              <:controls :if={@can_write}>
-                <span class="text-xs opacity-70 mr-0.5">Started earlier?</span>
-                <.button
-                  :for={m <- nudge_minutes()}
-                  type="button"
-                  size="xs"
-                  phx-click="nudge_start"
-                  phx-value-by={m}
-                  class={timer_control_class()}
-                >
-                  {m}m
-                </.button>
-                <.button
-                  type="button"
-                  size="xs"
-                  phx-click="open_sheet"
-                  phx-value-kind="sleep_start"
-                  class={timer_control_class()}
-                >
-                  <.icon name="hero-pencil-square" class="size-3.5" /> Edit
-                </.button>
-              </:controls>
-            </.timer_banner>
-          </div>
+            <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
+            <div :for={entry <- @summary.running} class="mb-6">
+              <.timer_banner
+                entry={entry}
+                can_write={@can_write}
+                on_stop="request_stop"
+                since_label={Child.local_clock(@current_child, entry.started_at)}
+              >
+                <:controls :if={@can_write}>
+                  <span class="text-xs opacity-70 mr-0.5">Started earlier?</span>
+                  <.button
+                    :for={m <- nudge_minutes()}
+                    type="button"
+                    size="xs"
+                    phx-click="nudge_start"
+                    phx-value-by={m}
+                    class={timer_control_class()}
+                  >
+                    {m}m
+                  </.button>
+                  <.button
+                    type="button"
+                    size="xs"
+                    phx-click="open_sheet"
+                    phx-value-kind="sleep_start"
+                    class={timer_control_class()}
+                  >
+                    <.icon name="hero-pencil-square" class="size-3.5" /> Edit
+                  </.button>
+                </:controls>
+              </.timer_banner>
+            </div>
 
-          <%!-- Health alerts — the first thing a caregiver should see after the
+            <%!-- Health alerts — the first thing a caregiver should see after the
                header/active timer, so this sits above everything else, including
                the glance cards. Only warnings and notices get the full card;
                informational ones ("eating more than usual") collapse to a
                one-line pointer to Reports so they don't crowd the screen. --%>
-          <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
-            <.alerts_list
-              id="home-alerts"
-              alerts={Enum.reject(@outlook.alerts, &(&1.severity == :info))}
-              links={
-                %{
-                  vitals: ~p"/c/#{@current_child}/vitals",
-                  reports: ~p"/c/#{@current_child}/reports"
+            <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
+              <.alerts_list
+                id="home-alerts"
+                alerts={Enum.reject(@outlook.alerts, &(&1.severity == :info))}
+                links={
+                  %{
+                    vitals: ~p"/c/#{@current_child}/vitals",
+                    reports: ~p"/c/#{@current_child}/reports"
+                  }
                 }
-              }
-            />
-            <.alerts_note
-              id="home-info-alerts"
-              alerts={Enum.filter(@outlook.alerts, &(&1.severity == :info))}
-              navigate={~p"/c/#{@current_child}/reports?view=trends"}
-            />
-          </div>
+              />
+              <.alerts_note
+                id="home-info-alerts"
+                alerts={Enum.filter(@outlook.alerts, &(&1.severity == :info))}
+                navigate={~p"/c/#{@current_child}/reports?view=trends"}
+              />
+            </div>
 
-          <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
-          <div
-            :if={@weight_reminder}
-            id="weight-check-reminder"
-            class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
-          >
-            <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
-              <p class="text-xs opacity-70 mt-0.5 leading-snug">
-                {weight_reminder_detail(@weight_reminder)}
-              </p>
-              <.link
-                navigate={~p"/c/#{@current_child}/vitals"}
-                class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+            <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
+            <div
+              :if={@weight_reminder}
+              id="weight-check-reminder"
+              class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
+            >
+              <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
+                <p class="text-xs opacity-70 mt-0.5 leading-snug">
+                  {weight_reminder_detail(@weight_reminder)}
+                </p>
+                <.link
+                  navigate={~p"/c/#{@current_child}/vitals"}
+                  class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+                >
+                  Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
+                </.link>
+              </div>
+            </div>
+
+            <%!-- At a glance --%>
+            <section class="bg-base-200/40 rounded-box p-2 space-y-2">
+              <div id="glance-cards" class="grid grid-cols-3 gap-2">
+                <div id="glance-feed">
+                  <.since_card
+                    icon="hero-beaker"
+                    label="Feeding"
+                    category="feed"
+                    tone={feed_tone(@outlook)}
+                    value={feed_value(@summary.last_feeding, @outlook)}
+                    sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+                    status={feed_status(@summary.last_feeding, @outlook)}
+                    today={feed_today(@summary.today, @unit_system)}
+                  />
+                </div>
+                <div id="glance-diaper">
+                  <.since_card
+                    emoji={last_diaper_emoji(@summary.last_diaper)}
+                    label="Diaper"
+                    category="diaper"
+                    tone={diaper_tone(@outlook)}
+                    value={relative_time(time_of(@summary.last_diaper))}
+                    sub={diaper_sub(@summary.last_diaper)}
+                    status={diaper_status(@outlook)}
+                    today={diaper_today(@summary.today)}
+                  />
+                </div>
+                <div id="glance-sleep">
+                  <.since_card
+                    icon={sleep_icon(@summary)}
+                    label={sleep_label(@summary)}
+                    category="sleep"
+                    tone={sleep_tone(@summary, @outlook)}
+                    value={sleep_value(@summary, @outlook)}
+                    sub={sleep_sub(@summary, @outlook, @current_child)}
+                    status={sleep_status(@summary, @outlook)}
+                    today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <%!-- Log something --%>
+            <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
+              <.button
+                :if={!sleeping?(@summary)}
+                variant="primary"
+                size="lg"
+                phx-click="start_sleep"
+                class="w-full text-base"
               >
-                Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
-              </.link>
+                <.icon name="hero-moon" class="size-5" /> Start sleep
+              </.button>
+
+              <.button
+                type="button"
+                variant="info"
+                size="lg"
+                phx-click="open_sheet"
+                phx-value-kind="bottle"
+                class="w-full text-base"
+              >
+                <.icon name="hero-beaker" class="size-5" /> Log a bottle
+              </.button>
+
+              <div>
+                <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
+                <div class="grid grid-cols-3 gap-2">
+                  <.action_btn
+                    :for={{emoji, value, label} <- diaper_choices()}
+                    kind={"diaper_#{value}"}
+                    label={label}
+                    emoji={emoji}
+                    color_class={diaper_color_class(value)}
+                  />
+                </div>
+              </div>
+
+              <.button
+                type="button"
+                variant="ghost"
+                size="sm"
+                phx-click="open_sheet"
+                phx-value-kind="earlier"
+                class="w-full"
+              >
+                <.icon name="hero-clock" class="size-4" /> Log from earlier
+              </.button>
             </div>
-          </div>
-
-          <%!-- At a glance --%>
-          <section class="bg-base-200/40 rounded-box p-2 space-y-2">
-            <div id="glance-cards" class="grid grid-cols-3 gap-2">
-              <div id="glance-feed">
-                <.since_card
-                  icon="hero-beaker"
-                  label="Feeding"
-                  category="feed"
-                  tone={feed_tone(@outlook)}
-                  value={feed_value(@summary.last_feeding, @outlook)}
-                  sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
-                  status={feed_status(@summary.last_feeding, @outlook)}
-                  today={feed_today(@summary.today, @unit_system)}
-                />
-              </div>
-              <div id="glance-diaper">
-                <.since_card
-                  emoji={last_diaper_emoji(@summary.last_diaper)}
-                  label="Diaper"
-                  category="diaper"
-                  tone={diaper_tone(@outlook)}
-                  value={relative_time(time_of(@summary.last_diaper))}
-                  sub={diaper_sub(@summary.last_diaper)}
-                  status={diaper_status(@outlook)}
-                  today={diaper_today(@summary.today)}
-                />
-              </div>
-              <div id="glance-sleep">
-                <.since_card
-                  icon={sleep_icon(@summary)}
-                  label={sleep_label(@summary)}
-                  category="sleep"
-                  tone={sleep_tone(@summary, @outlook)}
-                  value={sleep_value(@summary, @outlook)}
-                  sub={sleep_sub(@summary, @outlook, @current_child)}
-                  status={sleep_status(@summary, @outlook)}
-                  today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
-                />
-              </div>
-            </div>
-          </section>
-
-          <%!-- Log something --%>
-          <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
-            <.button
-              :if={!sleeping?(@summary)}
-              variant="primary"
-              size="lg"
-              phx-click="start_sleep"
-              class="w-full text-base"
-            >
-              <.icon name="hero-moon" class="size-5" /> Start sleep
-            </.button>
-
-            <.button
-              type="button"
-              variant="info"
-              size="lg"
-              phx-click="open_sheet"
-              phx-value-kind="bottle"
-              class="w-full text-base"
-            >
-              <.icon name="hero-beaker" class="size-5" /> Log a bottle
-            </.button>
-
-            <div>
-              <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
-              <div class="grid grid-cols-3 gap-2">
-                <.action_btn
-                  :for={{emoji, value, label} <- diaper_choices()}
-                  kind={"diaper_#{value}"}
-                  label={label}
-                  emoji={emoji}
-                  color_class={diaper_color_class(value)}
-                />
-              </div>
-            </div>
-
-            <.button
-              type="button"
-              variant="ghost"
-              size="sm"
-              phx-click="open_sheet"
-              phx-value-kind="earlier"
-              class="w-full"
-            >
-              <.icon name="hero-clock" class="size-4" /> Log from earlier
-            </.button>
-          </div>
+          </.loadable>
 
           <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
                PushPrompt hook reveals it only when the browser supports Web Push,
@@ -1030,21 +1087,24 @@ defmodule TryggWeb.DashboardLive do
             </.link>
           </div>
 
-          <p :if={@entries_empty?} class="opacity-60 text-sm py-6 text-center">
-            Nothing tracked yet today — tap a button to start.
-          </p>
+          <.loadable id="home-recent" loaded={@loaded?} failed={@load_failed?} retry={false}>
+            <:skeleton><.entry_rows_skeleton count={5} /></:skeleton>
+            <p :if={@entries_empty?} class="opacity-60 text-sm py-6 text-center">
+              Nothing tracked yet today — tap a button to start.
+            </p>
 
-          <div id="entries" phx-update="stream" class="divide-y divide-base-300">
-            <.entry_row
-              :for={{dom_id, entry} <- @streams.entries}
-              id={dom_id}
-              entry={entry}
-              unit_system={@unit_system}
-              tz={@current_child.timezone}
-              photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
-              on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
-            />
-          </div>
+            <div id="entries" phx-update="stream" class="divide-y divide-base-300">
+              <.entry_row
+                :for={{dom_id, entry} <- @streams.entries}
+                id={dom_id}
+                entry={entry}
+                unit_system={@unit_system}
+                tz={@current_child.timezone}
+                photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
+                on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
+              />
+            </div>
+          </.loadable>
         </:right>
       </Layouts.columns>
 

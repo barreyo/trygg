@@ -60,8 +60,31 @@ const liveSocket = new LiveSocket("/live", Socket, {
 
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
-window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+// While a live navigation or patch is in flight, `data-navigating` dims the
+// outgoing page (see app.css) — the incoming one renders its skeleton as soon
+// as it mounts, then its data.
+const root = document.documentElement
+window.addEventListener("phx:page-loading-start", ({detail}) => {
+  if (detail.kind === "redirect" || detail.kind === "patch") root.dataset.navigating = detail.kind
+  topbar.show(300)
+})
+window.addEventListener("phx:page-loading-stop", _info => {
+  delete root.dataset.navigating
+  document.querySelectorAll("[data-nav-tab][data-pending]").forEach(el => el.removeAttribute("data-pending"))
+  topbar.hide()
+})
+
+// Tabs answer a tap immediately: mark the tapped tab as the one being opened
+// before the server has replied. The next render replaces the tab bar, which
+// drops the mark.
+document.addEventListener("click", e => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+  const tab = e.target.closest && e.target.closest("[data-nav-tab]")
+  if (!tab || tab.getAttribute("aria-current") === "page") return
+  tab.closest("nav").querySelectorAll("[data-pending]").forEach(el => el.removeAttribute("data-pending"))
+  tab.setAttribute("data-pending", "")
+})
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

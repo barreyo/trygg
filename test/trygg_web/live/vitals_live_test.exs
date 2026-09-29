@@ -19,7 +19,7 @@ defmodule TryggWeb.VitalsLiveTest do
     child: child
   } do
     sibling = child_fixture(scope, %{name: "Sibling"})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     {:ok, switched, _html} =
       lv
@@ -32,7 +32,7 @@ defmodule TryggWeb.VitalsLiveTest do
   end
 
   test "empty state has latest cards, charts, and an add button", %{conn: conn, child: child} do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#latest-weight", "Not logged yet")
     assert has_element?(lv, "#latest-height", "Not logged yet")
@@ -49,7 +49,7 @@ defmodule TryggWeb.VitalsLiveTest do
     scope: scope,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     lv |> element("#add-measurement") |> render_click()
     assert has_element?(lv, "#growth-form")
@@ -80,7 +80,7 @@ defmodule TryggWeb.VitalsLiveTest do
     child: child
   } do
     m = measurement_fixture(scope, child, %{"weight_g" => 3200, "height_cm" => 50})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     lv |> element("#measurement-#{m.id}") |> render_click()
     assert has_element?(lv, "#growth-form")
@@ -105,7 +105,7 @@ defmodule TryggWeb.VitalsLiveTest do
     measurement_fixture(owner_scope, child)
 
     conn = log_in_user(conn, member)
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#latest-weight", "3.2 kg")
     assert has_element?(lv, "#growth-table")
@@ -118,7 +118,7 @@ defmodule TryggWeb.VitalsLiveTest do
     scope: scope,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
     refute has_element?(lv, "#growth-table")
 
     measurement_fixture(scope, child, %{"weight_g" => 3100, "height_cm" => 49})
@@ -148,7 +148,7 @@ defmodule TryggWeb.VitalsLiveTest do
         "height_cm" => 51
       })
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#chart-range")
     assert has_element?(lv, "#chart-period-all")
@@ -171,7 +171,7 @@ defmodule TryggWeb.VitalsLiveTest do
 
   test "tapping a chart point shows the reading", %{conn: conn, scope: scope, child: child} do
     m = measurement_fixture(scope, child, %{"weight_g" => 3200, "height_cm" => 50})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#weight-chart-caption", "Tap a point")
 
@@ -200,7 +200,7 @@ defmodule TryggWeb.VitalsLiveTest do
       "height_cm" => 55
     })
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#weight-chart-ages", "1mo")
     assert has_element?(lv, "#weight-chart-ages", "2mo")
@@ -213,7 +213,7 @@ defmodule TryggWeb.VitalsLiveTest do
     child: child
   } do
     measurement_fixture(scope, child, %{"weight_g" => 3200, "height_cm" => 50.8})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
     assert has_element?(lv, "#latest-weight", "3.2 kg")
 
     {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{unit_system: :imperial})
@@ -239,7 +239,7 @@ defmodule TryggWeb.VitalsLiveTest do
         "height_cm" => p50_h
       })
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#latest-weight", "50th")
     assert has_element?(lv, "#latest-height", "50th")
@@ -268,7 +268,7 @@ defmodule TryggWeb.VitalsLiveTest do
     p50_w = Trygg.Growth.Percentiles.value_at(child, :weight, 50, today)
     measurement_fixture(scope, child, %{"weight_g" => p50_w})
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#latest-weight-percentile", "50th")
     assert has_element?(lv, "#percentile-source", "corrected age (born at 32+0 weeks)")
@@ -298,7 +298,7 @@ defmodule TryggWeb.VitalsLiveTest do
       Trygg.Growth.Percentiles.percentile(Child.uncorrected(child), :weight, p50_w, today)
       |> Trygg.Growth.Percentiles.format_percentile()
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#age-basis-corrected[aria-pressed='true']")
     assert has_element?(lv, "#latest-weight-percentile", "50th")
@@ -329,7 +329,7 @@ defmodule TryggWeb.VitalsLiveTest do
     measurement_fixture(scope, child, %{measured_on: Date.add(today, -240), weight_g: 1500.0})
     measurement_fixture(scope, child, %{measured_on: today, weight_g: 7200.0})
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#weight-chart-band-source", "INTERGROWTH-21st → CDC")
     assert has_element?(lv, "#weight-chart-handover")
@@ -345,7 +345,7 @@ defmodule TryggWeb.VitalsLiveTest do
     today = Date.utc_today()
     child = child_fixture(scope, %{sex: :male, birth_date: Date.add(today, -60)})
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
     refute has_element?(lv, "#age-basis")
   end
 
@@ -365,7 +365,7 @@ defmodule TryggWeb.VitalsLiveTest do
       |> Trygg.Growth.Percentiles.percentile(:weight, 1800, today)
       |> Trygg.Growth.Percentiles.format_percentile()
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#latest-weight-percentile", expected)
     assert has_element?(lv, "#weight-chart-bands")
@@ -384,7 +384,7 @@ defmodule TryggWeb.VitalsLiveTest do
       child_fixture(scope, %{sex: :male, birth_date: Date.add(today, -5), gestation_weeks: 25})
 
     measurement_fixture(scope, child, %{"weight_g" => 800})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#percentile-hint", "25+0 weeks")
     assert has_element?(lv, "#percentile-hint", "27 weeks")
@@ -397,7 +397,7 @@ defmodule TryggWeb.VitalsLiveTest do
     child: child
   } do
     measurement_fixture(scope, child, %{"weight_g" => 3200, "height_cm" => 50})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#weight-chart svg")
     refute has_element?(lv, "#weight-chart-bands")
@@ -413,12 +413,12 @@ defmodule TryggWeb.VitalsLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
       assert has_element?(lv, "#weight-gain-card")
       assert has_element?(lv, "#weight-gain-empty", "Log a weight")
 
       measurement_fixture(scope, child, %{"weight_g" => 4000})
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
       assert has_element?(lv, "#weight-gain-empty", "another weight")
     end
 
@@ -435,7 +435,7 @@ defmodule TryggWeb.VitalsLiveTest do
       measurement_fixture(scope, child, %{"weight_g" => p50_then, "measured_on" => earlier})
       measurement_fixture(scope, child, %{"weight_g" => p50_now})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
       assert has_element?(lv, "#weight-gain-rate", "/week")
       assert has_element?(lv, "#weight-gain-expected", "50th percentile")
@@ -452,7 +452,7 @@ defmodule TryggWeb.VitalsLiveTest do
       dob = Date.add(today, -5)
       child = child_fixture(scope, %{birth_date: dob})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
       assert has_element?(lv, "#birth-weight-prompt")
 
       lv |> element("#birth-weight-prompt button") |> render_click()
@@ -475,7 +475,7 @@ defmodule TryggWeb.VitalsLiveTest do
       measurement_fixture(scope, child, %{"weight_g" => 3200, "measured_on" => Date.add(dob, 3)})
       measurement_fixture(scope, child, %{"weight_g" => 3550})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
       refute has_element?(lv, "#birth-weight-prompt")
       assert has_element?(lv, "#weight-gain-newborn", "Born 3.5 kg")

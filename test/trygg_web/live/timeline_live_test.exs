@@ -18,7 +18,7 @@ defmodule TryggWeb.TimelineLiveTest do
     child: child
   } do
     sibling = child_fixture(scope, %{name: "Sibling"})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
 
     assert has_element?(lv, "#child-switcher-trigger", child.name)
 
@@ -36,7 +36,7 @@ defmodule TryggWeb.TimelineLiveTest do
     entry_fixture(scope, child, type: :feeding)
     entry_fixture(scope, child, type: :diaper)
 
-    {:ok, lv, html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, html} = live_loaded(conn, ~p"/c/#{child}/log")
     assert html =~ "Bottle"
     assert html =~ "diaper"
 
@@ -48,7 +48,7 @@ defmodule TryggWeb.TimelineLiveTest do
   test "editing an entry updates its note", %{conn: conn, scope: scope, child: child} do
     entry = entry_fixture(scope, child, type: :diaper)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
     lv |> element(~s([id$="#{entry.id}"])) |> render_click()
 
     lv
@@ -61,7 +61,7 @@ defmodule TryggWeb.TimelineLiveTest do
   test "deleting an entry removes it", %{conn: conn, scope: scope, child: child} do
     entry = entry_fixture(scope, child, type: :diaper)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
     lv |> element(~s([id$="#{entry.id}"])) |> render_click()
     lv |> element("#edit-entry-delete") |> render_click()
 
@@ -75,7 +75,7 @@ defmodule TryggWeb.TimelineLiveTest do
   } do
     entry = entry_fixture(scope, child, type: :diaper)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
     lv |> element(~s([id$="#{entry.id}"])) |> render_click()
 
     photo =
@@ -100,7 +100,7 @@ defmodule TryggWeb.TimelineLiveTest do
     scope: scope,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
     refute render(lv) =~ "Bottle"
 
     entry_fixture(scope, child, type: :feeding)
@@ -115,7 +115,7 @@ defmodule TryggWeb.TimelineLiveTest do
   } do
     entry_fixture(scope, child, type: :feeding)
 
-    {:ok, lv, html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, html} = live_loaded(conn, ~p"/c/#{child}/log")
     assert html =~ "90 ml"
 
     {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{unit_system: :imperial})
@@ -129,7 +129,7 @@ defmodule TryggWeb.TimelineLiveTest do
     %{owner_scope: owner_scope, child: child, member: member} = shared_child_fixture()
     conn = log_in_user(conn, member)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/log")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
 
     [membership] =
       Trygg.Families.list_members(owner_scope, child)

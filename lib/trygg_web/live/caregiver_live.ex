@@ -2,6 +2,7 @@ defmodule TryggWeb.CaregiverLive do
   use TryggWeb, :live_view
 
   alias Trygg.Families
+  alias TryggWeb.Loading
 
   @impl true
   def render(assigns) do
@@ -20,35 +21,36 @@ defmodule TryggWeb.CaregiverLive do
         <:subtitle>Everyone here sees the same log, live.</:subtitle>
       </.header>
 
-      <ul class="mt-4 divide-y divide-base-300 rounded-box border border-base-300 bg-base-200">
-        <li :for={m <- @members} class="flex items-center gap-3 p-3">
-          <div class="size-9 rounded-full bg-base-300 grid place-items-center text-sm">
-            {String.first(m.user.email)}
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="truncate">
-              {m.user.email}
-              <span :if={m.user_id == @current_scope.user.id} class="opacity-50">(you)</span>
+      <.loadable id="caregivers" loaded={@loaded?} failed={@load_failed?}>
+        <:skeleton><.member_rows_skeleton /></:skeleton>
+        <ul class="mt-4 divide-y divide-base-300 rounded-box border border-base-300 bg-base-200">
+          <li :for={m <- @members} class="flex items-center gap-3 p-3">
+            <div class="size-9 rounded-full bg-base-300 grid place-items-center text-sm">
+              {String.first(m.user.email)}
             </div>
-            <div class="text-xs opacity-60">{m.role}</div>
-          </div>
-          <.button
-            :if={@is_owner and m.user_id != @current_scope.user.id}
-            type="button"
-            variant="ghost"
-            size="xs"
-            phx-click="remove_member"
-            phx-value-id={m.id}
-            data-confirm={"Remove #{m.user.email}?"}
-            aria-label="Remove"
-          >
-            <.icon name="hero-x-mark" class="size-4" />
-          </.button>
-        </li>
-      </ul>
+            <div class="flex-1 min-w-0">
+              <div class="truncate">
+                {m.user.email}
+                <span :if={m.user_id == @current_scope.user.id} class="opacity-50">(you)</span>
+              </div>
+              <div class="text-xs opacity-60">{m.role}</div>
+            </div>
+            <.button
+              :if={@is_owner and m.user_id != @current_scope.user.id}
+              type="button"
+              variant="ghost"
+              size="xs"
+              phx-click="remove_member"
+              phx-value-id={m.id}
+              data-confirm={"Remove #{m.user.email}?"}
+              aria-label="Remove"
+            >
+              <.icon name="hero-x-mark" class="size-4" />
+            </.button>
+          </li>
+        </ul>
 
-      <%= if @is_owner do %>
-        <div :if={@invites != []} class="mt-6">
+        <div :if={@is_owner and @invites != []} class="mt-6">
           <h3 class="text-sm font-semibold opacity-70 mb-2">Pending invites</h3>
           <ul class="divide-y divide-base-300 rounded-box border border-base-300 bg-base-200">
             <li :for={i <- @invites} class="flex items-center gap-3 p-3">
@@ -71,7 +73,9 @@ defmodule TryggWeb.CaregiverLive do
             </li>
           </ul>
         </div>
+      </.loadable>
 
+      <%= if @is_owner do %>
         <div class="mt-6">
           <h3 class="text-sm font-semibold opacity-70 mb-2">Invite a caregiver</h3>
           <.form for={@form} id="invite-form" phx-submit="invite" class="space-y-3">
@@ -100,8 +104,17 @@ defmodule TryggWeb.CaregiverLive do
   def mount(_params, _session, socket) do
     if connected?(socket), do: Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
 
-    {:ok, load(socket)}
+    {:ok,
+     socket
+     |> assign(:form, to_form(Families.change_invite()))
+     |> assign_owner()
+     |> Loading.init()
+     |> load()}
   end
+
+  @impl true
+  def handle_async(:load, result, socket),
+    do: {:noreply, Loading.done(socket, result, &apply_people/2)}
 
   @impl true
   def handle_info({tag, _child_id}, socket)
@@ -150,6 +163,8 @@ defmodule TryggWeb.CaregiverLive do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_event("retry_load", _params, socket), do: {:noreply, load(socket)}
+
   def handle_event("invite", %{"invite" => params}, socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
@@ -194,15 +209,31 @@ defmodule TryggWeb.CaregiverLive do
     {:noreply, load(socket)}
   end
 
+  # The first load goes through `TryggWeb.Loading` (skeleton, then a task);
+  # after that, membership changes reload in place. The invite form doesn't
+  # depend on the list, so it's usable from the first paint.
   defp load(socket) do
+    socket = assign_owner(socket)
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
-    is_owner = child.role == :owner
+    is_owner = socket.assigns.is_owner
+    fetch = fn -> fetch_people(scope, child, is_owner) end
 
-    socket
-    |> assign(:members, Families.list_members(scope, child))
-    |> assign(:is_owner, is_owner)
-    |> assign(:invites, if(is_owner, do: Families.list_invites(scope, child), else: []))
-    |> assign_new(:form, fn -> to_form(Families.change_invite()) end)
+    if socket.assigns.loaded?,
+      do: apply_people(socket, fetch.()),
+      else: Loading.run(socket, fetch, &apply_people/2)
   end
+
+  defp assign_owner(socket),
+    do: assign(socket, :is_owner, socket.assigns.current_child.role == :owner)
+
+  defp fetch_people(scope, child, is_owner) do
+    %{
+      members: Families.list_members(scope, child),
+      invites: if(is_owner, do: Families.list_invites(scope, child), else: [])
+    }
+  end
+
+  defp apply_people(socket, %{members: members, invites: invites}),
+    do: assign(socket, members: members, invites: invites)
 end

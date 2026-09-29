@@ -21,7 +21,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
   describe "auth boundary" do
     test "GET / redirects anonymous users to log in", %{conn: conn} do
-      assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(conn, ~p"/")
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} = live_loaded(conn, ~p"/")
     end
 
     test "a non-member is bounced from a child dashboard", %{conn: conn} do
@@ -39,12 +39,12 @@ defmodule TryggWeb.DashboardLiveTest do
     setup :register_and_log_in_user
 
     test "/ sends a user with no children to add one", %{conn: conn} do
-      assert {:error, {:live_redirect, %{to: "/children/new"}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: "/children/new"}}} = live_loaded(conn, ~p"/")
     end
 
     test "/ opens the first child for a user who has one", %{conn: conn, scope: scope} do
       child = child_fixture(scope)
-      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: path}}} = live_loaded(conn, ~p"/")
       assert path == ~p"/c/#{child}"
     end
 
@@ -53,8 +53,8 @@ defmodule TryggWeb.DashboardLiveTest do
       ollie = child_fixture(scope, %{name: "Ollie"})
 
       for pick <- [ollie, ada, ollie] do
-        {:ok, _lv, _html} = live(conn, ~p"/c/#{pick}")
-        assert {:error, {:live_redirect, %{to: path}}} = live(conn, ~p"/")
+        {:ok, _lv, _html} = live_loaded(conn, ~p"/c/#{pick}")
+        assert {:error, {:live_redirect, %{to: path}}} = live_loaded(conn, ~p"/")
         assert path == ~p"/c/#{pick}"
       end
     end
@@ -66,10 +66,10 @@ defmodule TryggWeb.DashboardLiveTest do
       gone = child_fixture(scope, %{name: "Gone"})
       keeper = child_fixture(scope, %{name: "Keeper"})
 
-      {:ok, _lv, _html} = live(conn, ~p"/c/#{gone}")
+      {:ok, _lv, _html} = live_loaded(conn, ~p"/c/#{gone}")
       {:ok, _} = Families.delete_child(scope, gone)
 
-      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: path}}} = live_loaded(conn, ~p"/")
       assert path == ~p"/c/#{keeper}"
     end
   end
@@ -81,23 +81,23 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "opens children management from the dashboard", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#app-menu")
       assert has_element?(lv, "#app-menu-children", "Children")
       assert has_element?(lv, "#app-menu-preferences", "Preferences")
 
-      {:ok, _children_lv, html} =
+      {:ok, children_lv, _html} =
         lv
         |> element("#app-menu-children")
         |> render_click()
         |> follow_redirect(conn, ~p"/children")
 
-      assert html =~ child.name
+      assert render_async(children_lv) =~ child.name
     end
 
     test "opens preferences from the dashboard", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       {:ok, _prefs_lv, html} =
         lv
@@ -109,14 +109,14 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "carries the account-level actions", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#app-menu-account[href='/users/settings']", "Account")
       assert has_element?(lv, "#app-menu-log-out[data-method=delete]", "Log out")
     end
 
     test "lets an owner edit the child and manage sharing", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#app-menu-sharing[href='#{~p"/c/#{child}/caregivers"}']")
 
@@ -133,7 +133,7 @@ defmodule TryggWeb.DashboardLiveTest do
       %{child: child, member: member} = shared_child_fixture(:caregiver)
       conn = log_in_user(conn, member)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#app-menu-sharing")
       refute has_element?(lv, "#app-menu-edit-child")
@@ -147,7 +147,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "shows the child's tabs on child pages", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Home")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
@@ -159,7 +159,7 @@ defmodule TryggWeb.DashboardLiveTest do
       conn: conn,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Home")
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
@@ -174,7 +174,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
     test "is replaced by a back arrow on account-level pages", %{conn: conn} do
       for path <- [~p"/preferences", ~p"/children", ~p"/users/settings"] do
-        {:ok, lv, _html} = live(conn, path)
+        {:ok, lv, _html} = live_loaded(conn, path)
 
         refute has_element?(lv, "#bottom-nav")
         refute has_element?(lv, "#side-nav")
@@ -189,7 +189,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
     test "is hidden when the user has only one child", %{conn: conn, scope: scope} do
       child = child_fixture(scope)
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       refute has_element?(lv, "#child-switcher")
       assert has_element?(lv, "header", child.name)
@@ -198,7 +198,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "names every child, marks the current one, and switches", %{conn: conn, scope: scope} do
       ada = child_fixture(scope, %{name: "Ada"})
       ollie = child_fixture(scope, %{name: "Ollie"})
-      {:ok, lv, html} = live(conn, ~p"/c/#{ada}")
+      {:ok, lv, html} = live_loaded(conn, ~p"/c/#{ada}")
 
       assert has_element?(lv, "#child-switcher-trigger", "Ada")
       assert html =~ "Switch child, currently Ada"
@@ -225,7 +225,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "a one-tap diaper button records an entry", %{conn: conn, scope: scope, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element(~s(button[phx-value-kind="diaper_pee"])) |> render_click()
 
@@ -238,7 +238,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
@@ -264,7 +264,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
@@ -284,7 +284,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "a future diaper time is rejected", %{conn: conn, scope: scope, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
@@ -308,7 +308,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
       lv |> element(~s(button[phx-value-by="60"])) |> render_click()
@@ -331,7 +331,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
 
@@ -348,7 +348,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
       lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="5"])) |> render_click()
@@ -366,7 +366,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "a bottle can be back-dated through the sheet", %{conn: conn, scope: scope, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
       lv |> element(~s(button[phx-value-by="60"])) |> render_click()
@@ -388,7 +388,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "a future bottle time is rejected", %{conn: conn, scope: scope, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
       lv |> element(~s(button[phx-value-by="60"])) |> render_click()
@@ -417,7 +417,7 @@ defmodule TryggWeb.DashboardLiveTest do
         "data" => %{"bottle_contents" => "expressed", "amount_ml" => 120}
       })
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       html = lv |> element("button", "Log a bottle") |> render_click()
       assert html =~ "120"
@@ -433,7 +433,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Start sleep") |> render_click()
       assert [%{type: :sleep, ended_at: nil}] = Log.running_timers(scope, child)
@@ -458,7 +458,7 @@ defmodule TryggWeb.DashboardLiveTest do
       conn: conn,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element("button", "Start sleep") |> render_click()
 
       html = render(lv)
@@ -478,7 +478,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element("button", "Start sleep") |> render_click()
 
       [nap] = Log.running_timers(scope, child)
@@ -494,7 +494,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element("button", "Start sleep") |> render_click()
 
       past = DateTime.utc_now() |> DateTime.add(-2, :hour) |> Calendar.strftime("%Y-%m-%dT%H:%M")
@@ -511,7 +511,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       now = DateTime.utc_now()
       started = now |> DateTime.add(-90, :minute) |> Calendar.strftime("%Y-%m-%dT%H:%M")
@@ -538,7 +538,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
@@ -569,7 +569,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "a past sleep with the end before the start is rejected", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       now = DateTime.utc_now()
       started = now |> Calendar.strftime("%Y-%m-%dT%H:%M")
@@ -592,7 +592,7 @@ defmodule TryggWeb.DashboardLiveTest do
       child: child
     } do
       # caregiver A (the connected LV) starts a nap
-      {:ok, lv_a, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv_a, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv_a |> element("button", "Start sleep") |> render_click()
 
       # caregiver B opens the dashboard fresh (as if returning after closing the app)
@@ -600,7 +600,7 @@ defmodule TryggWeb.DashboardLiveTest do
       membership_fixture(child, other, :caregiver)
       conn_b = log_in_user(Phoenix.ConnTest.build_conn(), other)
 
-      {:ok, _lv_b, html_b} = live(conn_b, ~p"/c/#{child}")
+      {:ok, _lv_b, html_b} = live_loaded(conn_b, ~p"/c/#{child}")
       assert html_b =~ "Asleep"
       assert html_b =~ ~s(phx-hook="Timer")
 
@@ -615,7 +615,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element(~s([id$="#{entry.id}"])) |> render_click()
 
       assert has_element?(lv, "#edit-entry-form")
@@ -631,7 +631,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "deleting from recent removes the entry", %{conn: conn, scope: scope, child: child} do
       entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element(~s([id$="#{entry.id}"])) |> render_click()
       lv |> element("#edit-entry-delete") |> render_click()
 
@@ -640,7 +640,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "an entry logged by another caregiver appears live", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       other = user_fixture()
       membership_fixture(child, other, :caregiver)
@@ -668,7 +668,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       # Land an entry (this broadcasts, so the socket shows it), then remove it
       # straight from the repo so no broadcast tells the LiveView it's gone.
@@ -700,7 +700,7 @@ defmodule TryggWeb.DashboardLiveTest do
           "data" => %{"amount_ml" => 90, "bottle_contents" => "formula"}
         })
 
-      {:ok, _lv, html} = live(conn, ~p"/c/#{child}")
+      {:ok, _lv, html} = live_loaded(conn, ~p"/c/#{child}")
       assert html =~ "oz"
       refute html =~ "90 ml"
 
@@ -718,7 +718,7 @@ defmodule TryggWeb.DashboardLiveTest do
         "data" => %{"bottle_contents" => "formula", "amount_ml" => 74}
       })
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element("button", "Log a bottle") |> render_click()
 
       assert has_element?(lv, "input#bottle-amount[value='2.5']")
@@ -735,7 +735,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
     test "the title updates when another caregiver renames the child", %{conn: conn, scope: scope} do
       child = child_fixture(scope)
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       {:ok, _} = Families.update_child(scope, child, %{name: "Wobble"})
       assert render(lv) =~ "Wobble"
@@ -750,7 +750,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope
     } do
       child = child_fixture(scope)
-      {:ok, lv, html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, html} = live_loaded(conn, ~p"/c/#{child}")
       refute html =~ "Sibling"
 
       {:ok, _} = Families.create_child(scope, %{name: "Sibling", timezone: "Etc/UTC"})
@@ -761,7 +761,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "a rename by another caregiver updates the switcher", %{conn: conn, scope: scope} do
       child = child_fixture(scope)
       _other = child_fixture(scope, %{name: "Keeper"})
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       {:ok, _} = Families.update_child(scope, child, %{name: "Renamed"})
 
@@ -779,7 +779,7 @@ defmodule TryggWeb.DashboardLiveTest do
       membership = membership_fixture(child, caregiver, :caregiver)
       conn = log_in_user(conn, caregiver)
 
-      {:ok, lv, html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, html} = live_loaded(conn, ~p"/c/#{child}")
       assert html =~ "Start sleep"
 
       {:ok, _} = Families.remove_member(owner_scope, child, membership)
@@ -795,7 +795,7 @@ defmodule TryggWeb.DashboardLiveTest do
       membership = membership_fixture(child, caregiver, :caregiver)
       conn = log_in_user(conn, caregiver)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert render(lv) =~ "Start sleep"
 
       {:ok, _} = Families.update_member_role(owner_scope, child, membership, :viewer)
@@ -811,7 +811,7 @@ defmodule TryggWeb.DashboardLiveTest do
       membership_fixture(child, caregiver, :caregiver)
       conn = log_in_user(conn, caregiver)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       {:ok, _} = Families.delete_child(owner_scope, child)
 
@@ -829,7 +829,7 @@ defmodule TryggWeb.DashboardLiveTest do
     end
 
     test "a quiet log shows plain glance cards and no alerts", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#glance-feed", "No feeds yet")
       assert has_element?(lv, "#glance-feed", "none today")
@@ -848,7 +848,7 @@ defmodule TryggWeb.DashboardLiveTest do
       entry_fixture(scope, child, %{"data" => %{"kind" => "pee"}, :type => :diaper})
       entry_fixture(scope, child, %{"data" => %{"kind" => "poo"}, :type => :diaper})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#glance-feed", "1 feed · 90 ml today")
       assert has_element?(lv, "#glance-diaper", "2 diapers")
@@ -864,7 +864,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#glance-feed", "Next ~")
       refute has_element?(lv, "#glance-feed", "later than usual")
     end
@@ -876,7 +876,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 5)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#glance-feed", "later than usual")
       refute has_element?(lv, "#glance-feed", "overdue")
     end
@@ -898,7 +898,7 @@ defmodule TryggWeb.DashboardLiveTest do
         "started_at" => DateTime.add(now, -30 * 60, :second)
       })
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#home-alerts")
       assert has_element?(lv, "#home-alerts-no-wet-diaper", "No wet diaper")
@@ -927,7 +927,7 @@ defmodule TryggWeb.DashboardLiveTest do
         "ended_at" => DateTime.add(now, -20 * 60, :second)
       })
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#glance-sleep", "Nap ·")
     end
 
@@ -953,7 +953,7 @@ defmodule TryggWeb.DashboardLiveTest do
         "ended_at" => DateTime.add(now, -20 * 60, :second)
       })
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#rhythm-dial", "Next nap")
     end
 
@@ -965,7 +965,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       Trygg.Log.start_timer(scope, child, :sleep)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#rhythm-dial", "Asleep")
       assert has_element?(lv, "#rhythm-dial-elapsed")
     end
@@ -986,7 +986,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "banners when the last weight is stale", %{conn: conn, scope: scope, child: child} do
       measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -120)})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#weight-check-reminder", "Time for a weight check")
       assert has_element?(lv, "#weight-check-reminder a", "Log it in Vitals")
@@ -995,13 +995,13 @@ defmodule TryggWeb.DashboardLiveTest do
     test "no banner when a recent weight is on file", %{conn: conn, scope: scope, child: child} do
       measurement_fixture(scope, child, %{"measured_on" => Date.utc_today()})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       refute has_element?(lv, "#weight-check-reminder")
     end
 
     test "banners when no weight has ever been logged", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#weight-check-reminder", "No weight logged yet")
     end
@@ -1010,12 +1010,12 @@ defmodule TryggWeb.DashboardLiveTest do
       measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -20)})
 
       # 20 days stale is under the 90-day CDC interval — no banner yet.
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       refute has_element?(lv, "#weight-check-reminder")
 
       {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 7})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       assert has_element?(lv, "#weight-check-reminder", "You asked to be reminded every 7 days")
     end
 
@@ -1027,7 +1027,7 @@ defmodule TryggWeb.DashboardLiveTest do
       measurement_fixture(scope, child, %{"measured_on" => Date.add(Date.utc_today(), -300)})
       {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{"weight_reminder_days" => 0})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       refute has_element?(lv, "#weight-check-reminder")
     end
@@ -1044,7 +1044,7 @@ defmodule TryggWeb.DashboardLiveTest do
       scope: scope,
       child: child
     } do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
 
@@ -1076,7 +1076,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element(~s([id$="#{entry.id}"])) |> render_click()
 
       photo =
@@ -1102,7 +1102,7 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, entry} =
         Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element(~s([id$="#{entry.id}"])) |> render_click()
 
       lv
@@ -1122,7 +1122,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
     test "renders the one-time opt-in nudge, hidden and wired to the hook + VAPID key",
          %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       assert has_element?(lv, "#push-prompt[phx-hook='PushPrompt'][hidden]")
 
