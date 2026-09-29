@@ -10,9 +10,10 @@ defmodule Trygg.Growth.Percentiles do
   Weight LMS values are in kilograms; length is in centimetres. Callers pass
   Trygg's canonical storage units (grams / centimetres).
 
-  For babies born preterm (before 37+0 weeks, see `Child.preterm?/1`) age is
-  corrected — counted from the date they reached 40+0 weeks — until they turn
-  two, the usual clinical convention. Before that term date the CDC charts
+  For babies born before 39+0 weeks — preterm or early term, see
+  `Child.born_early?/1` — age is corrected (counted from the date they reached
+  40+0 weeks) until they turn two. Clinicians usually only correct preterm
+  babies; early term is included here on purpose. Before that term date the CDC charts
   (which start at a full-term birth) don't apply and everything returns `nil`.
 
   Source: [CDC growth chart data files](https://www.cdc.gov/growthcharts/cdc-data-files.htm)
@@ -92,7 +93,7 @@ defmodule Trygg.Growth.Percentiles do
   Why percentiles are unavailable, or `nil` when they can be computed.
 
   `:unspecified_sex` and `:no_birth_date` are the cases the UI explains.
-  `:before_term` means a preterm child hasn't reached their term date yet
+  `:before_term` means a child born early hasn't reached their term date yet
   (on `date`, defaulting to the child's local today).
   """
   @spec hint(%Child{}, Date.t() | nil) :: :unspecified_sex | :no_birth_date | :before_term | nil
@@ -128,7 +129,7 @@ defmodule Trygg.Growth.Percentiles do
 
   @doc """
   Whether percentiles on `date` use corrected rather than chronological age:
-  the child was born preterm and is younger than two.
+  the child was born before 39+0 weeks and is younger than two.
   """
   @spec corrected?(%Child{}, Date.t()) :: boolean()
   def corrected?(%Child{} = child, %Date{} = date), do: Child.corrects_age?(child, date)
@@ -221,7 +222,7 @@ defmodule Trygg.Growth.Percentiles do
 
   @doc """
   Sampled `{date, canonical_value}` points along a percentile curve, clipped to
-  birth (or the term date, for a preterm child) through 36 months and to
+  birth (or the term date, for a child born early) through 36 months and to
   `[from, to]`.
   """
   @spec curve(%Child{}, kind, pos_integer(), Date.t(), Date.t()) :: [{Date.t(), float()}]
@@ -286,12 +287,12 @@ defmodule Trygg.Growth.Percentiles do
   defp age_months(%Child{birth_date: nil}, _date, _corrected), do: nil
 
   # `corrected` is `nil` to pick the basis from `date`, or a boolean to force
-  # it (still only for preterm children).
+  # it (still only for children born early).
   defp age_months(%Child{birth_date: dob} = child, %Date{} = date, corrected) do
     corrected? =
       if is_nil(corrected),
         do: corrected?(child, date),
-        else: corrected and Child.preterm?(child)
+        else: corrected and Child.born_early?(child)
 
     start = if corrected?, do: Child.term_date(child), else: dob
     days = Date.diff(date, start)
