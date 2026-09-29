@@ -11,7 +11,7 @@ defmodule TryggWeb.ChildLiveTest do
 
   test "lists the current user's children with their role", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
-    {:ok, _lv, html} = live(conn, ~p"/children")
+    {:ok, _lv, html} = live_loaded(conn, ~p"/children")
     assert html =~ child.name
     assert html =~ "owner"
   end
@@ -20,7 +20,7 @@ defmodule TryggWeb.ChildLiveTest do
     conn: conn,
     scope: scope
   } do
-    {:ok, lv, _html} = live(conn, ~p"/children/new")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/new")
 
     {:error, {:live_redirect, %{to: path}}} =
       lv
@@ -35,7 +35,7 @@ defmodule TryggWeb.ChildLiveTest do
 
   test "records how early a child was born", %{conn: conn, scope: scope} do
     child = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -30)})
-    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
 
     {:error, {:live_redirect, _}} =
       lv
@@ -44,7 +44,7 @@ defmodule TryggWeb.ChildLiveTest do
 
     assert Families.get_child!(scope, child.id).gestational_age_days == 221
 
-    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
     assert has_element?(lv, "#child_gestation_weeks option[selected][value='31']")
     assert has_element?(lv, "#child_gestation_extra_days option[selected][value='4']")
   end
@@ -53,7 +53,7 @@ defmodule TryggWeb.ChildLiveTest do
     conn: conn,
     scope: scope
   } do
-    {:ok, lv, html} = live(conn, ~p"/children")
+    {:ok, lv, html} = live_loaded(conn, ~p"/children")
     refute html =~ "Newbie"
 
     {:ok, _} = Families.create_child(scope, %{name: "Newbie", timezone: "Etc/UTC"})
@@ -63,7 +63,7 @@ defmodule TryggWeb.ChildLiveTest do
 
   test "the list reflects a live rename by a co-owner", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
-    {:ok, lv, html} = live(conn, ~p"/children")
+    {:ok, lv, html} = live_loaded(conn, ~p"/children")
     assert html =~ child.name
 
     {:ok, _} = Families.update_child(scope, child, %{name: "Pipkin"})
@@ -73,7 +73,7 @@ defmodule TryggWeb.ChildLiveTest do
   end
 
   test "can add a child that hasn't been born yet", %{conn: conn, scope: scope} do
-    {:ok, lv, _html} = live(conn, ~p"/children/new")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/new")
 
     lv |> element("#child-form button[phx-value-status='expecting']") |> render_click()
 
@@ -101,7 +101,7 @@ defmodule TryggWeb.ChildLiveTest do
         expected_birth_date: Date.add(Date.utc_today(), 20)
       })
 
-    {:ok, _lv, html} = live(conn, ~p"/c/#{child}")
+    {:ok, _lv, html} = live_loaded(conn, ~p"/c/#{child}")
     assert html =~ "Expecting Bean"
     assert html =~ "just practice"
     assert html =~ "Bean has arrived"
@@ -120,7 +120,7 @@ defmodule TryggWeb.ChildLiveTest do
 
     entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
 
-    {:ok, lv, html} = live(conn, ~p"/children/#{child}/edit?arrived=1")
+    {:ok, lv, html} = live_loaded(conn, ~p"/children/#{child}/edit?arrived=1")
     assert html =~ "Birth date"
 
     {:error, {:live_redirect, %{to: path}}} =
@@ -140,7 +140,7 @@ defmodule TryggWeb.ChildLiveTest do
     child = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -30)})
     entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
 
-    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
 
     lv |> element("#child-form button[phx-value-status='expecting']") |> render_click()
 
@@ -163,7 +163,7 @@ defmodule TryggWeb.ChildLiveTest do
 
   test "editing renames the child", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
-    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
 
     lv
     |> form("#child-form", child: %{name: "Renamed"})
@@ -174,7 +174,7 @@ defmodule TryggWeb.ChildLiveTest do
 
   test "owners can reach the edit form from the list", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
-    {:ok, lv, _html} = live(conn, ~p"/children")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children")
 
     {:ok, _edit_lv, html} =
       lv
@@ -187,7 +187,7 @@ defmodule TryggWeb.ChildLiveTest do
 
   test "the edit form leads back to the child's page", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
-    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
 
     assert has_element?(lv, "header a[aria-label=Back][href='#{~p"/c/#{child}"}']")
     assert has_element?(lv, "#child-form a[href='#{~p"/c/#{child}"}']", "Cancel")
@@ -197,7 +197,7 @@ defmodule TryggWeb.ChildLiveTest do
     %{child: child, member: member} = shared_child_fixture(:caregiver)
     conn = log_in_user(conn, member)
 
-    {:ok, lv, _html} = live(conn, ~p"/children")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children")
     refute has_element?(lv, "#edit-child-#{child.id}")
 
     assert {:error, {:live_redirect, %{to: path, flash: flash}}} =

@@ -8,6 +8,7 @@ defmodule TryggWeb.ReportsLive do
   alias Trygg.Reports.Day
   alias Trygg.Reports.Shifts
   alias Trygg.Units
+  alias TryggWeb.Loading
 
   @tick_ms 60_000
 
@@ -40,43 +41,50 @@ defmodule TryggWeb.ReportsLive do
           type="button"
           variant={if @view == id, do: "primary", else: "outline"}
           size="sm"
-          phx-click="set_view"
-          phx-value-view={id}
+          phx-click={JS.push("set_view", value: %{view: id}, loading: "#report-body")}
           class="min-h-11"
         >
           {label}
         </.button>
       </div>
 
-      <.today_view
-        :if={@view == :today}
-        day={@day}
-        child={@current_child}
-        selected={@selected}
-        caption={@caption}
-        unit_system={@unit_system}
-        today_date={@today_date}
-      />
-      <.week_view
-        :if={@view == :week}
-        days={@days}
-        child={@current_child}
-        today_date={@today_date}
-        unit_system={@unit_system}
-      />
-      <.trends_view
-        :if={@view == :trends}
-        insights={@insights}
-        child={@current_child}
-        unit_system={@unit_system}
-        window={@window}
-        window_label={@window_label}
-        bar_selected={@bar_selected}
-        bar_caption={@bar_caption}
-        heat_selected={@heat_selected}
-        heat_caption={@heat_caption}
-        can_edit_schedule={@can_edit_schedule}
-      />
+      <.loadable
+        id="report-body"
+        loaded={@loaded?}
+        failed={@load_failed?}
+        class="loading-dim"
+      >
+        <:skeleton><.report_skeleton view={@view} /></:skeleton>
+        <.today_view
+          :if={@view == :today}
+          day={@day}
+          child={@current_child}
+          selected={@selected}
+          caption={@caption}
+          unit_system={@unit_system}
+          today_date={@today_date}
+        />
+        <.week_view
+          :if={@view == :week}
+          days={@days}
+          child={@current_child}
+          today_date={@today_date}
+          unit_system={@unit_system}
+        />
+        <.trends_view
+          :if={@view == :trends}
+          insights={@insights}
+          child={@current_child}
+          unit_system={@unit_system}
+          window={@window}
+          window_label={@window_label}
+          bar_selected={@bar_selected}
+          bar_caption={@bar_caption}
+          heat_selected={@heat_selected}
+          heat_caption={@heat_caption}
+          can_edit_schedule={@can_edit_schedule}
+        />
+      </.loadable>
 
       <.button
         id="download-pdf"
@@ -945,8 +953,13 @@ defmodule TryggWeb.ReportsLive do
      |> assign(:bar_caption, nil)
      |> assign(:heat_selected, nil)
      |> assign(:heat_caption, nil)
-     |> assign(:now, DateTime.utc_now() |> DateTime.truncate(:second))}
+     |> assign(:now, DateTime.utc_now() |> DateTime.truncate(:second))
+     |> Loading.init()}
   end
+
+  @impl true
+  def handle_async(:load, result, socket),
+    do: {:noreply, Loading.done(socket, result, &apply_report/2)}
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -1042,6 +1055,8 @@ defmodule TryggWeb.ReportsLive do
   ## Events ---------------------------------------------------------------
 
   @impl true
+  def handle_event("retry_load", _params, socket), do: {:noreply, load_report(socket)}
+
   def handle_event("set_view", %{"view" => view}, socket) do
     {:noreply, push_patch(socket, to: report_path(socket, view: parse_view(view)))}
   end
@@ -1152,39 +1167,44 @@ defmodule TryggWeb.ReportsLive do
 
   ## Data -----------------------------------------------------------------
 
+  # The first load goes through `TryggWeb.Loading` (skeleton, then a task).
+  # A view/day/window change before it lands simply supersedes it. Once a
+  # report is on screen, changes and realtime updates reload it in place.
   defp load_report(socket) do
-    scope = socket.assigns.current_scope
-    child = socket.assigns.current_child
-    now = socket.assigns.now
+    %{current_scope: scope, current_child: child, now: now} = socket.assigns
+    view = socket.assigns[:view]
+    date = socket.assigns[:date]
+    window = socket.assigns[:window]
+    fetch = fn -> fetch_report(scope, child, view, date, window, now) end
 
-    case socket.assigns[:view] do
-      :week ->
-        today = Child.local_today(child)
-        from = Date.add(today, -6)
-
-        socket
-        |> assign(:days, Reports.days(scope, child, from, today, now))
-        |> assign(:day, nil)
-        |> assign(:insights, nil)
-
-      :trends ->
-        insights = Reports.summary(scope, child, socket.assigns.window, now)
-
-        socket
-        |> assign(:insights, insights)
-        |> assign(:window_label, window_label(insights.totals.per_day))
-        |> assign(:day, nil)
-        |> assign(:days, nil)
-
-      _ ->
-        date = socket.assigns[:date] || Child.local_today(child)
-
-        socket
-        |> assign(:day, Reports.day(scope, child, date, now))
-        |> assign(:days, nil)
-        |> assign(:insights, nil)
-    end
+    if socket.assigns.loaded?,
+      do: apply_report(socket, fetch.()),
+      else: Loading.run(socket, fetch, &apply_report/2)
   end
+
+  defp fetch_report(scope, child, :week, _date, _window, now) do
+    today = Child.local_today(child)
+    {:week, Reports.days(scope, child, Date.add(today, -6), today, now)}
+  end
+
+  defp fetch_report(scope, child, :trends, _date, window, now),
+    do: {:trends, Reports.summary(scope, child, window, now)}
+
+  defp fetch_report(scope, child, _view, date, _window, now),
+    do: {:today, Reports.day(scope, child, date || Child.local_today(child), now)}
+
+  defp apply_report(socket, {:week, days}),
+    do: assign(socket, days: days, day: nil, insights: nil)
+
+  defp apply_report(socket, {:trends, insights}) do
+    socket
+    |> assign(:insights, insights)
+    |> assign(:window_label, window_label(insights.totals.per_day))
+    |> assign(day: nil, days: nil)
+  end
+
+  defp apply_report(socket, {:today, day}),
+    do: assign(socket, day: day, days: nil, insights: nil)
 
   defp caption_for(_socket, nil), do: nil
 

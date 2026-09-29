@@ -90,6 +90,7 @@ defmodule TryggWeb do
       import TryggWeb.LogComponents
       import TryggWeb.ReportComponents
       import TryggWeb.RhythmComponents
+      import TryggWeb.SkeletonComponents
       import TryggWeb.GrowthComponents, only: [trend_chart: 1]
 
       # Common modules used in templates

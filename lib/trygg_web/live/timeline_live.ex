@@ -4,6 +4,7 @@ defmodule TryggWeb.TimelineLive do
   alias Trygg.Accounts.Scope
   alias Trygg.Families
   alias Trygg.Log
+  alias TryggWeb.Loading
 
   @limit 200
   @filters [nil, :feeding, :diaper, :sleep]
@@ -27,28 +28,35 @@ defmodule TryggWeb.TimelineLive do
           type="button"
           variant={if @filter == f, do: "primary", else: nil}
           size="sm"
-          phx-click="filter"
-          phx-value-type={f && to_string(f)}
+          phx-click={JS.push("filter", value: %{type: f && to_string(f)}, loading: "#log-entries")}
           class="shrink-0"
         >
           {filter_label(f)}
         </.button>
       </div>
 
-      <p :if={@entries_empty?} class="opacity-60 text-sm py-10 text-center">Nothing here yet.</p>
+      <.loadable
+        id="log-entries"
+        loaded={@loaded?}
+        failed={@load_failed?}
+        class="loading-dim"
+      >
+        <:skeleton><.entry_rows_skeleton count={8} show_date /></:skeleton>
+        <p :if={@entries_empty?} class="opacity-60 text-sm py-10 text-center">Nothing here yet.</p>
 
-      <div id="entries" phx-update="stream" class="divide-y divide-base-300">
-        <.entry_row
-          :for={{dom_id, entry} <- @streams.entries}
-          id={dom_id}
-          entry={entry}
-          unit_system={@unit_system}
-          tz={@current_child.timezone}
-          show_date
-          photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
-          on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
-        />
-      </div>
+        <div id="entries" phx-update="stream" class="divide-y divide-base-300">
+          <.entry_row
+            :for={{dom_id, entry} <- @streams.entries}
+            id={dom_id}
+            entry={entry}
+            unit_system={@unit_system}
+            tz={@current_child.timezone}
+            show_date
+            photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
+            on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
+          />
+        </div>
+      </.loadable>
 
       <.edit_modal
         :if={@editing}
@@ -78,10 +86,17 @@ defmodule TryggWeb.TimelineLive do
         max_file_size: Log.max_photo_bytes(),
         auto_upload: true
       )
+      |> assign(:entries_empty?, false)
+      |> stream(:entries, [])
+      |> Loading.init()
       |> load_entries()
 
     {:ok, socket}
   end
+
+  @impl true
+  def handle_async(:load, result, socket),
+    do: {:noreply, Loading.done(socket, result, &apply_entries/2)}
 
   @impl true
   def handle_info({:log, _action, _entry}, socket), do: {:noreply, load_entries(socket)}
@@ -146,6 +161,8 @@ defmodule TryggWeb.TimelineLive do
     {:noreply, socket |> assign(:filter, filter) |> load_entries()}
   end
 
+  def handle_event("retry_load", _params, socket), do: {:noreply, load_entries(socket)}
+
   def handle_event("edit", %{"id" => id}, socket) do
     entry = Log.get_entry!(socket.assigns.current_scope, id)
     params = entry_edit_params(entry, socket.assigns.current_child)
@@ -195,13 +212,21 @@ defmodule TryggWeb.TimelineLive do
 
   ## ------------------------------------------------------------------
 
+  # The first load goes through `TryggWeb.Loading` (skeleton, then a task);
+  # once the list is on screen, filter changes and realtime updates reload it
+  # in place.
   defp load_entries(socket) do
-    entries =
-      Log.list_entries(socket.assigns.current_scope, socket.assigns.current_child,
-        type: socket.assigns.filter,
-        limit: @limit
-      )
+    scope = socket.assigns.current_scope
+    child = socket.assigns.current_child
+    filter = socket.assigns.filter
+    fetch = fn -> Log.list_entries(scope, child, type: filter, limit: @limit) end
 
+    if socket.assigns.loaded?,
+      do: apply_entries(socket, fetch.()),
+      else: Loading.run(socket, fetch, &apply_entries/2)
+  end
+
+  defp apply_entries(socket, entries) do
     socket
     |> assign(:entries_empty?, entries == [])
     |> stream(:entries, entries, reset: true)

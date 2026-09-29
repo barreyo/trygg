@@ -31,6 +31,21 @@ defmodule TryggWeb.ConnCase do
     end
   end
 
+  @doc """
+  `Phoenix.LiveViewTest.live/2` for screens that fetch their data after
+  mount (see `TryggWeb.Loading`): waits for that first load, so the returned
+  `html` — and the view — show the real content instead of the skeleton.
+  Redirects and errors pass through unchanged.
+  """
+  defmacro live_loaded(conn, path) do
+    quote do
+      case Phoenix.LiveViewTest.live(unquote(conn), unquote(path)) do
+        {:ok, view, _html} -> {:ok, view, Phoenix.LiveViewTest.render_async(view)}
+        other -> other
+      end
+    end
+  end
+
   setup tags do
     Trygg.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}

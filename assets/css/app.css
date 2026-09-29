@@ -243,3 +243,44 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.6); }
 @media (min-width: 30rem) {
   dialog.sheet { margin: auto; }
 }
+
+/*
+ * Loading states — see `TryggWeb.Loading` / `TryggWeb.SkeletonComponents`.
+ * A skeleton waits a beat before fading in, so a quick load goes straight to
+ * the content without a ghost flashing past. Real content fades in once as
+ * it replaces the skeleton; an animation only runs when its element is
+ * inserted, so later realtime patches never replay it.
+ */
+@keyframes trygg-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.trygg-skeleton { animation: trygg-fade-in 300ms ease-out 150ms both; }
+.trygg-reveal { animation: trygg-fade-in 200ms ease-out both; }
+
+/*
+ * A region being refined in place (the Log filter, the Reports view tabs)
+ * dims while the server works on it — `JS.push(…, loading: "#region")` puts
+ * `.phx-click-loading` on it until the reply lands. Delayed, so a fast reply
+ * doesn't flicker.
+ */
+.loading-dim { transition: opacity 150ms ease; }
+.loading-dim.phx-click-loading { opacity: 0.55; transition-delay: 120ms; }
+
+/*
+ * Live navigation and patches: the outgoing page dims (again only if it's
+ * slow) and the tapped tab lights up straight away, so every tap gets an
+ * answer before the server's. `data-navigating` / `data-pending` are set in
+ * app.js.
+ */
+#main-content { transition: opacity 150ms ease; }
+html[data-navigating] #main-content { opacity: 0.6; transition-delay: 120ms; }
+[data-nav-tab][data-pending] { color: var(--color-primary); }
+nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trygg-skeleton, .trygg-reveal { animation: none; }
+  #main-content, .loading-dim { transition: none; }
+}

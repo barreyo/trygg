@@ -20,7 +20,7 @@ defmodule TryggWeb.ReportsLiveTest do
     child: child
   } do
     sibling = child_fixture(scope, %{name: "Sibling"})
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports")
 
     {:ok, switched, _html} =
       lv
@@ -36,7 +36,7 @@ defmodule TryggWeb.ReportsLiveTest do
     conn: conn,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=today")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=today")
 
     assert has_element?(lv, "#report-view")
     assert has_element?(lv, "#view-today")
@@ -50,7 +50,7 @@ defmodule TryggWeb.ReportsLiveTest do
     conn: conn,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
     assert has_element?(lv, "#section-sleep #day-night-def", "08:00")
     assert has_element?(lv, "#section-sleep #day-night-def", "20:00")
@@ -61,7 +61,7 @@ defmodule TryggWeb.ReportsLiveTest do
     conn: conn,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports")
 
     assert has_element?(lv, ~s(#download-pdf[href="/c/#{child.id}/reports.pdf?window=7"]))
     assert has_element?(lv, "#download-pdf[download]", "Download PDF report")
@@ -78,7 +78,7 @@ defmodule TryggWeb.ReportsLiveTest do
   end
 
   test "view buttons switch between trends, today, and week", %{conn: conn, child: child} do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports")
 
     assert has_element?(lv, "#report-trends")
     assert has_element?(lv, "#view-trends.btn-primary")
@@ -114,7 +114,7 @@ defmodule TryggWeb.ReportsLiveTest do
       })
     end
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
     assert has_element?(lv, "#sleep-heat")
     assert has_element?(lv, "#sleep-heat-hours", "00:00")
@@ -154,7 +154,7 @@ defmodule TryggWeb.ReportsLiveTest do
       })
     end
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
     assert has_element?(lv, "#wake-windows-table", "After morning")
     assert has_element?(lv, "#wake-windows-table", "Typical")
@@ -163,7 +163,7 @@ defmodule TryggWeb.ReportsLiveTest do
   end
 
   test "the sleep trend chart zooms and changes period", %{conn: conn, child: child} do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
     assert has_element?(lv, "#trend-period-7.btn-primary")
     assert has_element?(lv, "#trend-zoom-in[disabled]")
@@ -190,7 +190,7 @@ defmodule TryggWeb.ReportsLiveTest do
     conn: conn,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
     today = Child.local_today(child)
     iso = Date.to_iso8601(today)
 
@@ -203,7 +203,7 @@ defmodule TryggWeb.ReportsLiveTest do
   end
 
   test "day navigation walks backward and will not go past today", %{conn: conn, child: child} do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=today")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=today")
     assert has_element?(lv, "#day-next[disabled]")
 
     lv |> element("#day-prev") |> render_click()
@@ -216,7 +216,7 @@ defmodule TryggWeb.ReportsLiveTest do
   end
 
   test "tapping a week column opens that day in the today view", %{conn: conn, child: child} do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=week")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=week")
     today = Child.local_today(child)
     yesterday = Date.add(today, -1)
 
@@ -230,7 +230,7 @@ defmodule TryggWeb.ReportsLiveTest do
     scope: scope,
     child: child
   } do
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports")
     lv |> element("#change-day-night") |> render_click()
     assert has_element?(lv, "#day-night-form")
 
@@ -250,7 +250,7 @@ defmodule TryggWeb.ReportsLiveTest do
     %{child: child, member: member} = shared_child_fixture(:caregiver)
     conn = log_in_user(conn, member)
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports")
     assert has_element?(lv, "#day-night-def")
     refute has_element?(lv, "#change-day-night")
   end
@@ -266,13 +266,13 @@ defmodule TryggWeb.ReportsLiveTest do
         "ended_at" => now
       })
 
-    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=today")
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=today")
     assert has_element?(lv, "#sleep-#{entry.id}")
   end
 
   describe "trends: feeding, diapers and changes" do
     test "cards render their empty states without any logs", %{conn: conn, child: child} do
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#trend-feeding")
       assert has_element?(lv, "#feeding-sparse")
@@ -290,7 +290,7 @@ defmodule TryggWeb.ReportsLiveTest do
     } do
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#feeding-day-interval", "3h")
       assert has_element?(lv, "#feeding-per-day", "~")
@@ -311,7 +311,7 @@ defmodule TryggWeb.ReportsLiveTest do
       feed_days(scope, child, 5, every_hours: 3, last_hours_ago: 1, now: now)
       diaper_days(scope, child, 5, every_hours: 3, last_hours_ago: 1.25, now: now)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#feeding-duration", "15m")
       assert has_element?(lv, "#feeding-duration-trend", "Steady")
@@ -326,7 +326,7 @@ defmodule TryggWeb.ReportsLiveTest do
     } do
       feed_days(scope, child, 2, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#feed-length-sparse")
       refute has_element?(lv, "#feed-length-chart")
@@ -340,7 +340,7 @@ defmodule TryggWeb.ReportsLiveTest do
       # Fixture child is 20 days old → the "1 month" row: 6–8 feeds of 2–4 oz.
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#feeding-age-guide", "Typical for age")
       assert has_element?(lv, "#feeding-age-guide", "6–8 feeds of 60–120 ml")
@@ -356,7 +356,7 @@ defmodule TryggWeb.ReportsLiveTest do
       {:ok, child} = Trygg.Families.update_child(scope, child, %{birth_date: nil})
       feed_days(scope, child, 3, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#trend-feeding")
       refute has_element?(lv, "#feeding-age-guide")
@@ -365,7 +365,7 @@ defmodule TryggWeb.ReportsLiveTest do
     test "diapers build a baseline and today's count", %{conn: conn, scope: scope, child: child} do
       diaper_days(scope, child, 4, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
 
       assert has_element?(lv, "#diapers-wet-usual", "~8")
       assert has_element?(lv, "#diapers-dirty-usual", "~0")
@@ -378,7 +378,7 @@ defmodule TryggWeb.ReportsLiveTest do
       child = child_fixture(scope, %{timezone: midday_timezone()})
       feed_days(scope, child, 1, every_hours: 3, last_hours_ago: 1)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=today")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=today")
       assert has_element?(lv, "#report-today", "every ~3h")
       assert has_element?(lv, "#report-today", "ml")
     end
@@ -390,7 +390,7 @@ defmodule TryggWeb.ReportsLiveTest do
     } do
       sleep_days(scope, child, 20)
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
       assert has_element?(lv, "#changes-none")
       refute has_element?(lv, "#changes-sparse")
     end
@@ -409,7 +409,7 @@ defmodule TryggWeb.ReportsLiveTest do
 
       entry_fixture(scope, child, %{:type => :feeding, "started_at" => now})
 
-      {:ok, lv, _html} = live(conn, ~p"/c/#{child}/reports?view=trends")
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
       assert has_element?(lv, "#trend-alerts-no-wet-diaper")
     end
   end

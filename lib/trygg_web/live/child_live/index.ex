@@ -3,6 +3,7 @@ defmodule TryggWeb.ChildLive.Index do
 
   alias Trygg.Families
   alias Trygg.Families.Child
+  alias TryggWeb.Loading
 
   @impl true
   def render(%{live_action: :index} = assigns) do
@@ -14,44 +15,47 @@ defmodule TryggWeb.ChildLive.Index do
         </.button>
       </:actions>
 
-      <div :if={@children == []} class="text-center py-16 opacity-70">
-        <.icon name="hero-user-plus" class="size-10 mx-auto mb-3" />
-        <p>No children yet.</p>
-        <.button variant="primary" size="sm" navigate={~p"/children/new"} class="mt-4">
-          Add your first
-        </.button>
-      </div>
+      <.loadable id="children" loaded={@loaded?} failed={@load_failed?}>
+        <:skeleton><.child_cards_skeleton /></:skeleton>
+        <div :if={@children == []} class="text-center py-16 opacity-70">
+          <.icon name="hero-user-plus" class="size-10 mx-auto mb-3" />
+          <p>No children yet.</p>
+          <.button variant="primary" size="sm" navigate={~p"/children/new"} class="mt-4">
+            Add your first
+          </.button>
+        </div>
 
-      <ul id="children-list" class="space-y-3">
-        <li
-          :for={child <- @children}
-          id={"child-#{child.id}"}
-          class="flex items-stretch rounded-box border border-base-300 bg-base-200 overflow-hidden"
-        >
-          <.link
-            navigate={~p"/c/#{child}"}
-            class="flex-1 min-w-0 flex items-center gap-3 p-4 hover:bg-base-300 transition-colors"
+        <ul id="children-list" class="space-y-3">
+          <li
+            :for={child <- @children}
+            id={"child-#{child.id}"}
+            class="flex items-stretch rounded-box border border-base-300 bg-base-200 overflow-hidden"
           >
-            <div class="size-11 rounded-full bg-primary/15 text-primary grid place-items-center font-semibold shrink-0">
-              {String.first(child.name)}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="font-semibold truncate">{child.name}</div>
-              <div class="text-sm opacity-60">{age_line(child)}</div>
-            </div>
-            <span class="badge badge-ghost badge-sm">{child.role}</span>
-          </.link>
-          <.link
-            :if={child.role == :owner}
-            id={"edit-child-#{child.id}"}
-            navigate={~p"/children/#{child}/edit"}
-            class="flex items-center px-4 border-l border-base-300 hover:bg-base-300 transition-colors"
-            aria-label={"Edit #{child.name}"}
-          >
-            <.icon name="hero-pencil-square" class="size-5 opacity-60" />
-          </.link>
-        </li>
-      </ul>
+            <.link
+              navigate={~p"/c/#{child}"}
+              class="flex-1 min-w-0 flex items-center gap-3 p-4 hover:bg-base-300 transition-colors"
+            >
+              <div class="size-11 rounded-full bg-primary/15 text-primary grid place-items-center font-semibold shrink-0">
+                {String.first(child.name)}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold truncate">{child.name}</div>
+                <div class="text-sm opacity-60">{age_line(child)}</div>
+              </div>
+              <span class="badge badge-ghost badge-sm">{child.role}</span>
+            </.link>
+            <.link
+              :if={child.role == :owner}
+              id={"edit-child-#{child.id}"}
+              navigate={~p"/children/#{child}/edit"}
+              class="flex items-center px-4 border-l border-base-300 hover:bg-base-300 transition-colors"
+              aria-label={"Edit #{child.name}"}
+            >
+              <.icon name="hero-pencil-square" class="size-5 opacity-60" />
+            </.link>
+          </li>
+        </ul>
+      </.loadable>
     </Layouts.app>
     """
   end
@@ -200,8 +204,12 @@ defmodule TryggWeb.ChildLive.Index do
   def mount(_params, _session, socket) do
     if connected?(socket), do: Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
 
-    {:ok, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
+    {:ok, Loading.init(socket)}
   end
+
+  @impl true
+  def handle_async(:load, result, socket),
+    do: {:noreply, Loading.done(socket, result, &assign(&1, :children, &2))}
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -210,13 +218,15 @@ defmodule TryggWeb.ChildLive.Index do
 
   @impl true
   def handle_info({:children_changed, _user_id}, socket) do
-    {:noreply, assign(socket, :children, Families.list_children(socket.assigns.current_scope))}
+    {:noreply, load_children(socket)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp apply_action(socket, :index, _params) do
-    assign(socket, children: Families.list_children(socket.assigns.current_scope), child: nil)
+    socket
+    |> assign(:child, nil)
+    |> load_children()
   end
 
   defp apply_action(socket, :new, _params) do
@@ -263,6 +273,8 @@ defmodule TryggWeb.ChildLive.Index do
   defp cancel_path(_action, _child), do: ~p"/children"
 
   @impl true
+  def handle_event("retry_load", _params, socket), do: {:noreply, load_children(socket)}
+
   def handle_event("validate", %{"child" => params}, socket) do
     changeset = Families.change_child(socket.assigns.child, params) |> Map.put(:action, :validate)
     {:noreply, assign(socket, :form, to_form(changeset))}
@@ -418,4 +430,18 @@ defmodule TryggWeb.ChildLive.Index do
   ]
 
   defp timezone_options, do: @timezone_choices
+
+  # The first load goes through `TryggWeb.Loading` (skeleton, then a task);
+  # after that the list reloads in place. The add/edit forms don't show the
+  # list, so they never load it.
+  defp load_children(%{assigns: %{live_action: :index}} = socket) do
+    scope = socket.assigns.current_scope
+    fetch = fn -> Families.list_children(scope) end
+
+    if socket.assigns.loaded?,
+      do: assign(socket, :children, fetch.()),
+      else: Loading.run(socket, fetch, &assign(&1, :children, &2))
+  end
+
+  defp load_children(socket), do: socket
 end
