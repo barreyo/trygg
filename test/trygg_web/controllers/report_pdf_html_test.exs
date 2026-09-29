@@ -142,6 +142,13 @@ defmodule TryggWeb.ReportPdfHTMLTest do
         height_cm: 49.0
       })
 
+    at_birth =
+      measurement_fixture(scope, child, %{
+        measured_on: Date.add(today, -84),
+        weight_g: 1600.0,
+        height_cm: 41.0
+      })
+
     measurement_fixture(scope, child, %{measured_on: today, weight_g: 4200.0, height_cm: 54.0})
 
     doc = render(scope, child)
@@ -150,8 +157,16 @@ defmodule TryggWeb.ReportPdfHTMLTest do
     assert text(doc, "#pdf-height-percentile") =~ "corrected"
     assert text(doc, "#pdf-summary") =~ "on actual age"
     assert text(doc, "#pdf-measurements thead") =~ "Percentile (corr. / actual)"
-    assert text(doc, "#pdf-measurement-#{earlier.id}") =~ "corr. 0d"
-    assert text(doc, "#pdf-footer") =~ "first uses corrected age (born at 32+0 weeks)"
+    # Until 64 weeks the corrected percentile is read at postmenstrual age.
+    assert text(doc, "#pdf-measurement-#{earlier.id}") =~ "1mo · 40+0 wk"
+    # Before 40 weeks: postmenstrual age, and a corrected percentile from the
+    # preterm standard rather than a blank.
+    birth_row = text(doc, "#pdf-measurement-#{at_birth.id}")
+    assert birth_row =~ "32+0 wk"
+    refute birth_row =~ "— /"
+    assert text(doc, "#pdf-footer") =~ "INTERGROWTH-21st"
+    assert text(doc, "#pdf-footer") =~ "using corrected age (born at 32+0 weeks)"
+    assert text(doc, "#pdf-footer") =~ "first uses corrected age and the second actual age"
     assert text(doc, "#pdf-header") =~ "at 32+0 weeks"
     assert has?(doc, "#pdf-weight-gain-actual")
 

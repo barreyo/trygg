@@ -150,7 +150,7 @@ defmodule TryggWeb.VitalsLive do
             class="text-xs opacity-50 px-3 py-2 border-t border-base-300"
           >
             {@percentile_note} · 5th–95th
-            <span :if={@corrected_age} id="corrected-age">· corrected age {@corrected_age}</span>
+            <span :if={@corrected_age} id="corrected-age">· {@corrected_age}</span>
           </p>
           <p
             :if={@age_basis == :actual and @age_basis_toggle?}
@@ -160,14 +160,14 @@ defmodule TryggWeb.VitalsLive do
             Showing actual age, not corrected for birth at {Child.gestation_label(@current_child)}.
           </p>
           <p
-            :if={@percentile_hint == :before_term}
+            :if={@percentile_hint == :before_preterm_chart}
             id="percentile-hint"
             class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
           >
-            Born at {Child.gestation_label(@current_child)}, so percentiles start on {Calendar.strftime(
-              Child.term_date(@current_child),
+            Born at {Child.gestation_label(@current_child)}, so corrected percentiles begin on {Calendar.strftime(
+              Percentiles.first_date(@current_child),
               "%b %-d"
-            )}, when {@current_child.name} reaches 40 weeks — the CDC charts begin at a full-term birth.
+            )}, at 27 weeks — the earliest age the INTERGROWTH-21st preterm standard covers.
           </p>
           <p
             :if={@percentile_hint == :unspecified_sex}
@@ -770,7 +770,7 @@ defmodule TryggWeb.VitalsLive do
     socket
     |> assign(:chart_window_label, GrowthComponents.window_label(from, to))
     |> assign(:age_basis_toggle?, age_basis_toggle?(socket.assigns.current_child))
-    |> assign(:percentile_hint, Percentiles.hint(child))
+    |> assign(:percentile_hint, Percentiles.hint(child, hint_date(socket, child)))
     |> assign(:percentile_note, Percentiles.source_label(child))
     |> assign(:corrected_age, corrected_age_label(child))
     |> assign(
@@ -797,15 +797,39 @@ defmodule TryggWeb.VitalsLive do
 
   defp age_basis_toggle?(child), do: Child.born_early?(child) and Percentiles.available?(child)
 
+  # Explain missing percentiles for the earliest of today and the latest
+  # readings — a badge can be blank because its reading predates 27 weeks.
+  defp hint_date(socket, child) do
+    [socket.assigns.latest_weight, socket.assigns.latest_height]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&local_date(child, &1.measured_at))
+    |> Enum.min(Date, fn -> Child.local_today(child) end)
+  end
+
+  # "corrected age 1mo 2d", plus the postmenstrual age the preterm standard is
+  # read at while it applies (alone before the 40-week date).
   defp corrected_age_label(child) do
     today = Child.local_today(child)
+    pma = "#{Child.postmenstrual_age_label(child, today)} postmenstrual"
 
-    with true <- Percentiles.corrected?(child, today),
-         {y, m, d} <- Child.corrected_age(child, today) do
-      if y > 0, do: "#{y}y #{m}mo #{d}d", else: "#{m}mo #{d}d"
-    else
-      _ -> nil
+    cond do
+      not Percentiles.corrected?(child, today) ->
+        nil
+
+      Date.before?(today, Child.term_date(child)) ->
+        pma
+
+      Percentiles.standard_on(child, today) == :intergrowth ->
+        "#{corrected_age_text(child, today)} · #{pma}"
+
+      true ->
+        corrected_age_text(child, today)
     end
+  end
+
+  defp corrected_age_text(child, today) do
+    {y, m, d} = Child.corrected_age(child, today)
+    if y > 0, do: "corrected age #{y}y #{m}mo #{d}d", else: "corrected age #{m}mo #{d}d"
   end
 
   defp blank_params(today) do

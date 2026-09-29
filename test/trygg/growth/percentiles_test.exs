@@ -144,11 +144,12 @@ defmodule Trygg.Growth.PercentilesTest do
       )
     end
 
-    test "scores against a term baby born on the term date" do
+    test "after 64 weeks, scores against a term baby born on the term date" do
       baby = preterm()
       twin = child(sex: :male, birth_date: ~D[2026-02-26])
 
-      for date <- [~D[2026-02-26], ~D[2026-05-10], ~D[2027-06-01]] do
+      # 64+0 weeks is 2026-08-13 for a baby born at 32+0 on 2026-01-01.
+      for date <- [~D[2026-08-14], ~D[2026-11-10], ~D[2027-06-01]] do
         assert Percentiles.zscore(baby, :weight, 5000, date) ==
                  Percentiles.zscore(twin, :weight, 5000, date)
 
@@ -157,11 +158,51 @@ defmodule Trygg.Growth.PercentilesTest do
       end
     end
 
-    test "has no percentile before the term date" do
-      assert Percentiles.percentile(preterm(), :weight, 2000, ~D[2026-02-25]) == nil
-      assert Percentiles.value_at(preterm(), :weight, 50, ~D[2026-02-01]) == nil
-      assert Percentiles.hint(preterm(), ~D[2026-02-25]) == :before_term
-      assert Percentiles.hint(preterm(), ~D[2026-02-26]) == nil
+    test "before the term date, scores on the INTERGROWTH-21st preterm standard" do
+      baby = preterm()
+
+      # Born at 32+0: the published 32-week boy median is 1.60 kg / 41.1 cm.
+      assert Percentiles.percentile(baby, :weight, 1600, ~D[2026-01-01]) == 50
+      assert Percentiles.percentile(baby, :length, 41.1, ~D[2026-01-01]) == 50
+      # 36+0 weeks four weeks later: 2.50 kg is the median, 1.85 kg is −2 SD.
+      assert Percentiles.percentile(baby, :weight, 2500, ~D[2026-01-29]) == 50
+      assert_in_delta Percentiles.zscore(baby, :weight, 1850, ~D[2026-01-29]), -2.0, 1.0e-9
+      assert_in_delta Percentiles.value_at(baby, :weight, 50, ~D[2026-01-29]), 2500.0, 1.0e-6
+
+      assert Percentiles.hint(baby, ~D[2026-01-01]) == nil
+    end
+
+    test "on actual age a baby born early uses CDC from birth" do
+      baby = preterm()
+      term = child(sex: :male, birth_date: ~D[2026-01-01])
+
+      assert Percentiles.zscore(baby, :weight, 2500, ~D[2026-01-29], corrected: false) ==
+               Percentiles.zscore(term, :weight, 2500, ~D[2026-01-29])
+
+      assert Percentiles.percentile(Child.uncorrected(baby), :weight, 2500, ~D[2026-01-29]) ==
+               Percentiles.percentile(term, :weight, 2500, ~D[2026-01-29])
+    end
+
+    test "a baby born before 27 weeks has no percentile until 27+0" do
+      # Born at 25+0: 27+0 is 14 days later.
+      baby = preterm(gestational_age_days: 175)
+
+      assert Percentiles.first_date(baby) == ~D[2026-01-15]
+      assert Percentiles.percentile(baby, :weight, 700, ~D[2026-01-14]) == nil
+      assert Percentiles.hint(baby, ~D[2026-01-14]) == :before_preterm_chart
+      assert Percentiles.percentile(baby, :weight, 700, ~D[2026-01-15]) |> is_integer()
+      assert Percentiles.hint(baby, ~D[2026-01-15]) == nil
+    end
+
+    test "an early-term baby has percentiles every day from birth" do
+      # The 37+5 case: before this, days 0–15 were blank.
+      baby = preterm(gestational_age_days: 264)
+
+      for d <- 0..20 do
+        assert is_integer(
+                 Percentiles.percentile(baby, :weight, 3300, Date.add(~D[2026-01-01], d))
+               )
+      end
     end
 
     test "switches back to chronological age at two" do
@@ -199,22 +240,61 @@ defmodule Trygg.Growth.PercentilesTest do
       baby = preterm(gestational_age_days: 264)
       twin = child(sex: :male, birth_date: ~D[2026-01-17])
 
-      assert Percentiles.percentile(baby, :weight, 4000, ~D[2026-01-31]) ==
-               Percentiles.percentile(twin, :weight, 4000, ~D[2026-01-31])
+      assert Percentiles.percentile(baby, :weight, 7000, ~D[2026-09-01]) ==
+               Percentiles.percentile(twin, :weight, 7000, ~D[2026-09-01])
 
       assert Percentiles.source_label(baby, ~D[2026-01-31]) =~ "born at 37+5 weeks"
     end
 
-    test "curves start at the term date" do
-      [{first, _} | _] =
-        Percentiles.curve(preterm(), :weight, 50, ~D[2026-01-01], ~D[2026-06-01])
+    test "INTERGROWTH-21st runs to 64+0 weeks, then CDC takes over" do
+      baby = preterm()
 
-      assert first == ~D[2026-02-26]
+      assert Percentiles.handover_date(baby) == ~D[2026-08-14]
+      assert Percentiles.standard_on(baby, ~D[2026-02-26]) == :intergrowth
+      assert Percentiles.standard_on(baby, ~D[2026-08-13]) == :intergrowth
+      assert Percentiles.standard_on(baby, ~D[2026-08-14]) == :cdc
+      assert Percentiles.standard_on(Child.uncorrected(baby), ~D[2026-02-26]) == :cdc
+      assert Percentiles.handover_date(child(sex: :male)) == nil
+
+      # 64+0 weeks: the published boys' weight median is 7.79 kg.
+      assert Percentiles.percentile(baby, :weight, 7790, ~D[2026-08-13]) == 50
+    end
+
+    test "band_label names the standards in the charted window" do
+      baby = preterm()
+
+      assert Percentiles.band_label(baby, ~D[2026-01-01], ~D[2026-06-01]) == "INTERGROWTH-21st"
+
+      assert Percentiles.band_label(baby, ~D[2026-01-01], ~D[2026-12-01]) ==
+               "INTERGROWTH-21st → CDC"
+
+      assert Percentiles.band_label(baby, ~D[2026-09-01], ~D[2026-12-01]) == "CDC"
+
+      assert Percentiles.band_label(Child.uncorrected(baby), ~D[2026-01-01], ~D[2026-06-01]) ==
+               "CDC"
+    end
+
+    test "curves start at birth, or at 27+0 for a baby born earlier" do
+      [{first, _} | _] = Percentiles.curve(preterm(), :weight, 50, ~D[2025-12-01], ~D[2026-06-01])
+      assert first == ~D[2026-01-01]
+
+      [{first, _} | _] =
+        Percentiles.curve(
+          preterm(gestational_age_days: 175),
+          :weight,
+          50,
+          ~D[2025-12-01],
+          ~D[2026-06-01]
+        )
+
+      assert first == ~D[2026-01-15]
     end
 
     test "the source label mentions the correction while it applies" do
       assert Percentiles.source_label(preterm(), ~D[2026-06-01]) =~
                "corrected age (born at 32+0 weeks)"
+
+      assert Percentiles.source_label(preterm(), ~D[2026-06-01]) =~ "INTERGROWTH-21st"
 
       refute Percentiles.source_label(preterm(), ~D[2028-06-01]) =~ "corrected"
     end

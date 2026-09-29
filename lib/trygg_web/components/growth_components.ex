@@ -1,7 +1,8 @@
 defmodule TryggWeb.GrowthComponents do
   @moduledoc """
-  Weight / height trend charts with CDC percentile bands, shared by the Vitals
-  screen and the printable report.
+  Weight / height trend charts with percentile bands (CDC, or INTERGROWTH-21st
+  for a baby born early on corrected age), shared by the Vitals screen and the
+  printable report.
 
   `build_chart/8` turns measurements into SVG geometry; `trend_chart/1`
   renders it. Pass `static` to drop the tap targets and hint caption when the
@@ -45,7 +46,9 @@ defmodule TryggWeb.GrowthComponents do
         <h3 class="font-semibold text-sm">{@title}</h3>
         <span class="text-xs opacity-60">
           {@unit}
-          <span :if={@chart.show_bands} class="opacity-70"> · CDC 5th–95th</span>
+          <span :if={@chart.show_bands} id={"#{@id}-band-source"} class="opacity-70">
+            · {@chart.band_label} 5th–95th
+          </span>
         </span>
       </div>
       <p :if={@chart.empty?} class="opacity-60 text-sm py-8 text-center">Nothing to chart yet.</p>
@@ -114,6 +117,25 @@ defmodule TryggWeb.GrowthComponents do
             stroke-dasharray="4 3"
             points={@chart.p50}
           />
+          <g :if={@chart.handover} id={"#{@id}-handover"}>
+            <line
+              x1={@chart.handover.x}
+              y1="24"
+              x2={@chart.handover.x}
+              y2="126"
+              class="stroke-base-content/40"
+              stroke-width="1"
+              stroke-dasharray="1 2"
+            />
+            <text
+              x={@chart.handover.x + 2}
+              y="122"
+              class="fill-base-content/50"
+              font-size="7"
+            >
+              64 wk
+            </text>
+          </g>
           <text
             :for={label <- @chart.band_labels}
             x={label.x}
@@ -321,6 +343,8 @@ defmodule TryggWeb.GrowthComponents do
           p50: p50,
           p95: p95,
           band_labels: band_labels(svg_bands),
+          band_label: Percentiles.band_label(child, from, to),
+          handover: handover_marker(child, from, to, x_min, x_max),
           y_ticks: y_tick_marks(y_min, y_max),
           x_ticks: x_tick_marks(child, from, to, x_min, x_max),
           age_ticks: age_ticks(child, from, to, x_min, x_max),
@@ -442,7 +466,9 @@ defmodule TryggWeb.GrowthComponents do
     max = Enum.max(ys)
     span = max - min
     pad = if span == 0, do: max(abs(min) * 0.08, 0.1), else: span * 0.18
-    {min - pad, max + pad}
+    # Weight and length are never negative; a wide range (a preemie's first
+    # weeks through toddlerhood) would otherwise pad the axis below zero.
+    {max(min - pad, 0.0), max + pad}
   end
 
   defp y_tick_marks(min, max) do
@@ -491,6 +517,17 @@ defmodule TryggWeb.GrowthComponents do
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" · ")
+  end
+
+  # Where the bands switch from INTERGROWTH-21st to CDC, when that's in view.
+  defp handover_marker(child, from, to, x_min, x_max) do
+    with %Date{} = date <- Percentiles.handover_date(child),
+         :intergrowth <- Percentiles.standard_on(child, Date.add(date, -1)),
+         true <- Date.after?(date, from) and not Date.after?(date, to) do
+      %{x: scale_x(unix_on(child, date), x_min, x_max)}
+    else
+      _ -> nil
+    end
   end
 
   defp age_ticks(%Child{birth_date: nil}, _from, _to, _x_min, _x_max), do: []
