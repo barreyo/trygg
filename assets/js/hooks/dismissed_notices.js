@@ -5,6 +5,9 @@
 // local day (`data-day`), so a dismissed notice stays gone for the day but
 // returns tomorrow if it still applies. On mount the stored keys are pushed
 // back to the server; on each dismissal the server sends the full set to save.
+// A reconnect (a PWA resumed from the background) starts a fresh server process
+// with an empty set but keeps this element, so `mounted` doesn't run again:
+// `reconnected` pushes the stored keys back the same way.
 function read(storageKey, day) {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) || "null")
@@ -23,10 +26,18 @@ function write(storageKey, day, keys) {
 }
 
 const DismissedNotices = {
-  mounted() {
+  restore() {
     const {storageKey, day} = this.el.dataset
     const keys = read(storageKey, day)
     if (keys.length > 0) this.pushEvent("restore_notices", {keys})
+  },
+
+  reconnected() {
+    this.restore()
+  },
+
+  mounted() {
+    this.restore()
 
     this.handleEvent("notices:save", ({keys}) => {
       write(this.el.dataset.storageKey, this.el.dataset.day, keys)
