@@ -264,15 +264,16 @@ defmodule TryggWeb.VitalsLiveTest do
         gestation_weeks: 32
       })
 
-    term_twin = %{child | birth_date: Date.add(today, -28), gestational_age_days: nil}
-    p50_w = Trygg.Growth.Percentiles.value_at(term_twin, :weight, 50, today)
+    # 44+0 weeks postmenstrual: scored on INTERGROWTH-21st.
+    p50_w = Trygg.Growth.Percentiles.value_at(child, :weight, 50, today)
     measurement_fixture(scope, child, %{"weight_g" => p50_w})
 
     {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
 
     assert has_element?(lv, "#latest-weight-percentile", "50th")
     assert has_element?(lv, "#percentile-source", "corrected age (born at 32+0 weeks)")
-    assert has_element?(lv, "#corrected-age", "0mo 28d")
+    assert has_element?(lv, "#corrected-age", "corrected age 0mo 28d · 44+0 weeks postmenstrual")
+    assert has_element?(lv, "#weight-chart-band-source", "INTERGROWTH-21st 5th–95th")
     refute has_element?(lv, "#percentile-hint")
   end
 
@@ -289,8 +290,8 @@ defmodule TryggWeb.VitalsLiveTest do
         gestation_weeks: 32
       })
 
-    term_twin = %{child | birth_date: Date.add(today, -28), gestational_age_days: nil}
-    p50_w = Trygg.Growth.Percentiles.value_at(term_twin, :weight, 50, today)
+    # 44+0 weeks postmenstrual: scored on INTERGROWTH-21st.
+    p50_w = Trygg.Growth.Percentiles.value_at(child, :weight, 50, today)
     measurement_fixture(scope, child, %{"weight_g" => p50_w})
 
     actual =
@@ -313,6 +314,31 @@ defmodule TryggWeb.VitalsLiveTest do
     lv |> element("#age-basis-corrected") |> render_click()
     assert has_element?(lv, "#latest-weight-percentile", "50th")
     refute has_element?(lv, "#percentile-actual-age")
+  end
+
+  test "a chart spanning 64 weeks names both standards and marks the handover", %{
+    conn: conn,
+    scope: scope
+  } do
+    today = Date.utc_today()
+
+    # Born at 32+0 240 days ago: 64+0 weeks was 16 days ago.
+    child =
+      child_fixture(scope, %{sex: :female, birth_date: Date.add(today, -240), gestation_weeks: 32})
+
+    measurement_fixture(scope, child, %{measured_on: Date.add(today, -240), weight_g: 1500.0})
+    measurement_fixture(scope, child, %{measured_on: today, weight_g: 7200.0})
+
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+
+    assert has_element?(lv, "#weight-chart-band-source", "INTERGROWTH-21st → CDC")
+    assert has_element?(lv, "#weight-chart-handover")
+
+    lv |> element("#age-basis-actual") |> render_click()
+
+    assert has_element?(lv, "#weight-chart-band-source", "CDC 5th–95th")
+    refute has_element?(lv, "#weight-chart-band-source", "INTERGROWTH")
+    refute has_element?(lv, "#weight-chart-handover")
   end
 
   test "the age toggle only shows for babies born early", %{conn: conn, scope: scope} do
