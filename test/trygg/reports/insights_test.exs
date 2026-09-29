@@ -597,6 +597,26 @@ defmodule Trygg.Reports.InsightsTest do
     assert p.wake_pressure.state == :fresh
   end
 
+  test "a preterm baby's age prior uses corrected age" do
+    # 94 days old, born at 30+0 weeks: corrected age is 24 days.
+    preterm = %{child() | birth_date: ~D[2025-12-01], gestational_age_days: 210}
+    term_twin = %{child() | birth_date: ~D[2026-02-09]}
+    now = ~U[2026-03-05 07:30:00Z]
+    night = [sleep(50, ~U[2026-03-04 20:00:00Z], ~U[2026-03-05 07:00:00Z])]
+
+    %{prediction: p} =
+      Insights.summarize(preterm, [], Day.build(preterm, ~D[2026-03-05], night, now), now)
+
+    %{prediction: twin} =
+      Insights.summarize(term_twin, [], Day.build(term_twin, ~D[2026-03-05], night, now), now)
+
+    assert p.next_nap.source == :age_prior
+    assert p.next_nap.label == twin.next_nap.label
+    assert p.next_nap.range.label == twin.next_nap.range.label
+    # Earlier than the 08:14 a term 94-day-old gets.
+    assert p.next_nap.label < "08:14"
+  end
+
   test "prediction is asleep when a timer is running" do
     history =
       for date <- [~D[2026-03-01], ~D[2026-03-02], ~D[2026-03-03]] do

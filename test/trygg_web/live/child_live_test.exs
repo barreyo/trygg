@@ -33,6 +33,22 @@ defmodule TryggWeb.ChildLiveTest do
     assert path == ~p"/c/#{child}"
   end
 
+  test "records how early a child was born", %{conn: conn, scope: scope} do
+    child = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -30)})
+    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+
+    {:error, {:live_redirect, _}} =
+      lv
+      |> form("#child-form", child: %{gestation_weeks: "31", gestation_extra_days: "4"})
+      |> render_submit()
+
+    assert Families.get_child!(scope, child.id).gestational_age_days == 221
+
+    {:ok, lv, _html} = live(conn, ~p"/children/#{child}/edit")
+    assert has_element?(lv, "#child_gestation_weeks option[selected][value='31']")
+    assert has_element?(lv, "#child_gestation_extra_days option[selected][value='4']")
+  end
+
   test "the list updates live when a child is added from another session", %{
     conn: conn,
     scope: scope

@@ -93,7 +93,7 @@ defmodule Trygg.Reports.Feeding do
   # Population "typical for age" pattern, labelled as such so it is never
   # mistaken for the baby's own rhythm.
   defp typical(child, today) do
-    case Norms.typical_feeds(Norms.age_days(child, today)) do
+    case Norms.typical_feeds(Norms.corrected_age_days(child, today)) do
       nil -> nil
       typical -> Map.put(typical, :source, :age_prior)
     end
@@ -295,8 +295,7 @@ defmodule Trygg.Reports.Feeding do
 
   defp intake(%Child{} = child, today, per_day, %{grams: grams, date: %Date{} = weight_date})
        when is_number(grams) and grams > 0 do
-    age_days = Norms.age_days(child, today)
-    guide = Norms.intake_ml_per_kg(age_days)
+    guide = Norms.intake_ml_per_kg(Norms.corrected_age_days(child, today))
     weight_fresh? = Date.diff(today, weight_date) <= @weight_max_age_days
 
     complete =
