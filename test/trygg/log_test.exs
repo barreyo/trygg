@@ -1,6 +1,7 @@
 defmodule Trygg.LogTest do
   use Trygg.DataCase, async: true
 
+  alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Log.Entry
 
@@ -125,12 +126,14 @@ defmodule Trygg.LogTest do
       entry_fixture(scope, child, %{"data" => %{"kind" => "poo"}, :type => :diaper})
       entry_fixture(scope, child, %{"data" => %{"kind" => "mixed"}, :type => :diaper})
 
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      # Anchor the nap to the start of the child's day so it lies wholly inside
+      # today even when the test runs just after local midnight.
+      {day_start, _day_end} = Child.day_bounds(child)
 
       {:ok, _} =
         Log.create_entry(scope, child, :sleep, %{
-          "started_at" => DateTime.add(now, -3600, :second),
-          "ended_at" => now,
+          "started_at" => day_start,
+          "ended_at" => DateTime.add(day_start, 3600, :second),
           "data" => %{}
         })
 
@@ -140,20 +143,22 @@ defmodule Trygg.LogTest do
       assert summary.today.diapers == 3
       assert summary.today.diapers_wet == 2
       assert summary.today.diapers_dirty == 2
-      assert summary.today.sleep_seconds >= 3600
+      assert summary.today.sleep_seconds == 3600
       assert summary.last_feeding.type == :feeding
     end
 
     test "counts an in-progress sleep up to now", %{scope: scope, child: child} do
+      # One clock read; clamp to the start of the child's day so only today's
+      # part of the nap is expected just after local midnight.
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      {day_start, _day_end} = Child.day_bounds(child)
+      started_at = Enum.max([DateTime.add(now, -600, :second), day_start], DateTime)
+
       {:ok, _} =
-        Log.create_entry(scope, child, :sleep, %{
-          "started_at" =>
-            DateTime.add(DateTime.utc_now(), -600, :second) |> DateTime.truncate(:second),
-          "data" => %{}
-        })
+        Log.create_entry(scope, child, :sleep, %{"started_at" => started_at, "data" => %{}})
 
       summary = Log.summary(scope, child)
-      assert summary.today.sleep_seconds >= 590
+      assert summary.today.sleep_seconds >= DateTime.diff(now, started_at, :second)
       assert [%Entry{type: :sleep}] = summary.running
     end
   end
