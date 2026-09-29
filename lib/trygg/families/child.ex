@@ -10,6 +10,8 @@ defmodule Trygg.Families.Child do
   # A full-term pregnancy is 40+0 weeks; before 37+0 is preterm.
   @term_days 280
   @preterm_days 259
+  # Chronological age at which corrected age stops being used.
+  @correct_until_days 730
   @gestation_weeks 22..42
 
   schema "children" do
@@ -252,6 +254,16 @@ defmodule Trygg.Families.Child do
   end
 
   def term_date(%__MODULE__{}), do: nil
+
+  @doc """
+  Whether age-based comparisons on `date` should use corrected age: the child
+  was born preterm and is younger than two, the usual clinical convention.
+  """
+  def corrects_age?(%__MODULE__{birth_date: %Date{} = dob} = child, %Date{} = date) do
+    preterm?(child) and Date.diff(date, dob) < @correct_until_days
+  end
+
+  def corrects_age?(%__MODULE__{}, _date), do: false
 
   @doc ~S'Gestational age at birth as `"34+2 weeks"`, or `nil` when unknown.'
   def gestation_label(%__MODULE__{gestational_age_days: days}) when is_integer(days),

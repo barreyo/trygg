@@ -17,6 +17,10 @@ defmodule Trygg.Reports.Norms do
     * Nap count — `typical_nap_count/1` follows the widely published
       progression (4 → 3 → 2 → 1 across the first ~15 months); the 2→1 drop is
       readiness-driven, so the age boundary is only a prior.
+    * Sleep priors and prematurity — sleep consolidation tracks brain maturity
+      rather than time since birth, so the sleep priors above take
+      `sleep_age_days/2`: corrected age for a baby born preterm, until two
+      (AAP / HealthyChildren "Corrected Age For Preemies").
     * Intake — AAP / HealthyChildren "Amount and Schedule of Formula Feedings"
       (~150 ml/kg/day early, easing to 120–150 by 2–6 months and 100–120 once
       solids start); Better Health Victoria; Merck Manual.
@@ -47,6 +51,20 @@ defmodule Trygg.Reports.Norms do
   def age_days(%Child{birth_date: dob}, %Date{} = date) do
     days = Date.diff(date, dob)
     if days < 0, do: nil, else: days
+  end
+
+  @doc """
+  Age in days to look up the sleep priors (wake windows, nap counts, nap
+  floors and caps) with: corrected age while `Child.corrects_age?/2`, else
+  whole days since birth. A preterm baby before their term date counts as a
+  newborn (0). `nil` without a birth date.
+  """
+  def sleep_age_days(%Child{} = child, %Date{} = date) do
+    with days when is_integer(days) <- age_days(child, date) do
+      if Child.corrects_age?(child, date),
+        do: max(Date.diff(date, Child.term_date(child)), 0),
+        else: days
+    end
   end
 
   # {age_days, {low_minutes, high_minutes}} for the *midday* wake window,

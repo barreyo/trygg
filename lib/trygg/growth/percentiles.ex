@@ -25,8 +25,6 @@ defmodule Trygg.Growth.Percentiles do
   @type percentile :: pos_integer() | {:below, 1} | {:above, 99}
 
   @max_months 36.0
-  # Chronological age at which corrected age stops being used.
-  @correct_until_months 24
   @avg_days_per_month 30.4375
   @band_percentiles [5, 50, 95]
 
@@ -133,11 +131,7 @@ defmodule Trygg.Growth.Percentiles do
   the child was born preterm and is younger than two.
   """
   @spec corrected?(%Child{}, Date.t()) :: boolean()
-  def corrected?(%Child{birth_date: %Date{} = dob} = child, %Date{} = date) do
-    Child.preterm?(child) and Date.diff(date, dob) < @correct_until_months * @avg_days_per_month
-  end
-
-  def corrected?(_child, _date), do: false
+  def corrected?(%Child{} = child, %Date{} = date), do: Child.corrects_age?(child, date)
 
   @doc "The 5th, 50th, and 95th percentile lines used on the charts."
   @spec band_percentiles() :: [5 | 50 | 95]

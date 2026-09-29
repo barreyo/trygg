@@ -89,7 +89,7 @@ defmodule Trygg.Reports.Insights do
       wake_windows: weighted_wake_stats(weighted),
       morning_wake: clock_stat(child, Enum.map(recent, & &1.morning_wake), recent_ready?, false),
       bedtime: clock_stat(child, Enum.map(recent, & &1.bedtime), recent_ready?, true),
-      age_days: Norms.age_days(child, today.date)
+      sleep_age_days: Norms.sleep_age_days(child, today.date)
     }
 
     recent_stats = Map.put(recent_stats, :transition?, transition?(weighted, today.date))
@@ -891,7 +891,7 @@ defmodule Trygg.Reports.Insights do
   # prior; `0` only when we have neither.
   defp typical_nap_count(stats) do
     hist = stats.naps.count
-    prior = Norms.typical_nap_count(stats[:age_days])
+    prior = Norms.typical_nap_count(stats[:sleep_age_days])
 
     blended =
       cond do
@@ -920,7 +920,7 @@ defmodule Trygg.Reports.Insights do
   # via `by_ordinal`.
   defp wake_estimate(stats, ordinal, expected) do
     prior =
-      stats[:age_days]
+      stats[:sleep_age_days]
       |> Norms.wake_window_range()
       |> position_scaled_prior(ordinal, expected)
 
@@ -941,7 +941,7 @@ defmodule Trygg.Reports.Insights do
   defp adjust_for_last_nap(est, _last_nap, 0, _stats), do: est
 
   defp adjust_for_last_nap(%{typical: t, range: range} = est, last_nap, n_done, stats) do
-    floor = Norms.min_wake_window_seconds(stats[:age_days])
+    floor = Norms.min_wake_window_seconds(stats[:sleep_age_days])
 
     adj =
       case nap_median(stats, n_done) do
