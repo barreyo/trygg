@@ -112,6 +112,7 @@ defmodule TryggWeb.VitalsLive do
             </div>
           </div>
           <.chart_toolbar period={@chart_period} />
+          <.age_basis_toggle :if={@age_basis_toggle?} basis={@age_basis} />
         </div>
         <div class="divide-y divide-base-300">
           <.trend_chart
@@ -136,6 +137,13 @@ defmodule TryggWeb.VitalsLive do
         >
           {@percentile_note} · 5th–95th
           <span :if={@corrected_age} id="corrected-age">· corrected age {@corrected_age}</span>
+        </p>
+        <p
+          :if={@age_basis == :actual and @age_basis_toggle?}
+          id="percentile-actual-age"
+          class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+        >
+          Showing actual age, not corrected for birth at {Child.gestation_label(@current_child)}.
         </p>
         <p
           :if={@percentile_hint == :before_term}
@@ -391,6 +399,28 @@ defmodule TryggWeb.VitalsLive do
     """
   end
 
+  attr :basis, :atom, required: true
+
+  # Corrected vs actual age, so a caregiver can match whichever chart their
+  # pediatrician uses.
+  defp age_basis_toggle(assigns) do
+    ~H"""
+    <div id="age-basis" class="join w-full" role="group" aria-label="Age used for percentiles">
+      <button
+        :for={{basis, label} <- [corrected: "Corrected age", actual: "Actual age"]}
+        id={"age-basis-#{basis}"}
+        type="button"
+        phx-click="age_basis"
+        phx-value-basis={basis}
+        aria-pressed={to_string(@basis == basis)}
+        class={["join-item btn btn-sm flex-1 min-h-11", @basis == basis && "btn-primary"]}
+      >
+        {label}
+      </button>
+    </div>
+    """
+  end
+
   attr :form, :any, required: true
   attr :editing, :any, default: nil
   attr :unit_system, :atom, required: true
@@ -475,6 +505,7 @@ defmodule TryggWeb.VitalsLive do
       |> assign(:form, nil)
       |> assign(:editing, nil)
       |> assign(:chart_period, :all)
+      |> assign(:age_basis, :corrected)
       |> assign(:selected_point, nil)
       |> load_measurements()
 
@@ -617,6 +648,16 @@ defmodule TryggWeb.VitalsLive do
      |> rebuild_charts()}
   end
 
+  def handle_event("age_basis", %{"basis" => basis}, socket) do
+    basis = if basis == "actual", do: :actual, else: :corrected
+
+    {:noreply,
+     socket
+     |> assign(:age_basis, basis)
+     |> assign(:selected_point, nil)
+     |> load_measurements()}
+  end
+
   def handle_event("chart_zoom", %{"dir" => dir}, socket) do
     period = zoom(socket.assigns.chart_period, dir)
 
@@ -682,6 +723,7 @@ defmodule TryggWeb.VitalsLive do
   defp load_measurements(socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
+    scored = scored_child(socket)
     measurements = Growth.list_measurements(scope, child)
 
     weight = Growth.latest_weight(scope, child)
@@ -691,15 +733,15 @@ defmodule TryggWeb.VitalsLive do
     |> assign(:measurements, measurements)
     |> assign(:latest_weight, weight)
     |> assign(:latest_height, height)
-    |> assign(:weight_percentile, metric_percentile(weight, :weight_g, :weight, child))
-    |> assign(:height_percentile, metric_percentile(height, :height_cm, :length, child))
-    |> assign(:velocity, Velocity.summarize(child, measurements))
+    |> assign(:weight_percentile, metric_percentile(weight, :weight_g, :weight, scored))
+    |> assign(:height_percentile, metric_percentile(height, :height_cm, :length, scored))
+    |> assign(:velocity, Velocity.summarize(scored, measurements))
     |> assign(:growth_burst, Reports.growth_burst(scope, child))
     |> rebuild_charts()
   end
 
   defp rebuild_charts(socket) do
-    child = socket.assigns.current_child
+    child = scored_child(socket)
     units = socket.assigns.unit_system
     measurements = socket.assigns.measurements
     period = socket.assigns.chart_period
@@ -708,6 +750,7 @@ defmodule TryggWeb.VitalsLive do
 
     socket
     |> assign(:chart_window_label, GrowthComponents.window_label(from, to))
+    |> assign(:age_basis_toggle?, age_basis_toggle?(socket.assigns.current_child))
     |> assign(:percentile_hint, Percentiles.hint(child))
     |> assign(:percentile_note, Percentiles.source_label(child))
     |> assign(:corrected_age, corrected_age_label(child))
@@ -726,6 +769,14 @@ defmodule TryggWeb.VitalsLive do
       )
     )
   end
+
+  # The child as percentiles should see them under the chosen age basis.
+  defp scored_child(%{assigns: %{age_basis: :actual, current_child: child}}),
+    do: Child.uncorrected(child)
+
+  defp scored_child(socket), do: socket.assigns.current_child
+
+  defp age_basis_toggle?(child), do: Child.born_early?(child) and Percentiles.available?(child)
 
   defp corrected_age_label(child) do
     today = Child.local_today(child)
