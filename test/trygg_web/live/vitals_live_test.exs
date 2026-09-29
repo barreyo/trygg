@@ -276,6 +276,53 @@ defmodule TryggWeb.VitalsLiveTest do
     refute has_element?(lv, "#percentile-hint")
   end
 
+  test "an early baby's percentiles can switch between corrected and actual age", %{
+    conn: conn,
+    scope: scope
+  } do
+    today = Date.utc_today()
+
+    child =
+      child_fixture(scope, %{
+        sex: :female,
+        birth_date: Date.add(today, -84),
+        gestation_weeks: 32
+      })
+
+    term_twin = %{child | birth_date: Date.add(today, -28), gestational_age_days: nil}
+    p50_w = Trygg.Growth.Percentiles.value_at(term_twin, :weight, 50, today)
+    measurement_fixture(scope, child, %{"weight_g" => p50_w})
+
+    actual =
+      Trygg.Growth.Percentiles.percentile(Child.uncorrected(child), :weight, p50_w, today)
+      |> Trygg.Growth.Percentiles.format_percentile()
+
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+
+    assert has_element?(lv, "#age-basis-corrected[aria-pressed='true']")
+    assert has_element?(lv, "#latest-weight-percentile", "50th")
+
+    lv |> element("#age-basis-actual") |> render_click()
+
+    assert has_element?(lv, "#age-basis-actual[aria-pressed='true']")
+    assert has_element?(lv, "#latest-weight-percentile", actual)
+    assert has_element?(lv, "#percentile-actual-age", "32+0 weeks")
+    refute has_element?(lv, "#percentile-source", "corrected")
+    refute has_element?(lv, "#corrected-age")
+
+    lv |> element("#age-basis-corrected") |> render_click()
+    assert has_element?(lv, "#latest-weight-percentile", "50th")
+    refute has_element?(lv, "#percentile-actual-age")
+  end
+
+  test "the age toggle only shows for babies born early", %{conn: conn, scope: scope} do
+    today = Date.utc_today()
+    child = child_fixture(scope, %{sex: :male, birth_date: Date.add(today, -60)})
+
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/vitals")
+    refute has_element?(lv, "#age-basis")
+  end
+
   test "before a preterm baby's term date, explains when percentiles start", %{
     conn: conn,
     scope: scope

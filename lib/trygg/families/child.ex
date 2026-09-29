@@ -260,6 +260,13 @@ defmodule Trygg.Families.Child do
   def term_date(%__MODULE__{}), do: nil
 
   @doc """
+  The child with gestational age ignored, so percentiles and norms use actual
+  (chronological) age — for comparing with a chart that isn't corrected.
+  Display only; never persist the result.
+  """
+  def uncorrected(%__MODULE__{} = child), do: %{child | gestational_age_days: nil}
+
+  @doc """
   Whether age-based comparisons on `date` should use corrected age: the child
   was born before 39+0 weeks and is younger than two. Two is the usual
   clinical cut-off; correcting early-term (37–38 week) babies is a deliberate
