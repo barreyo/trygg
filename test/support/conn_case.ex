@@ -32,6 +32,14 @@ defmodule TryggWeb.ConnCase do
   end
 
   @doc """
+  `Phoenix.LiveViewTest.render_async/2` with room for a screen's first load
+  (see `TryggWeb.Loading`). The default 100ms isn't enough on a cold, busy CI
+  runner, and a longer wait costs nothing: it returns as soon as the load
+  lands.
+  """
+  def await_load(view), do: Phoenix.LiveViewTest.render_async(view, 5_000)
+
+  @doc """
   `Phoenix.LiveViewTest.live/2` for screens that fetch their data after
   mount (see `TryggWeb.Loading`): waits for that first load, so the returned
   `html` — and the view — show the real content instead of the skeleton.
@@ -40,7 +48,7 @@ defmodule TryggWeb.ConnCase do
   defmacro live_loaded(conn, path) do
     quote do
       case Phoenix.LiveViewTest.live(unquote(conn), unquote(path)) do
-        {:ok, view, _html} -> {:ok, view, Phoenix.LiveViewTest.render_async(view)}
+        {:ok, view, _html} -> {:ok, view, TryggWeb.ConnCase.await_load(view)}
         other -> other
       end
     end

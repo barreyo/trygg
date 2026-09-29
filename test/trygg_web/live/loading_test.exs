@@ -43,7 +43,7 @@ defmodule TryggWeb.LoadingTest do
   } do
     for {path, region, content} <- screens(child) do
       {:ok, lv, _html} = live(conn, path)
-      render_async(lv)
+      await_load(lv)
 
       assert has_element?(lv, "##{region}"), "expected #{region} on #{path}"
       assert has_element?(lv, content), "expected #{content} on #{path}"

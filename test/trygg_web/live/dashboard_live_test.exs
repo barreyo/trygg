@@ -93,7 +93,7 @@ defmodule TryggWeb.DashboardLiveTest do
         |> render_click()
         |> follow_redirect(conn, ~p"/children")
 
-      assert render_async(children_lv) =~ child.name
+      assert await_load(children_lv) =~ child.name
     end
 
     test "opens preferences from the dashboard", %{conn: conn, child: child} do
