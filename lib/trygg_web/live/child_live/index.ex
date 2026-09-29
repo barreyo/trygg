@@ -374,7 +374,7 @@ defmodule TryggWeb.ChildLive.Index do
       "Leave blank to work it out from the due date, " <>
         Calendar.strftime(child.expected_birth_date, "%b %-d") <> "."
     else
-      "For babies born before 37 weeks, growth percentiles use corrected age until age 2."
+      "For babies born before 39 weeks, growth, sleep and feeding guides use corrected age until age 2."
     end
   end
 

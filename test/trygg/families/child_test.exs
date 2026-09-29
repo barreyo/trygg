@@ -155,19 +155,24 @@ defmodule Trygg.Families.ChildTest do
       assert %{gestation_weeks: [_ | _]} = errors_on_cs(cs)
     end
 
-    test "preterm?, term_date and corrected_age" do
+    test "born_early?, term_date and corrected_age" do
       baby = %Child{timezone: "Etc/UTC", birth_date: ~D[2026-01-01], gestational_age_days: 224}
 
-      assert Child.preterm?(baby)
+      assert Child.born_early?(baby)
       assert Child.gestation_label(baby) == "32+0 weeks"
       assert Child.term_date(baby) == ~D[2026-02-26]
       assert Child.corrected_age(baby, ~D[2026-02-25]) == nil
       assert Child.corrected_age(baby, ~D[2026-04-01]) == {0, 1, 6}
 
-      term = %{baby | gestational_age_days: 270}
-      refute Child.preterm?(term)
+      # Early term (37+5) is corrected too; 39+0 and later isn't.
+      early_term = %{baby | gestational_age_days: 264}
+      assert Child.born_early?(early_term)
+      assert Child.term_date(early_term) == ~D[2026-01-17]
+
+      term = %{baby | gestational_age_days: 273}
+      refute Child.born_early?(term)
       assert Child.term_date(term) == nil
-      refute Child.preterm?(%{baby | gestational_age_days: nil})
+      refute Child.born_early?(%{baby | gestational_age_days: nil})
     end
 
     test "gestational_age_from_due_date/2" do
