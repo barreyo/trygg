@@ -7,6 +7,11 @@ defmodule Trygg.Families.Child do
   # PST/PDT automatically.
   @default_timezone "America/Los_Angeles"
 
+  # A full-term pregnancy is 40+0 weeks; before 37+0 is preterm.
+  @term_days 280
+  @preterm_days 259
+  @gestation_weeks 22..42
+
   schema "children" do
     field :name, :string
     field :birth_date, :date
@@ -14,6 +19,11 @@ defmodule Trygg.Families.Child do
     # Set while the child is still "expecting" — the due date. Cleared when a
     # caregiver confirms the real `birth_date`. See `expecting?/1`.
     field :expected_birth_date, :date
+    # Gestational age at birth in days (34+2 weeks = 240); `nil` when unknown
+    # or full term. Edited through the virtual weeks/days pair below.
+    field :gestational_age_days, :integer
+    field :gestation_weeks, :integer, virtual: true
+    field :gestation_extra_days, :integer, virtual: true
     field :sex, Ecto.Enum, values: @sexes, default: :unspecified
     field :timezone, :string, default: @default_timezone
     field :day_start, :time, default: ~T[08:00:00]
@@ -31,6 +41,7 @@ defmodule Trygg.Families.Child do
   @doc false
   def changeset(child, attrs) do
     child
+    |> with_gestation_fields()
     |> cast(attrs, [
       :name,
       :birth_date,
@@ -39,7 +50,9 @@ defmodule Trygg.Families.Child do
       :sex,
       :timezone,
       :day_start,
-      :night_start
+      :night_start,
+      :gestation_weeks,
+      :gestation_extra_days
     ])
     |> update_change(:name, &String.trim/1)
     |> validate_required([:name, :timezone, :day_start, :night_start])
@@ -47,9 +60,40 @@ defmodule Trygg.Families.Child do
     |> validate_timezone()
     |> validate_birth_date()
     |> validate_expected_birth_date()
+    |> put_gestational_age()
     |> truncate_time(:day_start)
     |> truncate_time(:night_start)
     |> validate_day_night()
+  end
+
+  # Seed the virtual weeks/days pair from the stored total so the form shows
+  # it and an untouched form doesn't register a change.
+  defp with_gestation_fields(%__MODULE__{gestational_age_days: days} = child)
+       when is_integer(days),
+       do: %{child | gestation_weeks: div(days, 7), gestation_extra_days: rem(days, 7)}
+
+  defp with_gestation_fields(child), do: child
+
+  defp put_gestational_age(changeset) do
+    if changed?(changeset, :gestation_weeks) or changed?(changeset, :gestation_extra_days) do
+      changeset =
+        changeset
+        |> validate_inclusion(:gestation_weeks, @gestation_weeks,
+          message: "must be between #{@gestation_weeks.first} and #{@gestation_weeks.last} weeks"
+        )
+        |> validate_inclusion(:gestation_extra_days, 0..6, message: "must be 0–6 days")
+
+      case get_field(changeset, :gestation_weeks) do
+        nil ->
+          put_change(changeset, :gestational_age_days, nil)
+
+        weeks ->
+          extra = get_field(changeset, :gestation_extra_days) || 0
+          put_change(changeset, :gestational_age_days, weeks * 7 + extra)
+      end
+    else
+      changeset
+    end
   end
 
   defp truncate_time(changeset, field) do
@@ -181,6 +225,51 @@ defmodule Trygg.Families.Child do
   defp overdue_phrase(days) when days < 60, do: "#{div(days + 3, 7)} weeks"
   defp overdue_phrase(days), do: "#{div(days, 30)} months"
 
+  @doc """
+  Gestational age at birth implied by a due date, in days, or `nil` when it
+  falls outside the range the form accepts (a due date that was never updated,
+  say).
+  """
+  def gestational_age_from_due_date(%Date{} = birth_date, %Date{} = due) do
+    days = @term_days - Date.diff(due, birth_date)
+    if div(days, 7) in @gestation_weeks, do: days
+  end
+
+  def gestational_age_from_due_date(_birth_date, _due), do: nil
+
+  @doc "Whether the child was born before 37+0 weeks."
+  def preterm?(%__MODULE__{gestational_age_days: days}) when is_integer(days),
+    do: days < @preterm_days
+
+  def preterm?(%__MODULE__{}), do: false
+
+  @doc """
+  The date a preterm child reached 40+0 weeks — where corrected age starts
+  counting from. `nil` for term children or without a birth date.
+  """
+  def term_date(%__MODULE__{birth_date: %Date{} = dob, gestational_age_days: days} = child) do
+    if preterm?(child), do: Date.add(dob, @term_days - days)
+  end
+
+  def term_date(%__MODULE__{}), do: nil
+
+  @doc ~S'Gestational age at birth as `"34+2 weeks"`, or `nil` when unknown.'
+  def gestation_label(%__MODULE__{gestational_age_days: days}) when is_integer(days),
+    do: "#{div(days, 7)}+#{rem(days, 7)} weeks"
+
+  def gestation_label(%__MODULE__{}), do: nil
+
+  @doc """
+  Age counted from `term_date/1` as `{years, months, days}`, or `nil` for term
+  children and before the term date.
+  """
+  def corrected_age(%__MODULE__{} = child, today \\ nil) do
+    with %Date{} = term <- term_date(child) do
+      today = today || local_today(child)
+      if Date.after?(term, today), do: nil, else: ymd_between(term, today)
+    end
+  end
+
   @doc "The best one-line caption for the child: their age, or their due date."
   def caption(%__MODULE__{} = child) do
     if expecting?(child), do: due_label(child), else: age_label(child)
@@ -305,6 +394,7 @@ defmodule Trygg.Families.Child do
   end
 
   def sexes, do: @sexes
+  def gestation_weeks, do: @gestation_weeks
   def default_timezone, do: @default_timezone
   def default_day_start, do: ~T[08:00:00]
   def default_night_start, do: ~T[20:00:00]

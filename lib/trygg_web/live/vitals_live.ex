@@ -135,6 +135,17 @@ defmodule TryggWeb.VitalsLive do
           class="text-xs opacity-50 px-3 py-2 border-t border-base-300"
         >
           {@percentile_note} · 5th–95th
+          <span :if={@corrected_age} id="corrected-age">· corrected age {@corrected_age}</span>
+        </p>
+        <p
+          :if={@percentile_hint == :before_term}
+          id="percentile-hint"
+          class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+        >
+          Born at {Child.gestation_label(@current_child)}, so percentiles start on {Calendar.strftime(
+            Child.term_date(@current_child),
+            "%b %-d"
+          )}, when {@current_child.name} reaches 40 weeks — the CDC charts begin at a full-term birth.
         </p>
         <p
           :if={@percentile_hint == :unspecified_sex}
@@ -699,6 +710,7 @@ defmodule TryggWeb.VitalsLive do
     |> assign(:chart_window_label, GrowthComponents.window_label(from, to))
     |> assign(:percentile_hint, Percentiles.hint(child))
     |> assign(:percentile_note, Percentiles.source_label(child))
+    |> assign(:corrected_age, corrected_age_label(child))
     |> assign(
       :weight_chart,
       GrowthComponents.build_chart(measurements, :weight_g, :weight, units, child, from, to,
@@ -713,6 +725,17 @@ defmodule TryggWeb.VitalsLive do
         chart_kind: "height"
       )
     )
+  end
+
+  defp corrected_age_label(child) do
+    today = Child.local_today(child)
+
+    with true <- Percentiles.corrected?(child, today),
+         {y, m, d} <- Child.corrected_age(child, today) do
+      if y > 0, do: "#{y}y #{m}mo #{d}d", else: "#{m}mo #{d}d"
+    else
+      _ -> nil
+    end
   end
 
   defp blank_params(today) do

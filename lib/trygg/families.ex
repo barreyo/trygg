@@ -150,9 +150,12 @@ defmodule Trygg.Families do
   defp reconcile_practice_mode(child, attrs, true = _was_expecting?) do
     changeset = Child.changeset(child, attrs)
 
-    # Confirming a birth date ends the wait — the due date is now meaningless.
+    # Confirming a birth date ends the wait. The due date goes, but first it
+    # tells us how early (or late) the baby came, unless the owner said.
     if Ecto.Changeset.get_field(changeset, :birth_date) do
-      Ecto.Changeset.put_change(changeset, :expected_birth_date, nil)
+      changeset
+      |> derive_gestational_age()
+      |> Ecto.Changeset.put_change(:expected_birth_date, nil)
     else
       changeset
     end
@@ -167,8 +170,23 @@ defmodule Trygg.Families do
       changeset
       |> Ecto.Changeset.put_change(:birth_date, nil)
       |> Ecto.Changeset.put_change(:birth_time, nil)
+      |> Ecto.Changeset.put_change(:gestational_age_days, nil)
     else
       changeset
+    end
+  end
+
+  defp derive_gestational_age(changeset) do
+    if Ecto.Changeset.get_field(changeset, :gestational_age_days) do
+      changeset
+    else
+      birth = Ecto.Changeset.get_field(changeset, :birth_date)
+      due = Ecto.Changeset.get_field(changeset, :expected_birth_date)
+
+      case Child.gestational_age_from_due_date(birth, due) do
+        nil -> changeset
+        days -> Ecto.Changeset.put_change(changeset, :gestational_age_days, days)
+      end
     end
   end
 

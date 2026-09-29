@@ -10,6 +10,11 @@ defmodule Trygg.Growth.Percentiles do
   Weight LMS values are in kilograms; length is in centimetres. Callers pass
   Trygg's canonical storage units (grams / centimetres).
 
+  For babies born preterm (before 37+0 weeks, see `Child.preterm?/1`) age is
+  corrected — counted from the date they reached 40+0 weeks — until they turn
+  two, the usual clinical convention. Before that term date the CDC charts
+  (which start at a full-term birth) don't apply and everything returns `nil`.
+
   Source: [CDC growth chart data files](https://www.cdc.gov/growthcharts/cdc-data-files.htm)
   (`wtageinf.csv`, `lenageinf.csv`).
   """
@@ -20,6 +25,8 @@ defmodule Trygg.Growth.Percentiles do
   @type percentile :: pos_integer() | {:below, 1} | {:above, 99}
 
   @max_months 36.0
+  # Chronological age at which corrected age stops being used.
+  @correct_until_months 24
   @avg_days_per_month 30.4375
   @band_percentiles [5, 50, 95]
 
@@ -87,17 +94,50 @@ defmodule Trygg.Growth.Percentiles do
   Why percentiles are unavailable, or `nil` when they can be computed.
 
   `:unspecified_sex` and `:no_birth_date` are the cases the UI explains.
+  `:before_term` means a preterm child hasn't reached their term date yet
+  (on `date`, defaulting to the child's local today).
   """
-  @spec hint(%Child{}) :: :unspecified_sex | :no_birth_date | nil
-  def hint(%Child{birth_date: nil}), do: :no_birth_date
-  def hint(%Child{sex: :unspecified}), do: :unspecified_sex
-  def hint(_), do: nil
+  @spec hint(%Child{}, Date.t() | nil) :: :unspecified_sex | :no_birth_date | :before_term | nil
+  def hint(child, date \\ nil)
+  def hint(%Child{birth_date: nil}, _date), do: :no_birth_date
+  def hint(%Child{sex: :unspecified}, _date), do: :unspecified_sex
 
-  @doc "Footnote for the growth card, or `nil` when charts don't apply."
-  @spec source_label(%Child{}) :: String.t() | nil
-  def source_label(%Child{sex: :female}), do: "CDC 2000 infant charts (girls), birth–36 months"
-  def source_label(%Child{sex: :male}), do: "CDC 2000 infant charts (boys), birth–36 months"
-  def source_label(_), do: nil
+  def hint(%Child{} = child, date) do
+    date = date || Child.local_today(child)
+    term = Child.term_date(child)
+    if term && Date.before?(date, term), do: :before_term
+  end
+
+  @doc """
+  Footnote for the growth card, or `nil` when charts don't apply. Mentions the
+  age correction while it's in effect on `date` (defaults to local today).
+  """
+  @spec source_label(%Child{}, Date.t() | nil) :: String.t() | nil
+  def source_label(child, date \\ nil)
+
+  def source_label(%Child{sex: sex} = child, date) when sex in [:female, :male] do
+    chart =
+      if sex == :female,
+        do: "CDC 2000 infant charts (girls), birth–36 months",
+        else: "CDC 2000 infant charts (boys), birth–36 months"
+
+    if corrected?(child, date || Child.local_today(child)),
+      do: "#{chart}, using corrected age (born at #{Child.gestation_label(child)})",
+      else: chart
+  end
+
+  def source_label(_child, _date), do: nil
+
+  @doc """
+  Whether percentiles on `date` use corrected rather than chronological age:
+  the child was born preterm and is younger than two.
+  """
+  @spec corrected?(%Child{}, Date.t()) :: boolean()
+  def corrected?(%Child{birth_date: %Date{} = dob} = child, %Date{} = date) do
+    Child.preterm?(child) and Date.diff(date, dob) < @correct_until_months * @avg_days_per_month
+  end
+
+  def corrected?(_child, _date), do: false
 
   @doc "The 5th, 50th, and 95th percentile lines used on the charts."
   @spec band_percentiles() :: [5 | 50 | 95]
@@ -126,17 +166,21 @@ defmodule Trygg.Growth.Percentiles do
   Z-score (standard deviations from the median for age) of a canonical
   measurement, or `nil` when charts don't apply. Unlike `percentile/4` this is
   not clipped, so differences between two readings stay meaningful.
+
+  Pass `corrected: boolean` to pin the age basis instead of choosing it from
+  `date` — comparing two readings either side of the second birthday on
+  different bases would show a jump that isn't growth.
   """
-  @spec zscore(%Child{}, kind, number | nil, Date.t() | nil) :: float() | nil
-  def zscore(child, kind, value, date \\ nil)
+  @spec zscore(%Child{}, kind, number | nil, Date.t() | nil, keyword()) :: float() | nil
+  def zscore(child, kind, value, date \\ nil, opts \\ [])
 
-  def zscore(_child, _kind, nil, _date), do: nil
+  def zscore(_child, _kind, nil, _date, _opts), do: nil
 
-  def zscore(%Child{} = child, kind, value, date)
+  def zscore(%Child{} = child, kind, value, date, opts)
       when is_number(value) and kind in [:weight, :length] do
     date = date || Child.local_today(child)
 
-    with %{l: l, m: m, s: s} <- lms(child, kind, date) do
+    with %{l: l, m: m, s: s} <- lms(child, kind, date, opts[:corrected]) do
       z_score(to_lms_unit(kind, value), l, m, s)
     end
   end
@@ -145,11 +189,14 @@ defmodule Trygg.Growth.Percentiles do
   @spec percentile_from_z(float() | nil) :: percentile() | nil
   def percentile_from_z(z), do: z_to_percentile(z)
 
-  @doc "Canonical value at an arbitrary z-score on `date`, or `nil`."
-  @spec value_at_z(%Child{}, kind, float(), Date.t()) :: float() | nil
-  def value_at_z(%Child{} = child, kind, z, %Date{} = date)
+  @doc """
+  Canonical value at an arbitrary z-score on `date`, or `nil`. Takes the same
+  `:corrected` option as `zscore/5`.
+  """
+  @spec value_at_z(%Child{}, kind, float(), Date.t(), keyword()) :: float() | nil
+  def value_at_z(%Child{} = child, kind, z, %Date{} = date, opts \\ [])
       when kind in [:weight, :length] and is_number(z) do
-    with %{l: l, m: m, s: s} <- lms(child, kind, date),
+    with %{l: l, m: m, s: s} <- lms(child, kind, date, opts[:corrected]),
          raw when is_number(raw) <- value_from_z(z, l, m, s) do
       from_lms_unit(kind, raw)
     end
@@ -180,7 +227,8 @@ defmodule Trygg.Growth.Percentiles do
 
   @doc """
   Sampled `{date, canonical_value}` points along a percentile curve, clipped to
-  birth–36 months and to `[from, to]`.
+  birth (or the term date, for a preterm child) through 36 months and to
+  `[from, to]`.
   """
   @spec curve(%Child{}, kind, pos_integer(), Date.t(), Date.t()) :: [{Date.t(), float()}]
   def curve(%Child{} = child, kind, percentile, %Date{} = from, %Date{} = to)
@@ -216,8 +264,9 @@ defmodule Trygg.Growth.Percentiles do
     end
   end
 
-  defp curve_span(%Child{birth_date: dob}, from, to) do
-    start = if Date.before?(from, dob), do: dob, else: from
+  defp curve_span(%Child{birth_date: dob} = child, from, to) do
+    first = Child.term_date(child) || dob
+    start = if Date.before?(from, first), do: first, else: from
     stop = min_date(to, shift_years(dob, 3))
     {start, stop}
   end
@@ -230,20 +279,31 @@ defmodule Trygg.Growth.Percentiles do
     Date.new!(new_year, month, min(day, last))
   end
 
-  defp lms(%Child{sex: sex} = child, kind, date) when sex in [:female, :male] do
-    with months when is_float(months) <- age_months(child, date) do
+  defp lms(child, kind, date, corrected \\ nil)
+
+  defp lms(%Child{sex: sex} = child, kind, date, corrected) when sex in [:female, :male] do
+    with months when is_float(months) <- age_months(child, date, corrected) do
       interpolate_lms(@tables[kind][sex], months)
     end
   end
 
-  defp lms(_child, _kind, _date), do: nil
+  defp lms(_child, _kind, _date, _corrected), do: nil
 
-  defp age_months(%Child{birth_date: nil}, _date), do: nil
+  defp age_months(%Child{birth_date: nil}, _date, _corrected), do: nil
 
-  defp age_months(%Child{birth_date: dob}, %Date{} = date) do
-    days = Date.diff(date, dob)
+  # `corrected` is `nil` to pick the basis from `date`, or a boolean to force
+  # it (still only for preterm children).
+  defp age_months(%Child{birth_date: dob} = child, %Date{} = date, corrected) do
+    corrected? =
+      if is_nil(corrected),
+        do: corrected?(child, date),
+        else: corrected and Child.preterm?(child)
+
+    start = if corrected?, do: Child.term_date(child), else: dob
+    days = Date.diff(date, start)
 
     cond do
+      Date.before?(date, dob) -> nil
       days < 0 -> nil
       days / @avg_days_per_month > @max_months -> nil
       true -> days / @avg_days_per_month

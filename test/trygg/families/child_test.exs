@@ -126,4 +126,55 @@ defmodule Trygg.Families.ChildTest do
       assert %{birth_date: ["can't be in the future"]} = errors_on_cs(cs)
     end
   end
+
+  describe "gestational age" do
+    test "weeks and days combine into gestational_age_days" do
+      cs =
+        Child.changeset(%Child{}, base_attrs(%{gestation_weeks: "34", gestation_extra_days: "2"}))
+
+      assert cs.valid?
+      assert Ecto.Changeset.get_change(cs, :gestational_age_days) == 240
+    end
+
+    test "clearing the weeks clears the stored value" do
+      cs = Child.changeset(%Child{gestational_age_days: 240}, base_attrs(%{gestation_weeks: ""}))
+      assert Ecto.Changeset.get_change(cs, :gestational_age_days, :unchanged) == nil
+    end
+
+    test "an untouched form keeps the stored value without a change" do
+      child = %Child{gestational_age_days: 240}
+      cs = Child.changeset(child, base_attrs(%{gestation_weeks: "34", gestation_extra_days: "2"}))
+
+      assert Ecto.Changeset.get_field(cs, :gestation_weeks) == 34
+      refute Map.has_key?(cs.changes, :gestational_age_days)
+    end
+
+    test "rejects weeks outside the chart range" do
+      cs = Child.changeset(%Child{}, base_attrs(%{gestation_weeks: "18"}))
+      refute cs.valid?
+      assert %{gestation_weeks: [_ | _]} = errors_on_cs(cs)
+    end
+
+    test "preterm?, term_date and corrected_age" do
+      baby = %Child{timezone: "Etc/UTC", birth_date: ~D[2026-01-01], gestational_age_days: 224}
+
+      assert Child.preterm?(baby)
+      assert Child.gestation_label(baby) == "32+0 weeks"
+      assert Child.term_date(baby) == ~D[2026-02-26]
+      assert Child.corrected_age(baby, ~D[2026-02-25]) == nil
+      assert Child.corrected_age(baby, ~D[2026-04-01]) == {0, 1, 6}
+
+      term = %{baby | gestational_age_days: 270}
+      refute Child.preterm?(term)
+      assert Child.term_date(term) == nil
+      refute Child.preterm?(%{baby | gestational_age_days: nil})
+    end
+
+    test "gestational_age_from_due_date/2" do
+      assert Child.gestational_age_from_due_date(~D[2026-01-01], ~D[2026-02-26]) == 224
+      assert Child.gestational_age_from_due_date(~D[2026-01-10], ~D[2026-01-03]) == 287
+      # A due date that can't be right (a year out) gives nothing.
+      assert Child.gestational_age_from_due_date(~D[2026-01-01], ~D[2027-01-01]) == nil
+    end
+  end
 end

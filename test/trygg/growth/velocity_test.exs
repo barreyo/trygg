@@ -132,4 +132,30 @@ defmodule Trygg.Growth.VelocityTest do
     with_birth = [measurement(1, fresh.birth_date, 3500.0)]
     refute Velocity.summarize(fresh, with_birth).prompt_birth_weight?
   end
+
+  test "a preterm child turning two doesn't slide for the switch to chronological age" do
+    # Born at 28+0 weeks, so corrected age runs 12 weeks behind until age two.
+    baby = child(sex: :male, gestational_age_days: 196)
+    before_two = ~D[2027-12-10]
+    after_two = ~D[2028-01-10]
+
+    # Tracking the corrected-age median exactly across the birthday.
+    on_track = fn date -> Percentiles.value_at_z(baby, :weight, 0.0, date, corrected: true) end
+
+    measurements = [
+      measurement(1, before_two, on_track.(before_two)),
+      measurement(2, after_two, on_track.(after_two))
+    ]
+
+    # Scored on mixed bases this would look like a percentile slide.
+    mixed =
+      Percentiles.zscore(baby, :weight, on_track.(after_two), after_two) -
+        Percentiles.zscore(baby, :weight, on_track.(before_two), before_two)
+
+    assert mixed < -0.25
+
+    %{velocity: velocity} = Velocity.summarize(baby, measurements)
+    assert_in_delta velocity.delta_z, 0.0, 0.1
+    refute velocity.percentile_drop?
+  end
 end

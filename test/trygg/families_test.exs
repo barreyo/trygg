@@ -131,6 +131,8 @@ defmodule Trygg.FamiliesTest do
 
       refute Child.expecting?(born)
       assert born.expected_birth_date == nil
+      # Due in 30 days → born at 35+5 weeks.
+      assert born.gestational_age_days == 250
 
       assert_receive {:child_born, %Child{} = broadcasted}
       assert broadcasted.id == child.id
@@ -139,6 +141,18 @@ defmodule Trygg.FamiliesTest do
       assert Trygg.Log.list_entries(scope, born) == []
       assert Trygg.Repo.get(Trygg.Log.Entry, entry.id) == nil
       assert Trygg.Growth.list_measurements(scope, born) == []
+    end
+
+    test "a gestational age given at birth wins over the due date",
+         %{scope: scope, child: child} do
+      assert {:ok, born} =
+               Families.update_child(scope, child, %{
+                 birth_date: Date.utc_today(),
+                 gestation_weeks: 33,
+                 gestation_extra_days: 1
+               })
+
+      assert born.gestational_age_days == 232
     end
 
     test "editing other fields while still expecting keeps the practice log", %{
@@ -163,7 +177,8 @@ defmodule Trygg.FamiliesTest do
       child =
         child_fixture(scope, %{
           birth_date: Date.add(Date.utc_today(), -10),
-          birth_time: ~T[12:00:00]
+          birth_time: ~T[12:00:00],
+          gestation_weeks: 34
         })
 
       entry = Trygg.LogFixtures.entry_fixture(scope, child, %{type: :diaper})
@@ -178,6 +193,7 @@ defmodule Trygg.FamiliesTest do
       assert Child.expecting?(expecting)
       assert expecting.birth_date == nil
       assert expecting.birth_time == nil
+      assert expecting.gestational_age_days == nil
 
       assert_receive {:child_updated, %Child{} = broadcasted}
       assert broadcasted.id == child.id

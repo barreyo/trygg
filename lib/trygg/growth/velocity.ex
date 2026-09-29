@@ -85,13 +85,16 @@ defmodule Trygg.Growth.Velocity do
     gain = latest.grams - prior.grams
     per_day = gain / days
 
-    z_now = Percentiles.zscore(child, :weight, latest.grams, latest.date)
-    z_prev = Percentiles.zscore(child, :weight, prior.grams, prior.date)
+    # Score both readings on the latest one's age basis, so a preterm child
+    # turning two (corrected → chronological age) doesn't read as a drop.
+    basis = [corrected: Percentiles.corrected?(child, latest.date)]
+    z_now = Percentiles.zscore(child, :weight, latest.grams, latest.date, basis)
+    z_prev = Percentiles.zscore(child, :weight, prior.grams, prior.date, basis)
     delta_z = if is_number(z_now) and is_number(z_prev), do: z_now - z_prev
 
     expected =
       if is_number(z_prev) do
-        case Percentiles.value_at_z(child, :weight, z_prev, latest.date) do
+        case Percentiles.value_at_z(child, :weight, z_prev, latest.date, basis) do
           nil -> nil
           held -> held - prior.grams
         end

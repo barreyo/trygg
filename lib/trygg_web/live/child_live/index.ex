@@ -108,6 +108,22 @@ defmodule TryggWeb.ChildLive.Index do
         <% else %>
           <.input field={@form[:birth_date]} type="date" label="Birth date" />
           <.input field={@form[:birth_time]} type="time" label="Birth time (optional)" />
+          <div class="grid grid-cols-[2fr_1fr] gap-2">
+            <.input
+              field={@form[:gestation_weeks]}
+              type="select"
+              label="Born at (optional)"
+              prompt="Full term / not sure"
+              options={Enum.map(Child.gestation_weeks(), &{"#{&1} weeks", &1})}
+            />
+            <.input
+              field={@form[:gestation_extra_days]}
+              type="select"
+              label="+ days"
+              options={Enum.map(0..6, &{"+#{&1}", &1})}
+            />
+          </div>
+          <p id="gestation-help" class="text-xs opacity-60 -mt-2">{gestation_help(@child)}</p>
           <p
             :if={@live_action == :edit and Child.expecting?(@child)}
             class="text-xs text-warning -mt-2"
@@ -351,6 +367,15 @@ defmodule TryggWeb.ChildLive.Index do
           "everything logged so far becomes practice data — it's removed when you next " <>
           "confirm the birth.",
       else: false
+  end
+
+  defp gestation_help(%Child{} = child) do
+    if Child.expecting?(child) do
+      "Leave blank to work it out from the due date, " <>
+        Calendar.strftime(child.expected_birth_date, "%b %-d") <> "."
+    else
+      "For babies born before 37 weeks, growth percentiles use corrected age until age 2."
+    end
   end
 
   defp age_line(%Child{} = child) do
