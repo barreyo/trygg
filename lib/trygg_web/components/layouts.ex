@@ -17,6 +17,10 @@ defmodule TryggWeb.Layouts do
   Renders the app shell: a compact top bar, the page content in a phone-width
   column with safe-area padding, and a bottom tab bar for thumb navigation.
 
+  On larger screens child pages trade the bottom tab bar for a sidebar (`lg`),
+  and pages that pass `wide` get a wider column (from `md`) to lay their cards
+  out side by side — see `columns/1`.
+
   ## Examples
 
       <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -49,6 +53,10 @@ defmodule TryggWeb.Layouts do
   attr :subtitle, :string, default: nil, doc: "smaller line under the title, e.g. the child's age"
   attr :back, :string, default: nil, doc: "optional path for a back arrow in the top bar"
 
+  attr :wide, :boolean,
+    default: false,
+    doc: "widen the content column on tablet/desktop, for pages laid out with `columns/1`"
+
   slot :inner_block, required: true
   slot :actions, doc: "optional controls rendered at the right of the top bar"
 
@@ -66,16 +74,33 @@ defmodule TryggWeb.Layouts do
         |> assign(:swipe_next, nil)
       end
 
+    assigns =
+      assign(assigns, :column_class, [
+        "mx-auto w-full max-w-md",
+        assigns.wide && "md:max-w-5xl"
+      ])
+
     ~H"""
-    <div class="min-h-dvh flex flex-col bg-base-100 text-base-content">
+    <div class={[
+      "min-h-dvh flex flex-col bg-base-100 text-base-content",
+      @current_child && "lg:pl-60"
+    ]}>
+      <.side_nav
+        :if={@current_child}
+        current_child={@current_child}
+        current_tab={@current_tab}
+      />
+
       <header class="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 pt-[env(safe-area-inset-top)]">
-        <div class="mx-auto max-w-md w-full flex items-center gap-2 px-4 min-h-14 py-1.5">
+        <div class={[@column_class, "flex items-center gap-2 px-4 min-h-14 py-1.5"]}>
+          <%!-- On a tab page the back arrow only leads Home, which the sidebar
+               already offers on desktop. --%>
           <.button
             :if={@back}
             variant="ghost"
             size="sm"
             navigate={@back}
-            class="btn-circle -ml-2"
+            class={["btn-circle -ml-2", @current_tab && "lg:hidden"]}
             aria-label="Back"
           >
             <.icon name="hero-chevron-left" class="size-5" />
@@ -127,8 +152,9 @@ defmodule TryggWeb.Layouts do
         id="main-content"
         phx-hook={@child_switcher && "ChildSwipe"}
         class={[
-          "flex-1 mx-auto max-w-md w-full px-4 py-4",
-          if(@current_child, do: "pb-28", else: "pb-8")
+          @column_class,
+          "flex-1 px-4 py-4",
+          if(@current_child, do: "pb-28 lg:pb-8", else: "pb-8")
         ]}
       >
         <.demo_banner :if={@current_child && Child.expecting?(@current_child)} child={@current_child} />
@@ -139,9 +165,9 @@ defmodule TryggWeb.Layouts do
         <.install_prompt :if={@current_scope && @current_scope.user} />
       </main>
 
-      <%!-- The tab bar is child-scoped. Account-level pages (children, preferences,
-           account) are secondary screens reached from the ⋮ menu and exited via
-           the back arrow, so they don't show a tab bar. --%>
+      <%!-- The tab bar (sidebar on desktop) is child-scoped. Account-level pages
+           (children, preferences, account) are secondary screens reached from
+           the ⋮ menu and exited via the back arrow, so they don't show a tab bar. --%>
       <.bottom_nav
         :if={@current_child}
         current_child={@current_child}
@@ -149,6 +175,35 @@ defmodule TryggWeb.Layouts do
       />
 
       <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  @doc """
+  Lays a `wide` page out in two columns from `md` up, each about a phone's
+  width so cards and charts keep the proportions they were designed for. On
+  phones the columns simply stack, left first.
+
+  The columns are separate grid cells, so a top margin on the first block of
+  `right` no longer collapses away — zero it from `md` (`md:mt-0`).
+
+  ## Examples
+
+      <Layouts.columns id="vitals-columns">
+        <:left>…stats…</:left>
+        <:right>…charts…</:right>
+      </Layouts.columns>
+  """
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+  slot :left, required: true
+  slot :right, required: true
+
+  def columns(assigns) do
+    ~H"""
+    <div id={@id} class={["md:grid md:grid-cols-2 md:items-start md:gap-6", @class]}>
+      <div class="min-w-0">{render_slot(@left)}</div>
+      <div class="min-w-0">{render_slot(@right)}</div>
     </div>
     """
   end
@@ -236,9 +291,9 @@ defmodule TryggWeb.Layouts do
     ~H"""
     <nav
       id="bottom-nav"
-      class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)]"
+      class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <div class="mx-auto max-w-md grid grid-cols-4 text-center text-xs">
+      <div class="mx-auto max-w-md md:max-w-lg grid grid-cols-4 text-center text-xs">
         <.nav_item
           navigate={~p"/c/#{@current_child}"}
           icon="hero-home"
@@ -269,6 +324,83 @@ defmodule TryggWeb.Layouts do
         />
       </div>
     </nav>
+    """
+  end
+
+  # Desktop counterpart of `bottom_nav/1`: the same four tabs down a fixed left
+  # rail, since a bar pinned to the bottom of a wide screen is a long way from
+  # everything else.
+  attr :current_child, :map, required: true
+  attr :current_tab, :atom, default: nil
+
+  defp side_nav(assigns) do
+    ~H"""
+    <nav
+      id="side-nav"
+      class="hidden lg:flex fixed inset-y-0 left-0 z-30 w-60 flex-col border-r border-base-300 bg-base-200 pt-[env(safe-area-inset-top)]"
+    >
+      <.link
+        navigate={~p"/c/#{@current_child}"}
+        class="flex items-center gap-2.5 px-5 min-h-14 py-1.5 border-b border-base-300 font-semibold text-lg"
+      >
+        <img src={~p"/images/icon-192.png"} alt="" class="size-8 rounded-lg" /> Trygg
+      </.link>
+      <div class="flex flex-col gap-1 p-3">
+        <.side_nav_item
+          navigate={~p"/c/#{@current_child}"}
+          icon="hero-home"
+          active_icon="hero-home-solid"
+          label="Home"
+          active={@current_tab == :home}
+        />
+        <.side_nav_item
+          navigate={~p"/c/#{@current_child}/log"}
+          icon="hero-list-bullet"
+          active_icon="hero-list-bullet-solid"
+          label="Log"
+          active={@current_tab == :log}
+        />
+        <.side_nav_item
+          navigate={~p"/c/#{@current_child}/vitals"}
+          icon="hero-heart"
+          active_icon="hero-heart-solid"
+          label="Vitals"
+          active={@current_tab == :vitals}
+        />
+        <.side_nav_item
+          navigate={~p"/c/#{@current_child}/reports"}
+          icon="hero-chart-bar"
+          active_icon="hero-chart-bar-solid"
+          label="Reports"
+          active={@current_tab == :reports}
+        />
+      </div>
+    </nav>
+    """
+  end
+
+  attr :icon, :string, required: true
+  attr :active_icon, :string, required: true
+  attr :label, :string, required: true
+  attr :active, :boolean, default: false
+  attr :rest, :global, include: ~w(navigate href method)
+
+  defp side_nav_item(assigns) do
+    ~H"""
+    <.link
+      {@rest}
+      aria-current={@active && "page"}
+      class={[
+        "flex items-center gap-3 rounded-box px-3 py-2.5 transition-colors",
+        if(@active,
+          do: "bg-primary/10 text-primary font-semibold",
+          else: "text-base-content/70 hover:bg-base-300 hover:text-base-content"
+        )
+      ]}
+    >
+      <.icon name={if @active, do: @active_icon, else: @icon} class="size-5" />
+      {@label}
+    </.link>
     """
   end
 

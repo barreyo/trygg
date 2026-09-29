@@ -31,6 +31,7 @@ defmodule TryggWeb.ReportsLive do
       child_switch_to={:reports}
       title="Reports"
       back={~p"/c/#{@current_child}"}
+      wide
     >
       <div id="report-view" class="grid grid-cols-3 gap-1.5">
         <.button
@@ -108,70 +109,79 @@ defmodule TryggWeb.ReportsLive do
   defp today_view(assigns) do
     ~H"""
     <section id="report-today" class="mt-4">
-      <div class="flex items-center justify-between gap-2 mb-2">
-        <.button
-          id="day-prev"
-          type="button"
-          variant="outline"
-          size="sm"
-          phx-click="shift_day"
-          phx-value-by="-1"
-          class="min-h-11 min-w-11 px-0"
-          aria-label="Previous day"
-        >
-          <.icon name="hero-chevron-left" class="size-5" />
-        </.button>
-        <h2 class="font-semibold tabular-nums text-center">
-          {day_heading(@day.date, @today_date)}
-        </h2>
-        <.button
-          id="day-next"
-          type="button"
-          variant="outline"
-          size="sm"
-          phx-click="shift_day"
-          phx-value-by="1"
-          disabled={Date.compare(@day.date, @today_date) != :lt}
-          class="min-h-11 min-w-11 px-0"
-          aria-label="Next day"
-        >
-          <.icon name="hero-chevron-right" class="size-5" />
-        </.button>
-      </div>
+      <Layouts.columns>
+        <:left>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <.button
+              id="day-prev"
+              type="button"
+              variant="outline"
+              size="sm"
+              phx-click="shift_day"
+              phx-value-by="-1"
+              class="min-h-11 min-w-11 px-0"
+              aria-label="Previous day"
+            >
+              <.icon name="hero-chevron-left" class="size-5" />
+            </.button>
+            <h2 class="font-semibold tabular-nums text-center">
+              {day_heading(@day.date, @today_date)}
+            </h2>
+            <.button
+              id="day-next"
+              type="button"
+              variant="outline"
+              size="sm"
+              phx-click="shift_day"
+              phx-value-by="1"
+              disabled={Date.compare(@day.date, @today_date) != :lt}
+              class="min-h-11 min-w-11 px-0"
+              aria-label="Next day"
+            >
+              <.icon name="hero-chevron-right" class="size-5" />
+            </.button>
+          </div>
 
-      <div class="grid grid-cols-2 gap-2 mb-4">
-        <.since_card
-          icon="hero-moon"
-          label="Sleep"
-          value={format_duration(@day.total_sleep_seconds)}
-          sub={"Day #{format_duration(@day.day_sleep_seconds)} · Night #{format_duration(@day.night_sleep_seconds)}"}
-        />
-        <.since_card
-          icon="hero-beaker"
-          label="Feeds"
-          value={to_string(length(@day.feeds))}
-          sub={day_feed_sub(@day, @unit_system)}
-        />
-      </div>
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <.since_card
+              icon="hero-moon"
+              label="Sleep"
+              value={format_duration(@day.total_sleep_seconds)}
+              sub={"Day #{format_duration(@day.day_sleep_seconds)} · Night #{format_duration(@day.night_sleep_seconds)}"}
+            />
+            <.since_card
+              icon="hero-beaker"
+              label="Feeds"
+              value={to_string(length(@day.feeds))}
+              sub={day_feed_sub(@day, @unit_system)}
+            />
+          </div>
+        </:left>
+        <:right>
+          <%!-- The calendar scales with its width, so keep it about phone-sized
+               rather than letting it grow a screen and a half tall. --%>
+          <div class="md:max-w-sm md:mx-auto">
+            <.today_calendar
+              id="today-calendar"
+              day={@day}
+              child={@child}
+              selected={@selected}
+              unit_system={@unit_system}
+            />
 
-      <.today_calendar
-        id="today-calendar"
-        day={@day}
-        child={@child}
-        selected={@selected}
-        unit_system={@unit_system}
-      />
-
-      <p
-        id="today-caption"
-        class={[
-          "text-sm text-center mt-2 tabular-nums min-h-5",
-          @caption && "font-medium",
-          !@caption && "opacity-50 text-xs"
-        ]}
-      >
-        {@caption || "Tap a block for details"}
-      </p>
+            <p
+              id="today-caption"
+              class={[
+                "text-sm text-center mt-2 tabular-nums min-h-5",
+                @caption && "font-medium",
+                !@caption && "opacity-50 text-xs"
+              ]}
+            >
+              {@caption || "Tap a block for details"}
+            </p>
+          </div>
+        </:right>
+      </Layouts.columns>
     </section>
     """
   end
@@ -205,25 +215,34 @@ defmodule TryggWeb.ReportsLive do
   defp week_view(assigns) do
     ~H"""
     <section id="report-week" class="mt-4">
-      <h2 class="font-semibold mb-2">Last 7 days</h2>
+      <Layouts.columns>
+        <:left>
+          <h2 class="font-semibold mb-2">Last 7 days</h2>
 
-      <div class="grid grid-cols-2 gap-2 mb-4">
-        <.since_card
-          icon="hero-moon"
-          label="Sleep"
-          value={format_duration(week_avg_seconds(@days, :total_sleep_seconds))}
-          sub={"avg Day #{format_duration(week_avg_seconds(@days, :day_sleep_seconds))} · Night #{format_duration(week_avg_seconds(@days, :night_sleep_seconds))}"}
-        />
-        <.since_card
-          icon="hero-beaker"
-          label="Feeds"
-          value={week_feed_count_label(@days)}
-          sub={week_feed_sub(@days, @unit_system)}
-        />
-      </div>
-
-      <.week_calendar id="week-calendar" days={@days} child={@child} today_date={@today_date} />
-      <p class="text-xs opacity-50 text-center mt-2">Tap a day to open it</p>
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <.since_card
+              icon="hero-moon"
+              label="Sleep"
+              value={format_duration(week_avg_seconds(@days, :total_sleep_seconds))}
+              sub={"avg Day #{format_duration(week_avg_seconds(@days, :day_sleep_seconds))} · Night #{format_duration(week_avg_seconds(@days, :night_sleep_seconds))}"}
+            />
+            <.since_card
+              icon="hero-beaker"
+              label="Feeds"
+              value={week_feed_count_label(@days)}
+              sub={week_feed_sub(@days, @unit_system)}
+            />
+          </div>
+        </:left>
+        <:right>
+          <%!-- The calendar scales with its width, so keep it about phone-sized
+               rather than letting it grow a screen and a half tall. --%>
+          <div class="md:max-w-sm md:mx-auto">
+            <.week_calendar id="week-calendar" days={@days} child={@child} today_date={@today_date} />
+            <p class="text-xs opacity-50 text-center mt-2">Tap a day to open it</p>
+          </div>
+        </:right>
+      </Layouts.columns>
     </section>
     """
   end
@@ -274,185 +293,192 @@ defmodule TryggWeb.ReportsLive do
     assigns = assign(assigns, :windows, windows())
 
     ~H"""
-    <section id="report-trends" class="mt-4 space-y-6">
-      <div id="todays-outlook" class="rounded-box border border-base-300 p-3">
-        <h3 class="font-semibold text-sm mb-2">Today's outlook</h3>
-        <.outlook prediction={@insights.prediction} next_feed={@insights.feeding.next_feed} />
-      </div>
+    <section id="report-trends" class="mt-4">
+      <Layouts.columns>
+        <:left>
+          <div class="space-y-6">
+            <div id="todays-outlook" class="rounded-box border border-base-300 p-3">
+              <h3 class="font-semibold text-sm mb-2">Today's outlook</h3>
+              <.outlook prediction={@insights.prediction} next_feed={@insights.feeding.next_feed} />
+            </div>
 
-      <p :if={!@insights.ready?} id="trends-sparse" class="opacity-60 text-sm text-center py-2">
-        Keep logging — insights appear after {@insights.min_sample} days.
-      </p>
+            <p :if={!@insights.ready?} id="trends-sparse" class="opacity-60 text-sm text-center py-2">
+              Keep logging — insights appear after {@insights.min_sample} days.
+            </p>
 
-      <.alerts_list
-        id="trend-alerts"
-        title="Worth a look"
-        alerts={@insights.alerts}
-        links={%{vitals: ~p"/c/#{@child}/vitals"}}
-      />
+            <.alerts_list
+              id="trend-alerts"
+              title="Worth a look"
+              alerts={@insights.alerts}
+              links={%{vitals: ~p"/c/#{@child}/vitals"}}
+            />
 
-      <.changes_card shifts={@insights.shifts} />
+            <.changes_card shifts={@insights.shifts} />
 
-      <div id="section-feeding" class="space-y-2">
-        <.feeding_card feeding={@insights.feeding} unit_system={@unit_system} />
-        <.feed_length_card duration={@insights.feeding.duration} />
-      </div>
+            <div id="section-feeding" class="space-y-2">
+              <.feeding_card feeding={@insights.feeding} unit_system={@unit_system} />
+              <.feed_length_card duration={@insights.feeding.duration} />
+            </div>
 
-      <div id="section-diapers" class="space-y-2">
-        <.diapers_card diapers={@insights.diapers} />
-      </div>
-
-      <div id="section-sleep" class="space-y-3">
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="flex items-center gap-1.5 text-base font-bold">
-            <.icon name="hero-moon" class="size-5 opacity-70" /> Sleep
-          </h2>
-          <div id="day-night-def" class="flex items-center gap-1 text-xs">
-            <span class="opacity-60">Day</span>
-            <span class="font-semibold tabular-nums">
-              {Child.format_clock(@child.day_start)} – {Child.format_clock(@child.night_start)}
-            </span>
-            <.button
-              :if={@can_edit_schedule}
-              id="change-day-night"
-              type="button"
-              variant="ghost"
-              size="sm"
-              phx-click="open_sheet"
-              aria-label="Change day and night"
-              class="min-h-11 min-w-11 px-0"
-            >
-              <.icon name="hero-cog-6-tooth" class="size-4" />
-            </.button>
+            <div id="section-diapers" class="space-y-2">
+              <.diapers_card diapers={@insights.diapers} />
+            </div>
           </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2">
-          <.since_card
-            icon="hero-sun"
-            label="Morning wake"
-            value={@insights.morning_wake.median_label || "—"}
-            sub={clock_stat_sub(@insights.morning_wake, @insights)}
-          />
-          <.since_card
-            icon="hero-moon"
-            label="Bedtime"
-            value={@insights.bedtime.median_label || "—"}
-            sub={clock_stat_sub(@insights.bedtime, @insights)}
-          />
-          <.since_card
-            icon="hero-clock"
-            label="Total sleep"
-            value={format_duration(@insights.totals.total.median)}
-            sub={longest_night_sub(@insights.longest_night)}
-          />
-          <.since_card
-            icon="hero-sparkles"
-            label="Night stretch"
-            value={night_stretch_value(@insights)}
-            sub={night_waking_sub(@insights.night_wakings)}
-          />
-        </div>
-
-        <div id="sleep-trend-card" class="rounded-box border border-base-300 overflow-hidden">
-          <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <h3 class="font-semibold text-sm">Sleep trend</h3>
-                <p id="trend-window" class="text-xs opacity-60 tabular-nums mt-0.5">
-                  {@window_label}
-                </p>
-              </div>
-              <div class="flex gap-2 shrink-0">
+        </:left>
+        <:right>
+          <div id="section-sleep" class="mt-6 md:mt-0 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="flex items-center gap-1.5 text-base font-bold">
+                <.icon name="hero-moon" class="size-5 opacity-70" /> Sleep
+              </h2>
+              <div id="day-night-def" class="flex items-center gap-1 text-xs">
+                <span class="opacity-60">Day</span>
+                <span class="font-semibold tabular-nums">
+                  {Child.format_clock(@child.day_start)} – {Child.format_clock(@child.night_start)}
+                </span>
                 <.button
-                  id="trend-zoom-out"
+                  :if={@can_edit_schedule}
+                  id="change-day-night"
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  phx-click="chart_zoom"
-                  phx-value-dir="out"
-                  disabled={@window == :all}
-                  aria-label="Zoom out"
+                  phx-click="open_sheet"
+                  aria-label="Change day and night"
                   class="min-h-11 min-w-11 px-0"
                 >
-                  <.icon name="hero-minus" class="size-5" />
-                </.button>
-                <.button
-                  id="trend-zoom-in"
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  phx-click="chart_zoom"
-                  phx-value-dir="in"
-                  disabled={@window == 7}
-                  aria-label="Zoom in"
-                  class="min-h-11 min-w-11 px-0"
-                >
-                  <.icon name="hero-plus" class="size-5" />
+                  <.icon name="hero-cog-6-tooth" class="size-4" />
                 </.button>
               </div>
             </div>
-            <div id="trend-range" class="grid grid-cols-5 gap-1.5">
-              <.button
-                :for={{id, label} <- @windows}
-                id={"trend-period-#{id}"}
-                type="button"
-                variant={if @window == id, do: "primary", else: "outline"}
-                size="sm"
-                phx-click="set_window"
-                phx-value-window={id}
-                class="min-h-11 px-0"
-              >
-                {label}
-              </.button>
+
+            <div class="grid grid-cols-2 gap-2">
+              <.since_card
+                icon="hero-sun"
+                label="Morning wake"
+                value={@insights.morning_wake.median_label || "—"}
+                sub={clock_stat_sub(@insights.morning_wake, @insights)}
+              />
+              <.since_card
+                icon="hero-moon"
+                label="Bedtime"
+                value={@insights.bedtime.median_label || "—"}
+                sub={clock_stat_sub(@insights.bedtime, @insights)}
+              />
+              <.since_card
+                icon="hero-clock"
+                label="Total sleep"
+                value={format_duration(@insights.totals.total.median)}
+                sub={longest_night_sub(@insights.longest_night)}
+              />
+              <.since_card
+                icon="hero-sparkles"
+                label="Night stretch"
+                value={night_stretch_value(@insights)}
+                sub={night_waking_sub(@insights.night_wakings)}
+              />
             </div>
-          </div>
-          <div class="p-3">
-            <.sleep_bar_chart
-              id="sleep-trend"
-              series={@insights.totals.per_day}
-              slope_label={@insights.totals.slope && slope_copy(@insights.totals.slope)}
-              selected={@bar_selected}
-              caption={@bar_caption}
+
+            <div id="sleep-trend-card" class="rounded-box border border-base-300 overflow-hidden">
+              <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <h3 class="font-semibold text-sm">Sleep trend</h3>
+                    <p id="trend-window" class="text-xs opacity-60 tabular-nums mt-0.5">
+                      {@window_label}
+                    </p>
+                  </div>
+                  <div class="flex gap-2 shrink-0">
+                    <.button
+                      id="trend-zoom-out"
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      phx-click="chart_zoom"
+                      phx-value-dir="out"
+                      disabled={@window == :all}
+                      aria-label="Zoom out"
+                      class="min-h-11 min-w-11 px-0"
+                    >
+                      <.icon name="hero-minus" class="size-5" />
+                    </.button>
+                    <.button
+                      id="trend-zoom-in"
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      phx-click="chart_zoom"
+                      phx-value-dir="in"
+                      disabled={@window == 7}
+                      aria-label="Zoom in"
+                      class="min-h-11 min-w-11 px-0"
+                    >
+                      <.icon name="hero-plus" class="size-5" />
+                    </.button>
+                  </div>
+                </div>
+                <div id="trend-range" class="grid grid-cols-5 gap-1.5">
+                  <.button
+                    :for={{id, label} <- @windows}
+                    id={"trend-period-#{id}"}
+                    type="button"
+                    variant={if @window == id, do: "primary", else: "outline"}
+                    size="sm"
+                    phx-click="set_window"
+                    phx-value-window={id}
+                    class="min-h-11 px-0"
+                  >
+                    {label}
+                  </.button>
+                </div>
+              </div>
+              <div class="p-3">
+                <.sleep_bar_chart
+                  id="sleep-trend"
+                  series={@insights.totals.per_day}
+                  slope_label={@insights.totals.slope && slope_copy(@insights.totals.slope)}
+                  selected={@bar_selected}
+                  caption={@bar_caption}
+                />
+              </div>
+            </div>
+
+            <div class="rounded-box border border-base-300 overflow-hidden">
+              <div class="bg-base-200/40 px-3 py-2">
+                <h3 class="font-semibold text-sm">Typical day</h3>
+                <p class="text-xs opacity-60">When they're usually asleep over 24 hours</p>
+              </div>
+              <div class="p-3">
+                <.heat_strip
+                  id="sleep-heat"
+                  heatmap={@insights.heatmap}
+                  child={@child}
+                  morning_wake={@insights.morning_wake}
+                  bedtime={@insights.bedtime}
+                  selected={@heat_selected}
+                  caption={@heat_caption}
+                />
+              </div>
+            </div>
+
+            <.stat_table
+              id="wake-windows-table"
+              title="Wake windows"
+              hint="How long they're typically up before the next sleep"
+              empty="No completed wake windows yet."
+              rows={@insights.wake_windows.by_ordinal}
+              label_fn={&wake_window_label/1}
+            />
+            <.stat_table
+              id="naps-table"
+              title="Naps"
+              hint="How long each nap typically lasts"
+              empty="No naps logged yet."
+              rows={@insights.naps.by_ordinal}
+              label_fn={&"Nap #{ordinal(&1.ordinal)}"}
             />
           </div>
-        </div>
-
-        <div class="rounded-box border border-base-300 overflow-hidden">
-          <div class="bg-base-200/40 px-3 py-2">
-            <h3 class="font-semibold text-sm">Typical day</h3>
-            <p class="text-xs opacity-60">When they're usually asleep over 24 hours</p>
-          </div>
-          <div class="p-3">
-            <.heat_strip
-              id="sleep-heat"
-              heatmap={@insights.heatmap}
-              child={@child}
-              morning_wake={@insights.morning_wake}
-              bedtime={@insights.bedtime}
-              selected={@heat_selected}
-              caption={@heat_caption}
-            />
-          </div>
-        </div>
-
-        <.stat_table
-          id="wake-windows-table"
-          title="Wake windows"
-          hint="How long they're typically up before the next sleep"
-          empty="No completed wake windows yet."
-          rows={@insights.wake_windows.by_ordinal}
-          label_fn={&wake_window_label/1}
-        />
-        <.stat_table
-          id="naps-table"
-          title="Naps"
-          hint="How long each nap typically lasts"
-          empty="No naps logged yet."
-          rows={@insights.naps.by_ordinal}
-          label_fn={&"Nap #{ordinal(&1.ordinal)}"}
-        />
-      </div>
+        </:right>
+      </Layouts.columns>
     </section>
     """
   end

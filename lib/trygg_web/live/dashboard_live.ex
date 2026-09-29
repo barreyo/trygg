@@ -754,6 +754,7 @@ defmodule TryggWeb.DashboardLive do
       title={@current_child.name}
       subtitle={Child.caption(@current_child)}
       children={@children}
+      wide
     >
       <%!-- Mirrors which child / units / write-access into IndexedDB so the
            offline quick-logger (served with no live socket) knows what it's
@@ -787,255 +788,265 @@ defmodule TryggWeb.DashboardLive do
         </div>
       </div>
 
-      <%!-- Typical-day dial: the child's rhythm at a glance, with the next
-           actionable moment (or a running timer) called out in the middle.
-           Hidden for now — not needed yet. --%>
-      <%!--
-      <.rhythm_dial
-        rhythm={@outlook.rhythm}
-        center={@rhythm_center}
-        child_name={@current_child.name}
-      />
-      --%>
+      <%!-- Status and quick actions on the left, the recent log beside them
+           once there is room (stacked on phones). --%>
+      <Layouts.columns id="home-columns">
+        <:left>
+          <%!-- Typical-day dial: the child's rhythm at a glance, with the next
+               actionable moment (or a running timer) called out in the middle.
+               Hidden for now — not needed yet. --%>
+          <%!--
+          <.rhythm_dial
+            rhythm={@outlook.rhythm}
+            center={@rhythm_center}
+            child_name={@current_child.name}
+          />
+          --%>
 
-      <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
-      <div :for={entry <- @summary.running} class="mb-6">
-        <.timer_banner
-          entry={entry}
-          can_write={@can_write}
-          on_stop="request_stop"
-          since_label={Child.local_clock(@current_child, entry.started_at)}
-        >
-          <:controls :if={@can_write}>
-            <span class="text-xs opacity-70 mr-0.5">Started earlier?</span>
-            <.button
-              :for={m <- nudge_minutes()}
-              type="button"
-              size="xs"
-              phx-click="nudge_start"
-              phx-value-by={m}
-              class={timer_control_class()}
+          <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
+          <div :for={entry <- @summary.running} class="mb-6">
+            <.timer_banner
+              entry={entry}
+              can_write={@can_write}
+              on_stop="request_stop"
+              since_label={Child.local_clock(@current_child, entry.started_at)}
             >
-              {m}m
-            </.button>
-            <.button
-              type="button"
-              size="xs"
-              phx-click="open_sheet"
-              phx-value-kind="sleep_start"
-              class={timer_control_class()}
-            >
-              <.icon name="hero-pencil-square" class="size-3.5" /> Edit
-            </.button>
-          </:controls>
-        </.timer_banner>
-      </div>
+              <:controls :if={@can_write}>
+                <span class="text-xs opacity-70 mr-0.5">Started earlier?</span>
+                <.button
+                  :for={m <- nudge_minutes()}
+                  type="button"
+                  size="xs"
+                  phx-click="nudge_start"
+                  phx-value-by={m}
+                  class={timer_control_class()}
+                >
+                  {m}m
+                </.button>
+                <.button
+                  type="button"
+                  size="xs"
+                  phx-click="open_sheet"
+                  phx-value-kind="sleep_start"
+                  class={timer_control_class()}
+                >
+                  <.icon name="hero-pencil-square" class="size-3.5" /> Edit
+                </.button>
+              </:controls>
+            </.timer_banner>
+          </div>
 
-      <%!-- Health alerts — the first thing a caregiver should see after the
-           header/active timer, so this sits above everything else, including
-           the glance cards. Only warnings and notices get the full card;
-           informational ones ("eating more than usual") collapse to a
-           one-line pointer to Reports so they don't crowd the screen. --%>
-      <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
-        <.alerts_list
-          id="home-alerts"
-          alerts={Enum.reject(@outlook.alerts, &(&1.severity == :info))}
-          links={
-            %{
-              vitals: ~p"/c/#{@current_child}/vitals",
-              reports: ~p"/c/#{@current_child}/reports"
-            }
-          }
-        />
-        <.alerts_note
-          id="home-info-alerts"
-          alerts={Enum.filter(@outlook.alerts, &(&1.severity == :info))}
-          navigate={~p"/c/#{@current_child}/reports?view=trends"}
-        />
-      </div>
+          <%!-- Health alerts — the first thing a caregiver should see after the
+               header/active timer, so this sits above everything else, including
+               the glance cards. Only warnings and notices get the full card;
+               informational ones ("eating more than usual") collapse to a
+               one-line pointer to Reports so they don't crowd the screen. --%>
+          <div :if={@outlook.alerts != []} class="mb-4 space-y-2">
+            <.alerts_list
+              id="home-alerts"
+              alerts={Enum.reject(@outlook.alerts, &(&1.severity == :info))}
+              links={
+                %{
+                  vitals: ~p"/c/#{@current_child}/vitals",
+                  reports: ~p"/c/#{@current_child}/reports"
+                }
+              }
+            />
+            <.alerts_note
+              id="home-info-alerts"
+              alerts={Enum.filter(@outlook.alerts, &(&1.severity == :info))}
+              navigate={~p"/c/#{@current_child}/reports?view=trends"}
+            />
+          </div>
 
-      <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
-      <div
-        :if={@weight_reminder}
-        id="weight-check-reminder"
-        class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
-      >
-        <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
-          <p class="text-xs opacity-70 mt-0.5 leading-snug">
-            {weight_reminder_detail(@weight_reminder)}
-          </p>
-          <.link
-            navigate={~p"/c/#{@current_child}/vitals"}
-            class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+          <%!-- Weight-check reminder — CDC well-child cadence, also emailed to caregivers --%>
+          <div
+            :if={@weight_reminder}
+            id="weight-check-reminder"
+            class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
           >
-            Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
-          </.link>
-        </div>
-      </div>
-
-      <%!-- At a glance --%>
-      <section class="bg-base-200/40 rounded-box p-2 space-y-2">
-        <div id="glance-cards" class="grid grid-cols-3 gap-2">
-          <div id="glance-feed">
-            <.since_card
-              icon="hero-beaker"
-              label="Feeding"
-              category="feed"
-              tone={feed_tone(@outlook)}
-              value={feed_value(@summary.last_feeding, @outlook)}
-              sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
-              status={feed_status(@summary.last_feeding, @outlook)}
-              today={feed_today(@summary.today, @unit_system)}
-            />
+            <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
+              <p class="text-xs opacity-70 mt-0.5 leading-snug">
+                {weight_reminder_detail(@weight_reminder)}
+              </p>
+              <.link
+                navigate={~p"/c/#{@current_child}/vitals"}
+                class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+              >
+                Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
+              </.link>
+            </div>
           </div>
-          <div id="glance-diaper">
-            <.since_card
-              emoji={last_diaper_emoji(@summary.last_diaper)}
-              label="Diaper"
-              category="diaper"
-              tone={diaper_tone(@outlook)}
-              value={relative_time(time_of(@summary.last_diaper))}
-              sub={diaper_sub(@summary.last_diaper)}
-              status={diaper_status(@outlook)}
-              today={diaper_today(@summary.today)}
-            />
-          </div>
-          <div id="glance-sleep">
-            <.since_card
-              icon={sleep_icon(@summary)}
-              label={sleep_label(@summary)}
-              category="sleep"
-              tone={sleep_tone(@summary, @outlook)}
-              value={sleep_value(@summary, @outlook)}
-              sub={sleep_sub(@summary, @outlook, @current_child)}
-              status={sleep_status(@summary, @outlook)}
-              today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
-            />
-          </div>
-        </div>
-      </section>
 
-      <%!-- Log something --%>
-      <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
-        <.button
-          :if={!sleeping?(@summary)}
-          variant="primary"
-          size="lg"
-          phx-click="start_sleep"
-          class="w-full text-base"
-        >
-          <.icon name="hero-moon" class="size-5" /> Start sleep
-        </.button>
+          <%!-- At a glance --%>
+          <section class="bg-base-200/40 rounded-box p-2 space-y-2">
+            <div id="glance-cards" class="grid grid-cols-3 gap-2">
+              <div id="glance-feed">
+                <.since_card
+                  icon="hero-beaker"
+                  label="Feeding"
+                  category="feed"
+                  tone={feed_tone(@outlook)}
+                  value={feed_value(@summary.last_feeding, @outlook)}
+                  sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+                  status={feed_status(@summary.last_feeding, @outlook)}
+                  today={feed_today(@summary.today, @unit_system)}
+                />
+              </div>
+              <div id="glance-diaper">
+                <.since_card
+                  emoji={last_diaper_emoji(@summary.last_diaper)}
+                  label="Diaper"
+                  category="diaper"
+                  tone={diaper_tone(@outlook)}
+                  value={relative_time(time_of(@summary.last_diaper))}
+                  sub={diaper_sub(@summary.last_diaper)}
+                  status={diaper_status(@outlook)}
+                  today={diaper_today(@summary.today)}
+                />
+              </div>
+              <div id="glance-sleep">
+                <.since_card
+                  icon={sleep_icon(@summary)}
+                  label={sleep_label(@summary)}
+                  category="sleep"
+                  tone={sleep_tone(@summary, @outlook)}
+                  value={sleep_value(@summary, @outlook)}
+                  sub={sleep_sub(@summary, @outlook, @current_child)}
+                  status={sleep_status(@summary, @outlook)}
+                  today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
+                />
+              </div>
+            </div>
+          </section>
 
-        <.button
-          type="button"
-          variant="info"
-          size="lg"
-          phx-click="open_sheet"
-          phx-value-kind="bottle"
-          class="w-full text-base"
-        >
-          <.icon name="hero-beaker" class="size-5" /> Log a bottle
-        </.button>
+          <%!-- Log something --%>
+          <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
+            <.button
+              :if={!sleeping?(@summary)}
+              variant="primary"
+              size="lg"
+              phx-click="start_sleep"
+              class="w-full text-base"
+            >
+              <.icon name="hero-moon" class="size-5" /> Start sleep
+            </.button>
 
-        <div>
-          <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
-          <div class="grid grid-cols-3 gap-2">
-            <.action_btn
-              :for={{emoji, value, label} <- diaper_choices()}
-              kind={"diaper_#{value}"}
-              label={label}
-              emoji={emoji}
-              color_class={diaper_color_class(value)}
-            />
-          </div>
-        </div>
-
-        <.button
-          type="button"
-          variant="ghost"
-          size="sm"
-          phx-click="open_sheet"
-          phx-value-kind="earlier"
-          class="w-full"
-        >
-          <.icon name="hero-clock" class="size-4" /> Log from earlier
-        </.button>
-      </div>
-
-      <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
-           PushPrompt hook reveals it only when the browser supports Web Push,
-           permission is still undecided, and the caregiver hasn't answered
-           before. Re-enabling later lives on Preferences. Placed below the
-           quick actions so it never pushes vital stats down the screen. --%>
-      <div
-        :if={@vapid_public_key}
-        id="push-prompt"
-        phx-hook="PushPrompt"
-        phx-update="ignore"
-        hidden
-        data-vapid-key={@vapid_public_key}
-        class="mt-6 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
-      >
-        <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
-        <div class="flex-1 min-w-0 space-y-2">
-          <p class="font-medium">Turn on notifications?</p>
-          <p class="opacity-70">
-            Get a gentle heads-up on this device — like a weight check coming due — even when Trygg is closed.
-          </p>
-          <div class="flex gap-2">
             <.button
               type="button"
-              variant="primary"
-              size="sm"
-              data-push-prompt-action="enable"
+              variant="info"
+              size="lg"
+              phx-click="open_sheet"
+              phx-value-kind="bottle"
+              class="w-full text-base"
             >
-              Turn on
+              <.icon name="hero-beaker" class="size-5" /> Log a bottle
             </.button>
+
+            <div>
+              <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
+              <div class="grid grid-cols-3 gap-2">
+                <.action_btn
+                  :for={{emoji, value, label} <- diaper_choices()}
+                  kind={"diaper_#{value}"}
+                  label={label}
+                  emoji={emoji}
+                  color_class={diaper_color_class(value)}
+                />
+              </div>
+            </div>
+
             <.button
               type="button"
               variant="ghost"
               size="sm"
-              data-push-prompt-action="dismiss"
+              phx-click="open_sheet"
+              phx-value-kind="earlier"
+              class="w-full"
             >
-              Not now
+              <.icon name="hero-clock" class="size-4" /> Log from earlier
             </.button>
           </div>
-        </div>
-        <button
-          type="button"
-          class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
-          aria-label="Dismiss"
-          data-push-prompt-action="dismiss"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-      </div>
 
-      <div class="mt-8 flex items-center justify-between border-b border-base-300 pb-2">
-        <h2 class="font-semibold">Recent</h2>
-        <.link navigate={~p"/c/#{@current_child}/log"} class="text-sm text-primary hover:underline">
-          Full log →
-        </.link>
-      </div>
+          <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
+               PushPrompt hook reveals it only when the browser supports Web Push,
+               permission is still undecided, and the caregiver hasn't answered
+               before. Re-enabling later lives on Preferences. Placed below the
+               quick actions so it never pushes vital stats down the screen. --%>
+          <div
+            :if={@vapid_public_key}
+            id="push-prompt"
+            phx-hook="PushPrompt"
+            phx-update="ignore"
+            hidden
+            data-vapid-key={@vapid_public_key}
+            class="mt-6 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+          >
+            <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
+            <div class="flex-1 min-w-0 space-y-2">
+              <p class="font-medium">Turn on notifications?</p>
+              <p class="opacity-70">
+                Get a gentle heads-up on this device — like a weight check coming due — even when Trygg is closed.
+              </p>
+              <div class="flex gap-2">
+                <.button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  data-push-prompt-action="enable"
+                >
+                  Turn on
+                </.button>
+                <.button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-push-prompt-action="dismiss"
+                >
+                  Not now
+                </.button>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
+              aria-label="Dismiss"
+              data-push-prompt-action="dismiss"
+            >
+              <.icon name="hero-x-mark" class="size-4" />
+            </button>
+          </div>
+        </:left>
+        <:right>
+          <div class="mt-8 md:mt-0 flex items-center justify-between border-b border-base-300 pb-2">
+            <h2 class="font-semibold">Recent</h2>
+            <.link
+              navigate={~p"/c/#{@current_child}/log"}
+              class="text-sm text-primary hover:underline"
+            >
+              Full log →
+            </.link>
+          </div>
 
-      <p :if={@entries_empty?} class="opacity-60 text-sm py-6 text-center">
-        Nothing tracked yet today — tap a button to start.
-      </p>
+          <p :if={@entries_empty?} class="opacity-60 text-sm py-6 text-center">
+            Nothing tracked yet today — tap a button to start.
+          </p>
 
-      <div id="entries" phx-update="stream" class="divide-y divide-base-300">
-        <.entry_row
-          :for={{dom_id, entry} <- @streams.entries}
-          id={dom_id}
-          entry={entry}
-          unit_system={@unit_system}
-          tz={@current_child.timezone}
-          photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
-          on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
-        />
-      </div>
+          <div id="entries" phx-update="stream" class="divide-y divide-base-300">
+            <.entry_row
+              :for={{dom_id, entry} <- @streams.entries}
+              id={dom_id}
+              entry={entry}
+              unit_system={@unit_system}
+              tz={@current_child.timezone}
+              photo_src={entry.photo_key && ~p"/c/#{@current_child}/log/#{entry.id}/photo"}
+              on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
+            />
+          </div>
+        </:right>
+      </Layouts.columns>
 
       <.sheet
         :if={@sheet}
