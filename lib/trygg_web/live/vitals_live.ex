@@ -787,22 +787,30 @@ defmodule TryggWeb.VitalsLive do
     |> Enum.min(Date, fn -> Child.local_today(child) end)
   end
 
-  # "corrected age 1mo 2d", or before the 40-week date the postmenstrual age
-  # the preterm standard is read at.
+  # "corrected age 1mo 2d", plus the postmenstrual age the preterm standard is
+  # read at while it applies (alone before the 40-week date).
   defp corrected_age_label(child) do
     today = Child.local_today(child)
+    pma = "#{Child.postmenstrual_age_label(child, today)} postmenstrual"
 
     cond do
       not Percentiles.corrected?(child, today) ->
         nil
 
       Date.before?(today, Child.term_date(child)) ->
-        "#{Child.postmenstrual_age_label(child, today)} postmenstrual"
+        pma
+
+      Percentiles.standard_on(child, today) == :intergrowth ->
+        "#{corrected_age_text(child, today)} · #{pma}"
 
       true ->
-        {y, m, d} = Child.corrected_age(child, today)
-        if y > 0, do: "corrected age #{y}y #{m}mo #{d}d", else: "corrected age #{m}mo #{d}d"
+        corrected_age_text(child, today)
     end
+  end
+
+  defp corrected_age_text(child, today) do
+    {y, m, d} = Child.corrected_age(child, today)
+    if y > 0, do: "corrected age #{y}y #{m}mo #{d}d", else: "corrected age #{m}mo #{d}d"
   end
 
   defp blank_params(today) do

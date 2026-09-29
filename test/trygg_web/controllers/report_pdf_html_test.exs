@@ -157,7 +157,8 @@ defmodule TryggWeb.ReportPdfHTMLTest do
     assert text(doc, "#pdf-height-percentile") =~ "corrected"
     assert text(doc, "#pdf-summary") =~ "on actual age"
     assert text(doc, "#pdf-measurements thead") =~ "Percentile (corr. / actual)"
-    assert text(doc, "#pdf-measurement-#{earlier.id}") =~ "corr. 0d"
+    # Until 64 weeks the corrected percentile is read at postmenstrual age.
+    assert text(doc, "#pdf-measurement-#{earlier.id}") =~ "1mo · 40+0 wk"
     # Before 40 weeks: postmenstrual age, and a corrected percentile from the
     # preterm standard rather than a blank.
     birth_row = text(doc, "#pdf-measurement-#{at_birth.id}")

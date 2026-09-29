@@ -883,9 +883,9 @@ defmodule TryggWeb.ReportPdfHTML do
 
   defp measurement_sub(measurement, child, _percentiles), do: measurement_date(measurement, child)
 
-  # Actual age, plus the age the corrected percentile was read at: corrected
-  # age, or before the 40-week date the postmenstrual age on the preterm
-  # standard.
+  # Actual age, plus the age the corrected percentile was read at: the
+  # postmenstrual age while on the preterm standard (to 64 weeks), corrected
+  # age on CDC after that.
   defp age_cell(child, date) do
     age = GrowthComponents.compact_age(Child.age(child, date))
 
@@ -893,7 +893,7 @@ defmodule TryggWeb.ReportPdfHTML do
       not Child.corrects_age?(child, date) ->
         age
 
-      Date.before?(date, Child.term_date(child)) ->
+      Percentiles.standard_on(child, date) == :intergrowth ->
         pma = Child.postmenstrual_age_days(child, date)
         "#{age} · #{div(pma, 7)}+#{rem(pma, 7)} wk"
 

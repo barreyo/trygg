@@ -3,7 +3,7 @@ defmodule Trygg.Growth.Percentiles do
   CDC 2000 infant (birth–36 months) weight-for-age and length-for-age
   percentiles, using the published LMS parameters, with the INTERGROWTH-21st
   preterm standard (`Trygg.Growth.PretermStandard`) for babies born early
-  before they reach 40 weeks.
+  until they reach 64 weeks postmenstrual age.
 
   Charts are sex-specific (`:female` / `:male`). Returns `nil` when the child
   has no birth date, sex is `:unspecified`, age is outside 0–36 months, or the
@@ -17,11 +17,13 @@ defmodule Trygg.Growth.Percentiles do
   40+0 weeks) until they turn two. Clinicians usually only correct preterm
   babies; early term is included here on purpose.
 
-  Before that term date the CDC charts (which start at a full-term birth)
-  don't apply, so measurements are scored on the INTERGROWTH-21st preterm
-  standard by postmenstrual age instead. It starts at 27+0 weeks; earlier than
-  that everything returns `nil`. On actual age (`corrected: false`, or
-  `Child.uncorrected/1`) the CDC charts are used from birth, as before.
+  On corrected age, measurements up to 64+0 weeks postmenstrual age (about
+  24 weeks corrected) are scored on the INTERGROWTH-21st preterm standard —
+  its intended range, after which it hands over — and on CDC with corrected
+  age after that (`handover_date/1`). The standard starts at 27+0 weeks;
+  earlier than that everything returns `nil`. On actual age
+  (`corrected: false`, or `Child.uncorrected/1`) the CDC charts are used from
+  birth.
 
   Source: [CDC growth chart data files](https://www.cdc.gov/growthcharts/cdc-data-files.htm)
   (`wtageinf.csv`, `lenageinf.csv`).
@@ -131,6 +133,55 @@ defmodule Trygg.Growth.Percentiles do
   end
 
   @doc """
+  The first date a child born early is scored on CDC in corrected mode, the
+  day after they reach 64+0 weeks postmenstrual age. `nil` for term babies.
+  """
+  @spec handover_date(%Child{}) :: Date.t() | nil
+  def handover_date(%Child{birth_date: %Date{} = dob, gestational_age_days: ga} = child) do
+    if Child.born_early?(child), do: Date.add(dob, PretermStandard.range_days().last - ga + 1)
+  end
+
+  def handover_date(%Child{}), do: nil
+
+  @doc """
+  Which growth standard scores a measurement on `date`: `:intergrowth`,
+  `:cdc`, or `nil` when none applies.
+  """
+  @spec standard_on(%Child{}, Date.t()) :: :intergrowth | :cdc | nil
+  def standard_on(%Child{} = child, %Date{} = date) do
+    case reference(child, :weight, date) do
+      {:preterm, _sex, _days} -> :intergrowth
+      {:lms, _lms} -> :cdc
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Names the standard(s) behind the percentile bands charted over
+  `[from, to]`: `"CDC"`, `"INTERGROWTH-21st"`, or
+  `"INTERGROWTH-21st → CDC"` when the window spans the handover.
+  """
+  @spec band_label(%Child{}, Date.t(), Date.t()) :: String.t() | nil
+  def band_label(%Child{} = child, %Date{} = from, %Date{} = to) do
+    if available?(child) do
+      {start, stop} = curve_span(child, from, to)
+
+      [start, stop]
+      |> Enum.map(&standard_on(child, &1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.map_join(" → ", &standard_name/1)
+      |> case do
+        "" -> nil
+        label -> label
+      end
+    end
+  end
+
+  defp standard_name(:intergrowth), do: "INTERGROWTH-21st"
+  defp standard_name(:cdc), do: "CDC"
+
+  @doc """
   Footnote for the growth card, or `nil` when charts don't apply. Mentions the
   age correction while it's in effect on `date` (defaults to local today).
   """
@@ -146,7 +197,7 @@ defmodule Trygg.Growth.Percentiles do
     if corrected?(child, date || Child.local_today(child)),
       do:
         "#{chart}, using corrected age (born at #{Child.gestation_label(child)}), with the " <>
-          "INTERGROWTH-21st preterm standard before 40 weeks",
+          "INTERGROWTH-21st preterm standard until 64 weeks postmenstrual age",
       else: chart
   end
 
@@ -239,7 +290,8 @@ defmodule Trygg.Growth.Percentiles do
   @doc """
   Sampled `{date, canonical_value}` points along a percentile curve, clipped to
   `first_date/1` through 36 months and to `[from, to]`. For a child born early
-  the curve steps where the preterm standard hands over to CDC at 40 weeks.
+  the curve steps where the preterm standard hands over to CDC at 64 weeks
+  (`handover_date/1`).
   """
   @spec curve(%Child{}, kind, pos_integer(), Date.t(), Date.t()) :: [{Date.t(), float()}]
   def curve(%Child{} = child, kind, percentile, %Date{} = from, %Date{} = to)
@@ -311,8 +363,8 @@ defmodule Trygg.Growth.Percentiles do
   defp reference(_child, _kind, _date, _corrected), do: nil
 
   # `corrected` is `nil` to pick the basis from `date`, or a boolean to force
-  # it (still only for children born early). Corrected age before the term
-  # date is postmenstrual age on the preterm standard.
+  # it (still only for children born early). Corrected age up to 64+0 weeks
+  # is postmenstrual age on the preterm standard.
   defp age_basis(%Child{birth_date: nil}, _date, _corrected), do: nil
 
   defp age_basis(%Child{birth_date: dob} = child, %Date{} = date, corrected) do
@@ -329,7 +381,7 @@ defmodule Trygg.Growth.Percentiles do
       Date.before?(date, dob) ->
         nil
 
-      corrected? and Date.before?(date, term) ->
+      corrected? and Date.before?(date, handover_date(child)) ->
         {:postmenstrual, Child.postmenstrual_age_days(child, date)}
 
       months > @max_months ->

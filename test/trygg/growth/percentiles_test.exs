@@ -144,11 +144,12 @@ defmodule Trygg.Growth.PercentilesTest do
       )
     end
 
-    test "scores against a term baby born on the term date" do
+    test "after 64 weeks, scores against a term baby born on the term date" do
       baby = preterm()
       twin = child(sex: :male, birth_date: ~D[2026-02-26])
 
-      for date <- [~D[2026-02-26], ~D[2026-05-10], ~D[2027-06-01]] do
+      # 64+0 weeks is 2026-08-13 for a baby born at 32+0 on 2026-01-01.
+      for date <- [~D[2026-08-14], ~D[2026-11-10], ~D[2027-06-01]] do
         assert Percentiles.zscore(baby, :weight, 5000, date) ==
                  Percentiles.zscore(twin, :weight, 5000, date)
 
@@ -239,10 +240,38 @@ defmodule Trygg.Growth.PercentilesTest do
       baby = preterm(gestational_age_days: 264)
       twin = child(sex: :male, birth_date: ~D[2026-01-17])
 
-      assert Percentiles.percentile(baby, :weight, 4000, ~D[2026-01-31]) ==
-               Percentiles.percentile(twin, :weight, 4000, ~D[2026-01-31])
+      assert Percentiles.percentile(baby, :weight, 7000, ~D[2026-09-01]) ==
+               Percentiles.percentile(twin, :weight, 7000, ~D[2026-09-01])
 
       assert Percentiles.source_label(baby, ~D[2026-01-31]) =~ "born at 37+5 weeks"
+    end
+
+    test "INTERGROWTH-21st runs to 64+0 weeks, then CDC takes over" do
+      baby = preterm()
+
+      assert Percentiles.handover_date(baby) == ~D[2026-08-14]
+      assert Percentiles.standard_on(baby, ~D[2026-02-26]) == :intergrowth
+      assert Percentiles.standard_on(baby, ~D[2026-08-13]) == :intergrowth
+      assert Percentiles.standard_on(baby, ~D[2026-08-14]) == :cdc
+      assert Percentiles.standard_on(Child.uncorrected(baby), ~D[2026-02-26]) == :cdc
+      assert Percentiles.handover_date(child(sex: :male)) == nil
+
+      # 64+0 weeks: the published boys' weight median is 7.79 kg.
+      assert Percentiles.percentile(baby, :weight, 7790, ~D[2026-08-13]) == 50
+    end
+
+    test "band_label names the standards in the charted window" do
+      baby = preterm()
+
+      assert Percentiles.band_label(baby, ~D[2026-01-01], ~D[2026-06-01]) == "INTERGROWTH-21st"
+
+      assert Percentiles.band_label(baby, ~D[2026-01-01], ~D[2026-12-01]) ==
+               "INTERGROWTH-21st → CDC"
+
+      assert Percentiles.band_label(baby, ~D[2026-09-01], ~D[2026-12-01]) == "CDC"
+
+      assert Percentiles.band_label(Child.uncorrected(baby), ~D[2026-01-01], ~D[2026-06-01]) ==
+               "CDC"
     end
 
     test "curves start at birth, or at 27+0 for a baby born earlier" do

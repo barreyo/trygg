@@ -5,9 +5,9 @@ defmodule Trygg.Growth.PretermStandard do
   menstrual period: gestational age at birth plus age since birth), 27+0 to
   64+0 weeks.
 
-  `Trygg.Growth.Percentiles` uses this for a baby born early whose
-  measurement falls before their 40-week date, where the CDC infant charts
-  (which start at a full-term birth) don't apply.
+  `Trygg.Growth.Percentiles` uses this for a baby born early on corrected
+  age, across the standard's intended range, before handing over to the CDC
+  infant charts on corrected age.
 
   The published z-score tables give each measure at −3 … +3 SD for every
   exact week. Between weeks each SD line is interpolated linearly. Between SD
