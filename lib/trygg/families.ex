@@ -1,10 +1,17 @@
 defmodule Trygg.Families do
   @moduledoc """
-  Children, the caregivers who share them, and pending caregiver invites.
+  Families, their children, the caregivers who share them, and pending
+  caregiver invites.
+
+  A `Trygg.Families.Family` is the group of caregivers that shares one or more
+  children; roles are held by the family (`Trygg.Families.Membership`), so a
+  caregiver sees all of its children.
 
   Every public function takes a `%Trygg.Accounts.Scope{}` as its first argument
-  and authorizes the caller through their `Trygg.Families.Membership` for the
-  child. Roles form a hierarchy: `:owner` > `:caregiver` > `:viewer`.
+  and authorizes the caller through their membership of the child's family.
+  Roles form a hierarchy: `:owner` > `:caregiver` > `:viewer`. A scope that came
+  in on an API token (`scope.api_token`) is further confined to the token's
+  family and can never rise above the token's role, which is never `:owner`.
   """
 
   import Ecto.Query, warn: false
@@ -12,7 +19,7 @@ defmodule Trygg.Families do
   alias Trygg.Repo
   alias Trygg.Accounts
   alias Trygg.Accounts.{Scope, User}
-  alias Trygg.Families.{Child, Membership, Invite, FamilyNotifier}
+  alias Trygg.Families.{ApiToken, Child, Family, Membership, Invite, FamilyNotifier}
 
   @role_rank %{owner: 3, caregiver: 2, viewer: 1}
 
@@ -31,22 +38,59 @@ defmodule Trygg.Families do
     Phoenix.PubSub.broadcast(Trygg.PubSub, topic(child_id), message)
   end
 
-  # Tell every current member of a child that the set of children they can see
+  # People and invites belong to the family, so a change to them is announced
+  # on the topic of each of its children, as `{tag, child_id}`: whichever child
+  # someone happens to have open hears about it.
+  defp broadcast_family(family_id, tag) do
+    Enum.each(child_ids(family_id), &broadcast(&1, {tag, &1}))
+  end
+
+  # Tell every current member of a family that the set of children they can see
   # changed (a child added, renamed, deleted, or a membership/role change).
   # Delivered as `{:children_changed, user_id}` on each member's private
   # `Trygg.Accounts` topic, which LiveViews subscribe to via
   # `Accounts.subscribe_user/1`. `also` carries extra user ids that were
-  # members a moment ago (someone just removed, or the child about to be
-  # deleted).
-  defp broadcast_children_changed(child_id, also \\ []) do
-    (member_user_ids(child_id) ++ also)
+  # members a moment ago (someone just removed, or the family about to lose its
+  # last child).
+  defp broadcast_children_changed(family_id, also \\ []) do
+    (member_user_ids(family_id) ++ also)
     |> Enum.uniq()
     |> Enum.each(&Accounts.broadcast_user(&1, {:children_changed, &1}))
   end
 
-  defp member_user_ids(child_id) do
-    Repo.all(from m in Membership, where: m.child_id == ^child_id, select: m.user_id)
+  defp member_user_ids(family_id) do
+    Repo.all(from m in Membership, where: m.family_id == ^family_id, select: m.user_id)
   end
+
+  defp child_ids(family_id) do
+    Repo.all(from c in Child, where: c.family_id == ^family_id, select: c.id)
+  end
+
+  # Child structs built from an id alone (`%Child{id: entry.child_id}`) don't
+  # carry their family.
+  defp family_id(%Child{family_id: family_id}) when not is_nil(family_id), do: family_id
+
+  defp family_id(%Child{id: id}),
+    do: Repo.one(from c in Child, where: c.id == ^id, select: c.family_id)
+
+  ## Scoping --------------------------------------------------------------------
+
+  # The memberships `scope` may act through. A browser session reaches every
+  # family its user belongs to; an API token only the one it was issued for.
+  defp memberships_for(%Scope{user: %User{id: user_id}, api_token: token}) do
+    query = from m in Membership, where: m.user_id == ^user_id
+
+    case token do
+      nil -> query
+      %ApiToken{family_id: family_id} -> from m in query, where: m.family_id == ^family_id
+    end
+  end
+
+  # An API token never carries more than its own role, whatever its issuer is.
+  defp cap_role(%Scope{api_token: %ApiToken{role: max}}, role), do: lower_role(role, max)
+  defp cap_role(%Scope{}, role), do: role
+
+  defp lower_role(a, b), do: if(@role_rank[a] <= @role_rank[b], do: a, else: b)
 
   ## Children -----------------------------------------------------------------
 
@@ -54,12 +98,27 @@ defmodule Trygg.Families do
   Lists the children the user can see, most recently added first, with the
   user's `:role` for each populated.
   """
-  def list_children(%Scope{user: %User{id: user_id}}) do
+  def list_children(%Scope{user: %User{}} = scope) do
     from(c in Child,
-      join: m in Membership,
-      on: m.child_id == c.id and m.user_id == ^user_id,
+      join: m in ^memberships_for(scope),
+      on: m.family_id == c.family_id,
       order_by: [desc: c.inserted_at],
       select: %{c | role: m.role}
+    )
+    |> Repo.all()
+    |> Enum.map(&%{&1 | role: cap_role(scope, &1.role)})
+  end
+
+  @doc """
+  The families the user owns, newest first, with their `:children` preloaded —
+  the ones a new child can be added to.
+  """
+  def list_owned_families(%Scope{user: %User{}} = scope) do
+    from(f in Family,
+      join: m in ^memberships_for(scope),
+      on: m.family_id == f.id and m.role == :owner,
+      order_by: [desc: f.id],
+      preload: [:children]
     )
     |> Repo.all()
   end
@@ -70,14 +129,17 @@ defmodule Trygg.Families do
   Raises `Ecto.NoResultsError` if the child does not exist or the user is not
   a member — callers treat both cases as "not found".
   """
-  def get_child!(%Scope{user: %User{id: user_id}}, id) do
-    from(c in Child,
-      join: m in Membership,
-      on: m.child_id == c.id and m.user_id == ^user_id,
-      where: c.id == ^id,
-      select: %{c | role: m.role}
-    )
-    |> Repo.one!()
+  def get_child!(%Scope{user: %User{}} = scope, id) do
+    child =
+      from(c in Child,
+        join: m in ^memberships_for(scope),
+        on: m.family_id == c.family_id,
+        where: c.id == ^id,
+        select: %{c | role: m.role}
+      )
+      |> Repo.one!()
+
+    %{child | role: cap_role(scope, child.role)}
   end
 
   @doc "Returns an `%Ecto.Changeset{}` for tracking child changes."
@@ -86,25 +148,48 @@ defmodule Trygg.Families do
   end
 
   @doc """
-  Creates a child and makes the current user its owner, atomically.
+  Creates a child, atomically.
+
+  By default the child starts a new family with the current user as its owner.
+  Pass `family_id: id` to add it to a family the user already owns instead, so
+  its other caregivers see it too (raises `Trygg.Families.NotAuthorizedError`
+  unless the user is an owner of that family). Not available to API tokens.
   """
-  def create_child(%Scope{user: %User{id: user_id}}, attrs) do
+  def create_child(scope, attrs, opts \\ [])
+
+  def create_child(%Scope{api_token: %ApiToken{role: role}}, _attrs, _opts),
+    do: raise(Trygg.Families.NotAuthorizedError, role: role, required: :owner)
+
+  def create_child(%Scope{user: %User{id: user_id}} = scope, attrs, opts) do
+    existing_family_id = opts[:family_id]
+    if existing_family_id, do: authorize_family!(scope, existing_family_id, :owner)
+
     result =
       Repo.transact(fn ->
-        with {:ok, child} <- %Child{} |> Child.changeset(attrs) |> Repo.insert(),
-             {:ok, _membership} <-
-               %Membership{child_id: child.id, user_id: user_id, role: :owner}
-               |> Membership.changeset(%{role: :owner})
-               |> Repo.insert() do
+        with {:ok, family_id} <- ensure_family(existing_family_id, user_id),
+             {:ok, child} <-
+               %Child{family_id: family_id} |> Child.changeset(attrs) |> Repo.insert() do
           {:ok, %{child | role: :owner}}
         end
       end)
 
     with {:ok, child} <- result do
-      broadcast_children_changed(child.id)
+      broadcast_children_changed(child.family_id)
       {:ok, child}
     end
   end
+
+  defp ensure_family(nil, user_id) do
+    with {:ok, family} <- Repo.insert(%Family{}),
+         {:ok, _membership} <-
+           %Membership{family_id: family.id, user_id: user_id}
+           |> Membership.changeset(%{role: :owner})
+           |> Repo.insert() do
+      {:ok, family.id}
+    end
+  end
+
+  defp ensure_family(family_id, _user_id), do: {:ok, family_id}
 
   @doc """
   Updates a child. Requires the `:owner` role.
@@ -140,7 +225,7 @@ defmodule Trygg.Families do
         do: broadcast(child.id, {:child_born, updated}),
         else: broadcast(child.id, {:child_updated, updated})
 
-      broadcast_children_changed(child.id)
+      broadcast_children_changed(updated.family_id)
       {:ok, updated}
     end
   end
@@ -196,36 +281,80 @@ defmodule Trygg.Families do
     :ok
   end
 
-  @doc "Deletes a child and everything logged for it. Requires the `:owner` role."
+  @doc """
+  Deletes a child and everything logged for it. Requires the `:owner` role.
+
+  A family left without children goes with it, along with its caregivers,
+  invites and API tokens.
+  """
   def delete_child(%Scope{} = scope, %Child{} = child) do
     authorize!(scope, child, :owner)
-    members = member_user_ids(child.id)
+    members = member_user_ids(child.family_id)
 
-    with {:ok, deleted} <- Repo.delete(child) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, deleted} <- Repo.delete(child) do
+          delete_family_if_empty(child.family_id)
+          {:ok, deleted}
+        end
+      end)
+
+    with {:ok, deleted} <- result do
       broadcast(child.id, {:child_deleted, child.id})
-      broadcast_children_changed(child.id, members)
+      broadcast_children_changed(child.family_id, members)
       {:ok, deleted}
     end
   end
 
+  defp delete_family_if_empty(family_id) do
+    unless Repo.exists?(from c in Child, where: c.family_id == ^family_id) do
+      Repo.delete_all(from f in Family, where: f.id == ^family_id)
+    end
+
+    :ok
+  end
+
   ## Roles / authorization --------------------------------------------------
 
-  @doc "Returns the user's role for the child, or `nil` if they are not a member."
-  def member_role(%Scope{user: %User{id: user_id}}, %Child{id: child_id}) do
-    Repo.one(
-      from m in Membership,
-        where: m.child_id == ^child_id and m.user_id == ^user_id,
-        select: m.role
+  @doc """
+  Returns the user's role for the child (through its family), or `nil` if they
+  are not a member. For an API token this is capped at the token's role.
+  """
+  def member_role(%Scope{user: %User{}} = scope, %Child{id: child_id}) do
+    from(m in memberships_for(scope),
+      join: c in Child,
+      on: c.family_id == m.family_id,
+      where: c.id == ^child_id,
+      select: m.role
     )
+    |> Repo.one()
+    |> capped(scope)
   end
+
+  @doc "Like `member_role/2`, for a family."
+  def family_role(%Scope{user: %User{}} = scope, family_id) do
+    from(m in memberships_for(scope), where: m.family_id == ^family_id, select: m.role)
+    |> Repo.one()
+    |> capped(scope)
+  end
+
+  defp capped(nil, _scope), do: nil
+  defp capped(role, scope), do: cap_role(scope, role)
 
   @doc """
   Ensures the user's role for the child is at least `min_role`, returning the
   role. Raises `Trygg.Families.NotAuthorizedError` otherwise.
   """
   def authorize!(%Scope{} = scope, %Child{} = child, min_role) do
-    role = member_role(scope, child)
+    scope |> member_role(child) |> check!(min_role)
+  end
 
+  @doc "Like `authorize!/3`, for a family."
+  def authorize_family!(%Scope{} = scope, family_id, min_role) do
+    scope |> family_role(family_id) |> check!(min_role)
+  end
+
+  defp check!(role, min_role) do
     if role && @role_rank[role] >= @role_rank[min_role] do
       role
     else
@@ -244,12 +373,14 @@ defmodule Trygg.Families do
 
   ## Members ---------------------------------------------------------------
 
-  @doc "Lists a child's caregivers (memberships preloaded with `:user`)."
+  @doc """
+  Lists the caregivers of a child's family (memberships preloaded with `:user`).
+  """
   def list_members(%Scope{} = scope, %Child{} = child) do
     authorize!(scope, child, :viewer)
 
     from(m in Membership,
-      where: m.child_id == ^child.id,
+      where: m.family_id == ^family_id(child),
       order_by: [asc: m.inserted_at],
       preload: [:user]
     )
@@ -259,18 +390,32 @@ defmodule Trygg.Families do
   @doc "Removes a caregiver. Requires `:owner`; refuses to remove the last owner."
   def remove_member(%Scope{} = scope, %Child{} = child, %Membership{} = membership) do
     authorize!(scope, child, :owner)
+    family_id = family_id(child)
 
     cond do
-      membership.child_id != child.id ->
+      membership.family_id != family_id ->
         {:error, :not_found}
 
-      membership.role == :owner and owner_count(child) <= 1 ->
+      membership.role == :owner and owner_count(family_id) <= 1 ->
         {:error, :last_owner}
 
       true ->
-        with {:ok, deleted} <- Repo.delete(membership) do
-          broadcast(child.id, {:members_changed, child.id})
-          broadcast_children_changed(child.id, [membership.user_id])
+        result =
+          Repo.transact(fn ->
+            with {:ok, deleted} <- Repo.delete(membership) do
+              # Their API tokens act as them, so they go too.
+              Repo.delete_all(
+                from t in ApiToken,
+                  where: t.family_id == ^family_id and t.created_by_id == ^membership.user_id
+              )
+
+              {:ok, deleted}
+            end
+          end)
+
+        with {:ok, deleted} <- result do
+          broadcast_family(family_id, :members_changed)
+          broadcast_children_changed(family_id, [membership.user_id])
           {:ok, deleted}
         end
     end
@@ -279,41 +424,43 @@ defmodule Trygg.Families do
   @doc "Changes a caregiver's role. Requires `:owner`; keeps at least one owner."
   def update_member_role(%Scope{} = scope, %Child{} = child, %Membership{} = membership, role) do
     authorize!(scope, child, :owner)
+    family_id = family_id(child)
 
     cond do
-      membership.child_id != child.id ->
+      membership.family_id != family_id ->
         {:error, :not_found}
 
-      membership.role == :owner and role != :owner and owner_count(child) <= 1 ->
+      membership.role == :owner and role != :owner and owner_count(family_id) <= 1 ->
         {:error, :last_owner}
 
       true ->
         with {:ok, updated} <-
                membership |> Membership.changeset(%{role: role}) |> Repo.update() do
-          broadcast(child.id, {:members_changed, child.id})
-          broadcast_children_changed(child.id)
+          broadcast_family(family_id, :members_changed)
+          broadcast_children_changed(family_id)
           {:ok, updated}
         end
     end
   end
 
-  defp owner_count(%Child{id: child_id}) do
+  defp owner_count(family_id) do
     Repo.one(
       from m in Membership,
-        where: m.child_id == ^child_id and m.role == :owner,
+        where: m.family_id == ^family_id and m.role == :owner,
         select: count(m.id)
     )
   end
 
   ## Invites -------------------------------------------------------------------
 
-  @doc "Lists a child's still-open invites. Requires `:owner`."
+  @doc "Lists the still-open invites to a child's family. Requires `:owner`."
   def list_invites(%Scope{} = scope, %Child{} = child) do
     authorize!(scope, child, :owner)
 
     from(i in Invite,
       where:
-        i.child_id == ^child.id and is_nil(i.accepted_at) and i.expires_at > ^DateTime.utc_now(),
+        i.family_id == ^family_id(child) and is_nil(i.accepted_at) and
+          i.expires_at > ^DateTime.utc_now(),
       order_by: [desc: i.inserted_at]
     )
     |> Repo.all()
@@ -325,23 +472,33 @@ defmodule Trygg.Families do
   end
 
   @doc """
-  Creates an invite for `email` and emails them a link.
+  Creates an invite for `email` to the child's family and emails them a link.
+  They get access to every child in the family.
 
   `url_fun` receives the invite token and returns the acceptance URL. Requires
   `:owner`. Returns `{:error, :already_member}` if the email already belongs to
-  a caregiver of the child.
+  a caregiver of the family.
   """
   def invite_caregiver(%Scope{} = scope, %Child{} = child, attrs, url_fun)
       when is_function(url_fun, 1) do
     authorize!(scope, child, :owner)
 
-    changeset = Invite.changeset(%Invite{child_id: child.id, invited_by_id: scope.user.id}, attrs)
+    family_id = family_id(child)
+
+    changeset =
+      Invite.changeset(%Invite{family_id: family_id, invited_by_id: scope.user.id}, attrs)
 
     with {:ok, email} <- fetch_change_email(changeset),
-         :ok <- ensure_not_member(child, email),
+         :ok <- ensure_not_member(family_id, email),
          {:ok, invite} <- Repo.insert(changeset) do
-      FamilyNotifier.deliver_caregiver_invite(invite, child, scope.user, url_fun.(invite.token))
-      broadcast(child.id, {:invites_changed, child.id})
+      FamilyNotifier.deliver_caregiver_invite(
+        invite,
+        family_label(family_id),
+        scope.user,
+        url_fun.(invite.token)
+      )
+
+      broadcast_family(family_id, :invites_changed)
       {:ok, invite}
     end
   end
@@ -353,23 +510,30 @@ defmodule Trygg.Families do
     end
   end
 
-  defp ensure_not_member(%Child{id: child_id}, email) do
+  defp ensure_not_member(family_id, email) do
     exists? =
       Repo.exists?(
         from m in Membership,
           join: u in User,
           on: u.id == m.user_id,
-          where: m.child_id == ^child_id and fragment("lower(?)", u.email) == ^email
+          where: m.family_id == ^family_id and fragment("lower(?)", u.email) == ^email
       )
 
     if exists?, do: {:error, :already_member}, else: :ok
   end
 
-  @doc "Fetches an open invite by token, preloaded with `:child` and `:invited_by`."
+  defp family_label(family_id) do
+    Family |> Repo.get!(family_id) |> Repo.preload(:children) |> Family.label()
+  end
+
+  @doc """
+  Fetches an open invite by token, preloaded with its `:family` (and that
+  family's `:children`) and `:invited_by`.
+  """
   def get_pending_invite(token) when is_binary(token) do
     Invite
     |> Repo.get_by(token: token)
-    |> Repo.preload([:child, :invited_by])
+    |> Repo.preload([[family: :children], :invited_by])
     |> case do
       %Invite{} = invite -> if Invite.pending?(invite), do: invite, else: nil
       nil -> nil
@@ -378,11 +542,10 @@ defmodule Trygg.Families do
 
   @doc "Revokes (deletes) a pending invite. Requires `:owner`."
   def revoke_invite(%Scope{} = scope, %Invite{} = invite) do
-    child = Repo.get!(Child, invite.child_id)
-    authorize!(scope, child, :owner)
+    authorize_family!(scope, invite.family_id, :owner)
 
     with {:ok, deleted} <- Repo.delete(invite) do
-      broadcast(child.id, {:invites_changed, child.id})
+      broadcast_family(invite.family_id, :invites_changed)
       {:ok, deleted}
     end
   end
@@ -390,10 +553,10 @@ defmodule Trygg.Families do
   @doc """
   Accepts the invite identified by `token` for the current user.
 
-  Returns `{:ok, child}` (with `:role` populated) on success, or `{:error,
-  reason}` where reason is `:not_found`, `:email_mismatch`. If the user is
-  already a member, the invite is marked accepted and their existing role is
-  returned.
+  Returns `{:ok, child}` on success — the family's oldest child, with `:role`
+  populated, as somewhere to land — or `{:error, reason}` where reason is
+  `:not_found`, `:email_mismatch`. If the user is already a member, the invite
+  is marked accepted and their existing role is returned.
   """
   def accept_invite(%Scope{user: %User{} = user}, token) do
     case get_pending_invite(token) do
@@ -414,7 +577,7 @@ defmodule Trygg.Families do
       existing =
         Repo.one(
           from m in Membership,
-            where: m.child_id == ^invite.child_id and m.user_id == ^user.id
+            where: m.family_id == ^invite.family_id and m.user_id == ^user.id
         )
 
       with {:ok, membership} <- upsert_membership(existing, invite, user),
@@ -424,16 +587,23 @@ defmodule Trygg.Families do
                accepted_at: DateTime.utc_now() |> DateTime.truncate(:second)
              )
              |> Repo.update() do
-        child = Repo.get!(Child, invite.child_id)
-        broadcast(child.id, {:members_changed, child.id})
-        broadcast_children_changed(child.id)
+        child =
+          Repo.one!(
+            from c in Child,
+              where: c.family_id == ^invite.family_id,
+              order_by: [asc: c.inserted_at, asc: c.id],
+              limit: 1
+          )
+
+        broadcast_family(invite.family_id, :members_changed)
+        broadcast_children_changed(invite.family_id)
         {:ok, %{child | role: membership.role}}
       end
     end)
   end
 
   defp upsert_membership(nil, invite, user) do
-    %Membership{child_id: invite.child_id, user_id: user.id}
+    %Membership{family_id: invite.family_id, user_id: user.id}
     |> Membership.changeset(%{role: invite.role})
     |> Repo.insert()
   end

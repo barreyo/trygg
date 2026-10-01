@@ -35,7 +35,9 @@ defmodule Trygg.Families.Child do
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
 
-    has_many :memberships, Trygg.Families.Membership
+    belongs_to :family, Trygg.Families.Family
+
+    has_many :memberships, through: [:family, :memberships]
     has_many :caregivers, through: [:memberships, :user]
 
     timestamps(type: :utc_datetime)

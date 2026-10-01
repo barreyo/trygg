@@ -12,7 +12,7 @@ defmodule Trygg.Families.Invite do
     field :accepted_at, :utc_datetime
     field :expires_at, :utc_datetime
 
-    belongs_to :child, Trygg.Families.Child
+    belongs_to :family, Trygg.Families.Family
     belongs_to :invited_by, Trygg.Accounts.User
 
     timestamps(type: :utc_datetime)

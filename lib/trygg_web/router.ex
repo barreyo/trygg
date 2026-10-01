@@ -34,14 +34,24 @@ defmodule TryggWeb.Router do
     plug :fetch_current_scope_for_user
   end
 
+  # The REST API. Authenticated by a family API token (`Trygg.ApiTokens`), not
+  # a browser session — so no session, CSRF or secure-browser-headers plugs.
   pipeline :api do
     plug :accepts, ["json"]
+    plug TryggWeb.ApiAuth
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", TryggWeb do
-  #   pipe_through :api
-  # end
+  scope "/api/v1", TryggWeb.Api do
+    pipe_through :api
+
+    get "/children", ChildController, :index
+    get "/children/:id", ChildController, :show
+
+    get "/children/:child_id/entries", EntryController, :index
+    post "/children/:child_id/entries", EntryController, :create
+    post "/children/:child_id/entries/:id/stop", EntryController, :stop
+    delete "/children/:child_id/entries/:id", EntryController, :delete
+  end
 
   # Oban Web dashboard. Open in dev (like LiveDashboard); in production it is
   # behind HTTP Basic Auth and only mounted when OBAN_DASHBOARD_USER /

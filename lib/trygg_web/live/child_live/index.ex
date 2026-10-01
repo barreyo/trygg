@@ -3,6 +3,7 @@ defmodule TryggWeb.ChildLive.Index do
 
   alias Trygg.Families
   alias Trygg.Families.Child
+  alias Trygg.Families.Family
   alias TryggWeb.Loading
 
   @impl true
@@ -76,6 +77,17 @@ defmodule TryggWeb.ChildLive.Index do
         class="space-y-4 mt-2"
       >
         <.input field={@form[:name]} label="Name" required autocomplete="off" />
+
+        <%!-- Only offered when there's a family to add them to: everyone in it sees the new child. --%>
+        <.input
+          :if={@live_action == :new and @families != []}
+          id="child-family"
+          name="family_id"
+          type="select"
+          label="Who can see them"
+          value={@family_id}
+          options={family_options(@families)}
+        />
 
         <div :if={status_choice?(assigns)} class="join w-full">
           <button
@@ -232,6 +244,8 @@ defmodule TryggWeb.ChildLive.Index do
   defp apply_action(socket, :new, _params) do
     socket
     |> assign(:child, %Child{})
+    |> assign(:families, Families.list_owned_families(socket.assigns.current_scope))
+    |> assign(:family_id, "new")
     |> assign(:status, :born)
     |> assign(:form, to_form(Families.change_child(%Child{})))
   end
@@ -275,9 +289,13 @@ defmodule TryggWeb.ChildLive.Index do
   @impl true
   def handle_event("retry_load", _params, socket), do: {:noreply, load_children(socket)}
 
-  def handle_event("validate", %{"child" => params}, socket) do
+  def handle_event("validate", %{"child" => params} = all, socket) do
     changeset = Families.change_child(socket.assigns.child, params) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, :form, to_form(changeset))}
+
+    {:noreply,
+     socket
+     |> assign(:family_id, Map.get(all, "family_id", socket.assigns[:family_id]))
+     |> assign(:form, to_form(changeset))}
   end
 
   def handle_event("set_status", %{"status" => status}, socket) do
@@ -292,7 +310,8 @@ defmodule TryggWeb.ChildLive.Index do
      |> assign(:form, to_form(Families.change_child(socket.assigns.child, params)))}
   end
 
-  def handle_event("save", %{"child" => params}, socket) do
+  def handle_event("save", %{"child" => params} = all, socket) do
+    socket = assign(socket, :family_id, Map.get(all, "family_id", "new"))
     save(socket, socket.assigns.live_action, params)
   end
 
@@ -306,7 +325,9 @@ defmodule TryggWeb.ChildLive.Index do
   end
 
   defp save(socket, :new, params) do
-    case Families.create_child(socket.assigns.current_scope, params) do
+    opts = [family_id: parse_family_id(socket.assigns.family_id)]
+
+    case Families.create_child(socket.assigns.current_scope, params, opts) do
       {:ok, child} ->
         {:noreply,
          socket
@@ -343,6 +364,19 @@ defmodule TryggWeb.ChildLive.Index do
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
     end
+  end
+
+  # "new" (or anything unreadable) starts a family of its own.
+  defp parse_family_id(value) do
+    case Integer.parse(to_string(value)) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
+  defp family_options(families) do
+    [{"Just me for now (a new family)", "new"}] ++
+      Enum.map(families, &{"Everyone with #{Family.label(&1)}", &1.id})
   end
 
   defp current_form_params(socket) do
