@@ -17,9 +17,17 @@ config :trygg, Trygg.Repo,
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
 config :trygg, TryggWeb.Endpoint,
-  # Binding to loopback ipv4 address prevents access from other machines.
-  # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  # Loopback only by default, so nothing else on the network can reach the dev
+  # server. `make dev-lan` sets TRYGG_DEV_BIND=0.0.0.0 so a device on the LAN
+  # (e.g. the M5Stack button in `firmware/`) can call the API.
+  http: [
+    ip:
+      System.get_env("TRYGG_DEV_BIND", "127.0.0.1")
+      |> String.to_charlist()
+      |> :inet.parse_address()
+      |> elem(1),
+    port: String.to_integer(System.get_env("PORT") || "4000")
+  ],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
