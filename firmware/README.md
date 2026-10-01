@@ -13,6 +13,20 @@ On failure the tile goes red with a low beep and the reason (`Bad token`, `Token
 read-only`, `Can't reach server`…). A request that fails in transit is retried with the
 same `client_id`, so a lost response can never log the same change twice.
 
+## Switching children
+
+A tap logs when the button is let go. Holding a button for about a second does this instead
+(and logs nothing):
+
+| Hold          | Does                                                                         |
+| ------------- | ---------------------------------------------------------------------------- |
+| **A** (left)  | previous child                                                               |
+| **C** (right) | next child (both wrap around)                                                |
+| **B** (middle)| opens a list: **A** ▲, **C** ▼, **B** selects; closes by itself after 10 s   |
+
+The device remembers its pick across reboots. `TRYGG_CHILD_ID` only decides the starting
+child: edit it and re-flash and that wins over the remembered pick.
+
 ## Local dev setup
 
 The device talks to your Mac over WiFi, so the dev server must listen on the LAN.
@@ -35,7 +49,6 @@ certificate is verified against the CA bundle built into the Arduino core.
 
 ## Notes
 
-- With several children in the family the first one is used; set `TRYGG_CHILD_ID` to pick.
 - The name is refreshed every 10 minutes (renames, a new child).
 - The first build downloads the ESP32 toolchain (~1 GB, cached in `~/.platformio`).
   `make` creates the Python venv in `firmware/.venv` on demand.

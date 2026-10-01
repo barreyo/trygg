@@ -8,9 +8,12 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <M5Unified.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <time.h>
+
+#include <vector>
 
 #include "config.h"
 #include "icons.h"
@@ -51,14 +54,35 @@ const unsigned long BANNER_MS = 4000;
 const unsigned long LOGGED_SCREEN_MS = 4000;
 const int HTTP_TIMEOUT_MS = 8000;
 const int MAX_ATTEMPTS = 3;
+const unsigned long HOLD_MS = 800;           // long press: left/right switch child, middle lists them
+const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after this much quiet
+const int LIST_ROWS = 5;
 
+struct Child {
+  long id;
+  String name;
+};
+
+std::vector<Child> children;  // everything the token can see, as of the last load
+int current = -1;             // index into `children`
 String child_name;
-long child_id = TRYGG_CHILD_ID;
+long child_id = 0;
 unsigned long child_loaded_at = 0;
 unsigned long banner_until = 0;
 unsigned long logged_until = 0;  // full-screen "logged" view is up until then
 String last_logged;              // e.g. "PEE 14:32", shown once the full-screen view is gone
 bool busy = false;
+
+// Buttons whose current press must not log: it was a long press, or started while
+// a full-screen view ignored the buttons. Cleared by the next press, so a button
+// held through a dismissal can't log when it's finally let go.
+bool consumed[3] = {false, false, false};
+
+bool list_open = false;
+int list_sel = 0;
+unsigned long list_until = 0;
+
+m5::Button_Class& btn(int i) { return i == 0 ? M5.BtnA : (i == 1 ? M5.BtnB : M5.BtnC); }
 
 // ---- drawing ---------------------------------------------------------------
 
@@ -137,6 +161,49 @@ void drawLogged(const Action& a, const String& time) {
     d.setFont(&fonts::Font7);  // big 7-segment digits
     d.drawString(time, d.width() / 2, 196);
   }
+}
+
+// Fits `text` into `width` pixels by stepping down through the font sizes.
+void fitFont(const String& text, int width) {
+  const lgfx::IFont* fonts[] = {&fonts::lgfxJapanGothic_24, &fonts::lgfxJapanGothic_20, &fonts::lgfxJapanGothic_16};
+  for (auto font : fonts) {
+    M5.Display.setFont(font);
+    if (M5.Display.textWidth(text) <= width) break;
+  }
+}
+
+// The child picker: ▲ / OK / ▼ above the three buttons.
+void drawList() {
+  auto& d = M5.Display;
+  int n = children.size();
+  d.fillScreen(COLOR_BG);
+  d.setTextColor(COLOR_DIM, COLOR_BG);
+  d.setTextDatum(middle_center);
+  d.setFont(&fonts::lgfxJapanGothic_20);
+  d.drawString("Choose child", d.width() / 2, 16);
+
+  int top = max(0, min(list_sel - LIST_ROWS / 2, n - LIST_ROWS));
+  for (int r = 0; r < LIST_ROWS && top + r < n; r++) {
+    int idx = top + r;
+    int y = 34 + r * 34;
+    bool sel = idx == list_sel;
+    if (sel) {
+      d.fillRoundRect(12, y, d.width() - 24, 32, 8, COLOR_IDLE);
+      d.drawRoundRect(12, y, d.width() - 24, 32, 8, COLOR_BUSY);
+    }
+    d.setTextColor(sel ? COLOR_TEXT : COLOR_DIM, sel ? COLOR_IDLE : COLOR_BG);
+    d.setTextDatum(middle_left);
+    fitFont(children[idx].name, d.width() - 80);
+    d.drawString(children[idx].name, 28, y + 16);
+    if (idx == current) d.fillCircle(d.width() - 30, y + 16, 5, COLOR_OK);
+  }
+
+  d.fillTriangle(ACTIONS[0].center_x, 214, ACTIONS[0].center_x - 10, 230, ACTIONS[0].center_x + 10, 230, COLOR_TEXT);
+  d.fillTriangle(ACTIONS[2].center_x, 230, ACTIONS[2].center_x - 10, 214, ACTIONS[2].center_x + 10, 214, COLOR_TEXT);
+  d.setTextColor(COLOR_TEXT, COLOR_BG);
+  d.setTextDatum(middle_center);
+  d.setFont(&fonts::lgfxJapanGothic_20);
+  d.drawString("OK", ACTIONS[1].center_x, 222);
 }
 
 void showBanner(const String& text, uint16_t color, unsigned long ms = 0) {
@@ -235,6 +302,33 @@ String describeFailure(int status) {
   }
 }
 
+void selectChild(int idx) {
+  current = idx;
+  child_id = children[idx].id;
+  child_name = children[idx].name;
+}
+
+// The child to start on: the one last picked on the device, unless TRYGG_CHILD_ID
+// was changed since (editing the config and re-flashing wins), else the config's.
+long preferredChildId() {
+  Preferences prefs;
+  prefs.begin("trygg", true);
+  long configured = prefs.getLong("cfg", -1);
+  long saved = prefs.getLong("child", 0);
+  prefs.end();
+  return (configured == TRYGG_CHILD_ID && saved) ? saved : TRYGG_CHILD_ID;
+}
+
+void saveChoice() {
+  Preferences prefs;
+  prefs.begin("trygg", false);
+  prefs.putLong("cfg", TRYGG_CHILD_ID);
+  prefs.putLong("child", child_id);
+  prefs.end();
+}
+
+// Fetches the family's children. Keeps the current child across refreshes; the
+// first time, picks the remembered one (see preferredChildId), else the first.
 bool loadChild(bool quiet = false) {
   String body;
   int status = request("GET", "/api/v1/children", "", body);
@@ -247,28 +341,75 @@ bool loadChild(bool quiet = false) {
     showBanner("Bad response", COLOR_ERR);
     return false;
   }
-  JsonArray children = doc["data"].as<JsonArray>();
-  JsonVariant chosen;
-  for (JsonVariant c : children) {
-    if (child_id == 0 || c["id"].as<long>() == child_id) {
-      chosen = c;
-      break;
-    }
+  std::vector<Child> loaded;
+  bool read_only = false;
+  for (JsonVariant c : doc["data"].as<JsonArray>()) {
+    loaded.push_back({c["id"].as<long>(), c["name"].as<String>()});
+    read_only = read_only || c["role"] == "viewer";
   }
-  if (chosen.isNull()) {
-    showBanner(child_id ? "Child not in this family" : "No children yet", COLOR_ERR);
+  if (loaded.empty()) {
+    showBanner("No children yet", COLOR_ERR);
     return false;
   }
-  if (chosen["role"] == "viewer") {
+  if (read_only) {
     showBanner("Token is read-only", COLOR_ERR);
     return false;
   }
-  child_id = chosen["id"].as<long>();
-  child_name = chosen["name"].as<String>();
+  long want = child_id ? child_id : preferredChildId();
+  children = loaded;
+  int idx = 0;
+  for (int i = 0; i < (int)children.size(); i++) {
+    if (children[i].id == want) idx = i;
+  }
+  selectChild(idx);
   child_loaded_at = millis();
-  drawName();
-  showBanner("Ready", COLOR_DIM);
+  if (!list_open) {
+    drawName();
+    showBanner("Ready", COLOR_DIM);
+  }
   return true;
+}
+
+// Long press left (-1) / right (+1): previous / next child, wrapping round.
+void cycleChild(int dir) {
+  int n = children.size();
+  if (n < 2) {
+    showBanner(n ? "Only one child" : "Not connected yet", COLOR_DIM, BANNER_MS);
+    beep(300, 120);
+    return;
+  }
+  selectChild((current + dir + n) % n);
+  saveChoice();
+  drawName();
+  showBanner("Child " + String(current + 1) + " of " + String(n), COLOR_TEXT, BANNER_MS);
+  beep(dir < 0 ? 900 : 1400, 70);
+}
+
+// Long press middle: pick from a list. ▲ ▼ move, OK selects, or wait to cancel.
+void openList() {
+  if (children.empty()) {
+    showBanner("Not connected yet", COLOR_DIM, BANNER_MS);
+    beep(300, 120);
+    return;
+  }
+  list_open = true;
+  list_sel = current;
+  list_until = millis() + LIST_TIMEOUT_MS;
+  drawList();
+  beep(1100, 70);
+}
+
+void closeList(bool apply) {
+  list_open = false;
+  bool changed = apply && list_sel != current;
+  if (changed) {
+    selectChild(list_sel);
+    saveChoice();
+  }
+  drawAll();
+  showBanner(changed ? "Child " + String(current + 1) + " of " + String(children.size()) : String("Ready"),
+             changed ? COLOR_TEXT : COLOR_DIM, changed ? BANNER_MS : 0);
+  if (changed) beep(1400, 70);
 }
 
 // ---- logging ---------------------------------------------------------------
@@ -357,14 +498,55 @@ void loop() {
   // blocks briefly, so a press made then is read now and dropped here), so a
   // fumbled double tap can't log twice.
   if (logged_until) {
+    for (int i = 0; i < 3; i++) {
+      if (btn(i).wasPressed()) consumed[i] = true;
+    }
     if (millis() > logged_until) dismissLogged();
     delay(10);
     return;
   }
 
-  if (M5.BtnA.wasPressed()) press(0);
-  else if (M5.BtnB.wasPressed()) press(1);
-  else if (M5.BtnC.wasPressed()) press(2);
+  if (list_open) {
+    int moved = 0;
+    bool select = false;
+    for (int i = 0; i < 3; i++) {
+      if (!btn(i).wasPressed()) continue;
+      consumed[i] = true;  // none of these may log when let go
+      list_until = millis() + LIST_TIMEOUT_MS;
+      if (i == 0) moved = -1;
+      else if (i == 2) moved = 1;
+      else select = true;
+    }
+    int n = children.size();
+    if (select) {
+      closeList(true);
+    } else if (millis() > list_until) {
+      closeList(false);
+    } else if (moved) {
+      list_sel = (list_sel + moved + n) % n;
+      drawList();
+      beep(moved < 0 ? 900 : 1400, 40);
+    }
+    delay(10);
+    return;
+  }
+
+  // A tap logs when the button is let go (so a hold can be told apart); a hold of
+  // HOLD_MS acts at once, and its release is swallowed.
+  for (int i = 0; i < 3; i++) {
+    auto& b = btn(i);
+    if (b.wasPressed()) consumed[i] = false;
+    if (!consumed[i] && b.isPressed() && b.pressedFor(HOLD_MS)) {
+      consumed[i] = true;
+      if (i == 1) openList();
+      else cycleChild(i == 0 ? -1 : 1);
+    }
+    if (b.wasReleased()) {
+      if (!consumed[i]) press(i);
+      consumed[i] = false;
+    }
+    if (logged_until || list_open) break;
+  }
 
   if (banner_until && millis() > banner_until) {
     banner_until = 0;
