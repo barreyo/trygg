@@ -37,6 +37,11 @@ dev: ## Start the local dev server. HOST=<lan-ip> to expose avatar/media image U
 		./etc/scripts/check_dev_prerequisites.sh
 		mix phx.server
 
+.PHONY: dev-lan
+dev-lan: ## Start the dev server on the LAN for the M5Stack button in firmware/ (PORT=4012 to change port)
+	@echo "$(BOLD)Serving on http://$$(ipconfig getifaddr en0 || ipconfig getifaddr en1):$${PORT:-4000}$(RESET)"
+	@TRYGG_DEV_BIND=0.0.0.0 $(MAKE) --no-print-directory dev
+
 .PHONY: dev-setup
 dev-setup:  ## Set up local dev environment
 	@echo "$(BOLD)Setting up development environment...$(RESET)"
@@ -156,6 +161,44 @@ clean-elixir:  ## Clean up Elixir and Phoenix files
 
 .PHONY: clean
 clean: clean-elixir clean-docker  ## Clean docker and elixir
+
+##
+# ~~~ Firmware (M5Stack button, see firmware/README.md) ~~~
+##
+
+PIO := firmware/.venv/bin/pio
+
+firmware/.venv/bin/pio:
+	@python3 -m venv firmware/.venv
+	@firmware/.venv/bin/pip install -q platformio pillow
+
+.PHONY: fw-config
+fw-config: firmware/.venv/bin/pio ## Create firmware/include/config.h (LAN URL + a fresh dev API token); then add your WiFi
+	@test ! -e firmware/include/config.h || { echo "firmware/include/config.h exists; delete it to regenerate"; exit 1; }
+	@TOKEN=$$(mix trygg.dev_token 2>/dev/null | tail -1) && \
+	  IP=$$(ipconfig getifaddr en0 || ipconfig getifaddr en1) && \
+	  TZNAME=$$(readlink /etc/localtime | sed 's|.*zoneinfo/||') && \
+	  POSIX_TZ=$$(tail -1 /usr/share/zoneinfo/$$TZNAME) && \
+	  sed -e "s|http://192.168.0.10:4000|http://$$IP:$${PORT:-4000}|" -e "s|trygg_\.\.\.|$$TOKEN|" \
+	    -e "s|#define TIMEZONE \".*\"|#define TIMEZONE \"$$POSIX_TZ\"|" \
+	    firmware/include/config.example.h > firmware/include/config.h
+	@echo "$(GREEN)Wrote firmware/include/config.h$(RESET) — set WIFI_SSID / WIFI_PASSWORD in it"
+
+.PHONY: fw-build
+fw-build: firmware/.venv/bin/pio ## Compile the M5Stack firmware
+	@$(PIO) run -d firmware
+
+.PHONY: fw-flash
+fw-flash: firmware/.venv/bin/pio ## Compile and flash the M5Stack over USB
+	@$(PIO) run -d firmware -t upload
+
+.PHONY: fw-monitor
+fw-monitor: firmware/.venv/bin/pio ## Serial monitor for the M5Stack
+	@$(PIO) device monitor -d firmware
+
+.PHONY: fw-icons
+fw-icons: firmware/.venv/bin/pio ## Regenerate firmware/src/icons.h from the macOS emoji font
+	@firmware/.venv/bin/python firmware/tools/gen_icons.py
 
 ##
 # ~~~ Release Targets ~~~
