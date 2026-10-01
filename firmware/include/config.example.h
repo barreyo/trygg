@@ -13,7 +13,9 @@
 // `mix trygg.dev_token`).
 #define TRYGG_TOKEN "trygg_..."
 
-// Which child the buttons log for. 0 = the first child of the family.
+// Which child to start on (0 = the first). Long-press the left/right button to
+// step through the family's children, the middle one to pick from a list; the
+// device remembers the last pick unless you change this and re-flash.
 #define TRYGG_CHILD_ID 0
 
 // POSIX timezone for the time shown on the "logged" screen. `make fw-config`
