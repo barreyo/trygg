@@ -33,6 +33,44 @@ defmodule TryggWeb.ChildLiveTest do
     assert path == ~p"/c/#{child}"
   end
 
+  test "a new child can join a family the user owns", %{conn: conn, scope: scope} do
+    first = child_fixture(scope)
+    member = Trygg.AccountsFixtures.user_fixture()
+    membership_fixture(first, member, :caregiver)
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/new")
+    assert has_element?(lv, "#child-family option[value='new'][selected]")
+    assert has_element?(lv, "#child-family option[value='#{first.family_id}']")
+
+    {:error, {:live_redirect, _}} =
+      lv
+      |> form("#child-form",
+        child: %{name: "Second", timezone: "Etc/UTC"},
+        family_id: to_string(first.family_id)
+      )
+      |> render_submit()
+
+    second = Enum.find(Families.list_children(scope), &(&1.name == "Second"))
+    assert second.family_id == first.family_id
+    assert Families.member_role(Trygg.Accounts.Scope.for_user(member), second) == :caregiver
+  end
+
+  test "the family choice is only offered when there's a family to join", %{conn: conn} do
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/new")
+    refute has_element?(lv, "#child-family")
+  end
+
+  test "a child is added to a new family by default", %{conn: conn, scope: scope} do
+    first = child_fixture(scope)
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/new")
+
+    {:error, {:live_redirect, _}} =
+      lv |> form("#child-form", child: %{name: "Solo", timezone: "Etc/UTC"}) |> render_submit()
+
+    solo = Enum.find(Families.list_children(scope), &(&1.name == "Solo"))
+    assert solo.family_id != first.family_id
+  end
+
   test "records how early a child was born", %{conn: conn, scope: scope} do
     child = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -30)})
     {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")

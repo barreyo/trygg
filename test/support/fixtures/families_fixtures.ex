@@ -1,6 +1,6 @@
 defmodule Trygg.FamiliesFixtures do
   @moduledoc """
-  Test helpers for creating children, memberships and invites.
+  Test helpers for creating children, families, memberships and invites.
   """
 
   alias Trygg.Families
@@ -17,16 +17,19 @@ defmodule Trygg.FamiliesFixtures do
     })
   end
 
-  @doc "Creates a child owned by `scope` (a scope is created if not given)."
-  def child_fixture(scope \\ nil, attrs \\ %{}) do
+  @doc """
+  Creates a child owned by `scope` (a scope is created if not given), in a family
+  of its own. Pass `family_id:` in `opts` to add it to one `scope` already owns.
+  """
+  def child_fixture(scope \\ nil, attrs \\ %{}, opts \\ []) do
     scope = scope || user_scope_fixture()
-    {:ok, child} = Families.create_child(scope, valid_child_attributes(attrs))
+    {:ok, child} = Families.create_child(scope, valid_child_attributes(attrs), opts)
     child
   end
 
-  @doc "Adds `user` to `child` with `role` and returns the membership."
+  @doc "Adds `user` to `child`'s family with `role` and returns the membership."
   def membership_fixture(child, user, role \\ :caregiver) do
-    %Trygg.Families.Membership{child_id: child.id, user_id: user.id}
+    %Trygg.Families.Membership{family_id: child.family_id, user_id: user.id}
     |> Trygg.Families.Membership.changeset(%{role: role})
     |> Repo.insert!()
   end

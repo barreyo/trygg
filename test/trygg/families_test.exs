@@ -221,9 +221,82 @@ defmodule Trygg.FamiliesTest do
 
     test "owner can remove a caregiver" do
       %{owner_scope: owner, child: child, member: member} = shared_child_fixture()
-      membership = Repo.get_by!(Membership, child_id: child.id, user_id: member.id)
+      membership = Repo.get_by!(Membership, family_id: child.family_id, user_id: member.id)
       assert {:ok, _} = Families.remove_member(owner, child, membership)
       assert Families.member_role(user_scope_fixture(member), child) == nil
+    end
+  end
+
+  describe "families" do
+    test "a new child starts a family of its own" do
+      scope = user_scope_fixture()
+      first = child_fixture(scope)
+      second = child_fixture(scope)
+
+      assert first.family_id != second.family_id
+    end
+
+    test "a child can join a family the user owns, and its caregivers see it" do
+      %{owner_scope: owner, child: first, member: member, member_scope: member_scope} =
+        shared_child_fixture(:viewer)
+
+      second = child_fixture(owner, %{name: "Second"}, family_id: first.family_id)
+
+      assert second.family_id == first.family_id
+      assert second.id in Enum.map(Families.list_children(member_scope), & &1.id)
+      assert Families.member_role(member_scope, second) == :viewer
+      assert Families.get_child!(member_scope, second.id).role == :viewer
+      assert member.id
+    end
+
+    test "only an owner of the family can add a child to it" do
+      %{child: child, member_scope: member_scope} = shared_child_fixture(:caregiver)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Families.create_child(member_scope, valid_child_attributes(), family_id: child.family_id)
+      end
+
+      stranger = user_scope_fixture()
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Families.create_child(stranger, valid_child_attributes(), family_id: child.family_id)
+      end
+    end
+
+    test "list_owned_families only returns families the user owns" do
+      %{owner_scope: owner, child: child, member_scope: member_scope} = shared_child_fixture()
+
+      assert [%{id: id, children: [%{id: child_id}]}] = Families.list_owned_families(owner)
+      assert id == child.family_id
+      assert child_id == child.id
+      assert Families.list_owned_families(member_scope) == []
+    end
+
+    test "deleting one of two children keeps the family; deleting the last removes it" do
+      %{owner_scope: owner, child: first, member_scope: member_scope} = shared_child_fixture()
+      second = child_fixture(owner, %{}, family_id: first.family_id)
+
+      assert {:ok, _} = Families.delete_child(owner, first)
+      assert Families.member_role(member_scope, second) == :caregiver
+      assert Repo.get(Trygg.Families.Family, second.family_id)
+
+      assert {:ok, _} = Families.delete_child(owner, second)
+      refute Repo.get(Trygg.Families.Family, second.family_id)
+      assert Repo.all(Membership) == []
+    end
+
+    test "an accepted invite gives access to every child in the family" do
+      owner = user_scope_fixture()
+      first = child_fixture(owner)
+      second = child_fixture(owner, %{}, family_id: first.family_id)
+      invitee = user_fixture()
+      invite = invite_fixture(owner, first, %{email: invitee.email})
+      invitee_scope = user_scope_fixture(invitee)
+
+      assert {:ok, _child} = Families.accept_invite(invitee_scope, invite.token)
+
+      assert Enum.sort([first.id, second.id]) ==
+               invitee_scope |> Families.list_children() |> Enum.map(& &1.id) |> Enum.sort()
     end
   end
 

@@ -19,16 +19,17 @@ defmodule Trygg.Families.FamilyNotifier do
   end
 
   @doc """
-  Delivers a caregiver invitation to join a child's log.
+  Delivers a caregiver invitation to join a family. `family_label` names the
+  children in it (see `Trygg.Families.Family.label/1`).
   """
-  def deliver_caregiver_invite(invite, child, invited_by, url) do
-    deliver(invite.email, "You're invited to help track #{child.name} on Trygg", """
+  def deliver_caregiver_invite(invite, family_label, invited_by, url) do
+    deliver(invite.email, "You're invited to help track #{family_label} on Trygg", """
 
     ==============================
 
     Hi,
 
-    #{invited_by.email} invited you to help track #{child.name} on Trygg
+    #{invited_by.email} invited you to help track #{family_label} on Trygg
     as a #{invite.role}.
 
     Accept the invitation by visiting the URL below. You'll be asked to

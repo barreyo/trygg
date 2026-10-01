@@ -2,6 +2,7 @@ defmodule TryggWeb.InviteLive do
   use TryggWeb, :live_view
 
   alias Trygg.Families
+  alias Trygg.Families.Family
 
   @impl true
   def render(assigns) do
@@ -11,7 +12,7 @@ defmodule TryggWeb.InviteLive do
         <%= case @state do %>
           <% {:ok, invite} -> %>
             <.icon name="hero-user-plus" class="size-12 mx-auto text-primary" />
-            <h1 class="text-2xl font-semibold mt-4">Help track {invite.child.name}</h1>
+            <h1 class="text-2xl font-semibold mt-4">Help track {Family.label(invite.family)}</h1>
             <p class="opacity-70 mt-2">
               {inviter_email(invite)} invited you as a <span class="font-medium">{invite.role}</span>.
             </p>

@@ -17,8 +17,12 @@ defmodule Trygg.Accounts.Scope do
   """
 
   alias Trygg.Accounts.User
+  alias Trygg.Families.ApiToken
 
-  defstruct user: nil, child: nil, role: nil
+  # `api_token` is set when the caller authenticated with an API token rather
+  # than a browser session. `Trygg.Families` then confines the scope to the
+  # token's family and role.
+  defstruct user: nil, child: nil, role: nil, api_token: nil
 
   @doc """
   Creates a scope for the given user.
@@ -30,6 +34,14 @@ defmodule Trygg.Accounts.Scope do
   end
 
   def for_user(nil), do: nil
+
+  @doc """
+  Creates a scope for a request authenticated with `token`, acting as the
+  `user` who issued it.
+  """
+  def for_api_token(%User{} = user, %ApiToken{} = token) do
+    %__MODULE__{user: user, api_token: token}
+  end
 
   @doc """
   Puts the currently active child and the user's role for that child onto the scope.

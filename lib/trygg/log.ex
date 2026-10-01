@@ -63,6 +63,16 @@ defmodule Trygg.Log do
     |> Repo.one()
   end
 
+  @doc """
+  Fetches one of `child`'s entries, authorizing the caller as a viewer of the
+  child. Raises `Ecto.NoResultsError` for an id that isn't one of the child's
+  entries, so callers can't probe for other children's.
+  """
+  def get_child_entry!(%Scope{} = scope, %Child{} = child, id) do
+    Families.authorize!(scope, child, :viewer)
+    Entry |> Repo.get_by!(id: id, child_id: child.id) |> Repo.preload(:logged_by)
+  end
+
   @doc "Fetches one entry, authorizing the caller as a viewer of its child."
   def get_entry!(%Scope{} = scope, id) do
     entry = Entry |> Repo.get!(id) |> Repo.preload(:logged_by)

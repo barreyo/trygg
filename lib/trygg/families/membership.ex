@@ -7,7 +7,7 @@ defmodule Trygg.Families.Membership do
   schema "memberships" do
     field :role, Ecto.Enum, values: @roles, default: :caregiver
 
-    belongs_to :child, Trygg.Families.Child
+    belongs_to :family, Trygg.Families.Family
     belongs_to :user, Trygg.Accounts.User
 
     timestamps(type: :utc_datetime)
@@ -18,7 +18,7 @@ defmodule Trygg.Families.Membership do
     membership
     |> cast(attrs, [:role])
     |> validate_required([:role])
-    |> unique_constraint([:child_id, :user_id])
+    |> unique_constraint([:family_id, :user_id])
   end
 
   def roles, do: @roles
