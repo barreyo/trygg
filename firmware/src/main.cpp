@@ -25,19 +25,21 @@ const uint16_t COLOR_DIM = rgb(140, 148, 156);
 const uint16_t COLOR_IDLE = rgb(48, 56, 64);
 const uint16_t COLOR_BUSY = rgb(240, 180, 40);
 const uint16_t COLOR_OK = rgb(60, 200, 110);
+const uint16_t COLOR_OK_BG = rgb(34, 160, 80);  // keep in sync with OK_BG in tools/gen_icons.py
 const uint16_t COLOR_ERR = rgb(230, 70, 70);
 
 struct Action {
   const char* kind;  // API value of data.kind
   const char* label;
   const uint16_t* icon;
+  const uint16_t* icon_big;  // on the green "logged" screen
   int center_x;  // above the matching physical button
 };
 
 const Action ACTIONS[3] = {
-    {"pee", "PEE", ICON_PEE, 66},
-    {"poo", "POO", ICON_POO, 160},
-    {"mixed", "MIXED", ICON_MIXED, 254},
+    {"pee", "PEE", ICON_PEE, ICON_PEE_BIG, 66},
+    {"poo", "POO", ICON_POO, ICON_POO_BIG, 160},
+    {"mixed", "MIXED", ICON_MIXED, ICON_MIXED_BIG, 254},
 };
 
 const int TILE_W = 84;
@@ -46,6 +48,7 @@ const int TILE_H = 120;
 
 const unsigned long CHILD_REFRESH_MS = 10UL * 60UL * 1000UL;
 const unsigned long BANNER_MS = 4000;
+const unsigned long LOGGED_SCREEN_MS = 4000;
 const int HTTP_TIMEOUT_MS = 8000;
 const int MAX_ATTEMPTS = 3;
 
@@ -53,6 +56,8 @@ String child_name;
 long child_id = TRYGG_CHILD_ID;
 unsigned long child_loaded_at = 0;
 unsigned long banner_until = 0;
+unsigned long logged_until = 0;  // full-screen "logged" view is up until then
+String last_logged;              // e.g. "PEE 14:32", shown once the full-screen view is gone
 bool busy = false;
 
 // ---- drawing ---------------------------------------------------------------
@@ -106,12 +111,53 @@ void setTiles(uint16_t color, int only = -1) {
   for (int i = 0; i < 3; i++) drawTile(i, (only < 0 || only == i) ? color : COLOR_IDLE);
 }
 
+bool clockSynced() { return time(nullptr) > 1700000000; }
+
+// Local wall-clock time as HH:MM, or "" if the clock isn't synced yet.
+String localTime() {
+  if (!clockSynced()) return "";
+  time_t now = time(nullptr);
+  struct tm tm;
+  localtime_r(&now, &tm);
+  char buf[6];
+  strftime(buf, sizeof buf, "%H:%M", &tm);
+  return String(buf);
+}
+
+// Takes over the whole screen, all green, once an entry is logged.
+void drawLogged(const Action& a, const String& time) {
+  auto& d = M5.Display;
+  d.fillScreen(COLOR_OK_BG);
+  d.pushImage(d.width() / 2 - ICON_BIG_SIZE / 2, 14, ICON_BIG_SIZE, ICON_BIG_SIZE, a.icon_big);
+  d.setTextColor(COLOR_TEXT, COLOR_OK_BG);
+  d.setTextDatum(middle_center);
+  d.setFont(&fonts::lgfxJapanGothic_32);
+  d.drawString(String(a.label) + " logged", d.width() / 2, 140);
+  if (time.length()) {
+    d.setFont(&fonts::Font7);  // big 7-segment digits
+    d.drawString(time, d.width() / 2, 196);
+  }
+}
+
 void showBanner(const String& text, uint16_t color, unsigned long ms = 0) {
   drawBanner(text, color);
   banner_until = ms ? millis() + ms : 0;
 }
 
 void beep(int hz, int ms) { M5.Speaker.tone(hz, ms); }
+
+// A little rising "ta-da-da-DING" (C6 E6 G6 C7). Blocks for about half a second,
+// which is fine: the "logged" screen ignores the buttons anyway.
+void successChime() {
+  const struct {
+    int hz;
+    int ms;
+  } notes[] = {{1047, 70}, {1319, 70}, {1568, 70}, {2093, 220}};
+  for (auto n : notes) {
+    M5.Speaker.tone(n.hz, n.ms);
+    delay(n.ms + 25);
+  }
+}
 
 // ---- network ---------------------------------------------------------------
 
@@ -132,8 +178,6 @@ bool connectWifi() {
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   return true;
 }
-
-bool clockSynced() { return time(nullptr) > 1700000000; }
 
 String isoNow() {
   time_t now = time(nullptr);
@@ -270,17 +314,26 @@ void press(int i) {
 
   String error;
   if (logDiaper(a, error)) {
-    setTiles(COLOR_OK, i);
-    showBanner(String(a.label) + " logged", COLOR_OK, BANNER_MS);
-    beep(1800, 90);
+    String time = localTime();
+    last_logged = String(a.label) + (time.length() ? " " + time : "");
+    drawLogged(a, time);
+    logged_until = millis() + LOGGED_SCREEN_MS;
+    successChime();
   } else {
     setTiles(COLOR_ERR, i);
     showBanner(error, COLOR_ERR, BANNER_MS);
     beep(300, 400);
+    delay(700);
+    setTiles(COLOR_IDLE);
   }
-  delay(700);
-  setTiles(COLOR_IDLE);
   busy = false;
+}
+
+// Leaves the full-screen "logged" view and puts the normal screen back.
+void dismissLogged() {
+  logged_until = 0;
+  drawAll();
+  showBanner(last_logged.length() ? "Last: " + last_logged : "Ready", COLOR_DIM);
 }
 
 }  // namespace
@@ -289,14 +342,25 @@ void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Display.setBrightness(90);
-  M5.Speaker.setVolume(60);
+  M5.Speaker.setVolume(35);
   Serial.begin(115200);
+  setenv("TZ", TIMEZONE, 1);
+  tzset();
   drawAll();
   if (connectWifi()) loadChild();
 }
 
 void loop() {
   M5.update();
+
+  // While the green "logged" screen is up every press is ignored (the chime above
+  // blocks briefly, so a press made then is read now and dropped here), so a
+  // fumbled double tap can't log twice.
+  if (logged_until) {
+    if (millis() > logged_until) dismissLogged();
+    delay(10);
+    return;
+  }
 
   if (M5.BtnA.wasPressed()) press(0);
   else if (M5.BtnB.wasPressed()) press(1);

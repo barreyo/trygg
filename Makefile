@@ -177,7 +177,10 @@ fw-config: firmware/.venv/bin/pio ## Create firmware/include/config.h (LAN URL +
 	@test ! -e firmware/include/config.h || { echo "firmware/include/config.h exists; delete it to regenerate"; exit 1; }
 	@TOKEN=$$(mix trygg.dev_token 2>/dev/null | tail -1) && \
 	  IP=$$(ipconfig getifaddr en0 || ipconfig getifaddr en1) && \
+	  TZNAME=$$(readlink /etc/localtime | sed 's|.*zoneinfo/||') && \
+	  POSIX_TZ=$$(tail -1 /usr/share/zoneinfo/$$TZNAME) && \
 	  sed -e "s|http://192.168.0.10:4000|http://$$IP:$${PORT:-4000}|" -e "s|trygg_\.\.\.|$$TOKEN|" \
+	    -e "s|#define TIMEZONE \".*\"|#define TIMEZONE \"$$POSIX_TZ\"|" \
 	    firmware/include/config.example.h > firmware/include/config.h
 	@echo "$(GREEN)Wrote firmware/include/config.h$(RESET) — set WIFI_SSID / WIFI_PASSWORD in it"
 

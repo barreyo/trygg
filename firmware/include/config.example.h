@@ -15,3 +15,8 @@
 
 // Which child the buttons log for. 0 = the first child of the family.
 #define TRYGG_CHILD_ID 0
+
+// POSIX timezone for the time shown on the "logged" screen. `make fw-config`
+// copies your Mac's; otherwise e.g. "CET-1CEST,M3.5.0,M10.5.0/3" (Stockholm),
+// "PST8PDT,M3.2.0,M11.1.0" (Los Angeles) or "UTC0".
+#define TIMEZONE "UTC0"

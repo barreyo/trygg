@@ -5,17 +5,20 @@ The screen shows the child's name on top and the emoji above each button. A pres
 POSTs a `diaper` entry to the [REST API](../docs/api.md) with a family API token;
 it shows up live in the app for everyone in the family.
 
-Feedback: the tile goes yellow while sending, green + a short beep when logged, red +
-a low beep with the reason (`Bad token`, `Token is read-only`, `Can't reach server`…)
-if not. A request that fails in transit is retried with the same `client_id`, so a
-lost response can never log the same change twice.
+Feedback: the tile goes yellow while sending. When the entry is logged the whole screen
+turns green for 4 seconds with the emoji, "PEE logged" and the local time, and plays a
+little rising chime. Buttons are ignored while it's up, so a fumbled double tap can't log
+twice.
+On failure the tile goes red with a low beep and the reason (`Bad token`, `Token is
+read-only`, `Can't reach server`…). A request that fails in transit is retried with the
+same `client_id`, so a lost response can never log the same change twice.
 
 ## Local dev setup
 
 The device talks to your Mac over WiFi, so the dev server must listen on the LAN.
 
 ```sh
-make fw-config          # writes firmware/include/config.h: your LAN IP + a fresh dev token
+make fw-config          # writes firmware/include/config.h: LAN IP, timezone + a fresh dev token
 $EDITOR firmware/include/config.h   # set WIFI_SSID / WIFI_PASSWORD (2.4 GHz only)
 make dev-lan            # dev server on 0.0.0.0 (PORT=4012 make dev-lan if 4000 is taken)
 make fw-flash           # build + flash over USB-C
