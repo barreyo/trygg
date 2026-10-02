@@ -53,4 +53,7 @@ curl -X POST https://<host>/api/v1/children/1/entries \
   the same one).
 - `client_id` (a UUID) makes the call idempotent: repeating it updates the same
   entry instead of adding another. `started_at` is then required.
-- Entries are logged as the token's issuer, and show up live for everyone.
+- Entries show up live for everyone. They are credited to the integration, not
+  to the caregiver who made the token: the app shows them as "Other" with a
+  bolt icon (hover for the token's name), and the API returns the token's name
+  as `logged_via` (`null` when a person logged it).
