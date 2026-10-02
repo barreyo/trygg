@@ -37,7 +37,11 @@ defmodule Trygg.Log.Entry do
     field :client_id, Ecto.UUID
 
     belongs_to :child, Trygg.Families.Child
+    # Who logged it: a caregiver (`logged_by`), or an integration using a family
+    # API token, in which case `logged_by` is nil and `logged_via` names the
+    # token. See `logged_by_integration?/1`.
     belongs_to :logged_by, Trygg.Accounts.User
+    field :logged_via, :string
 
     timestamps(type: :utc_datetime)
   end
@@ -196,6 +200,9 @@ defmodule Trygg.Log.Entry do
   end
 
   def types, do: @types
+
+  @doc "Whether an integration (an API token) logged the entry, rather than a person."
+  def logged_by_integration?(%__MODULE__{logged_via: via}), do: is_binary(via)
   def timer_types, do: @timer_types
   def sleep_locations, do: @sleep_locations
   def bottle_contents, do: @bottle_contents

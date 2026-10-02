@@ -205,6 +205,14 @@ defmodule TryggWeb.LogComponents do
               do: stamp(@entry.started_at, @tz),
               else: clock(@entry.started_at, @tz)}
           </div>
+          <div
+            :if={Entry.logged_by_integration?(@entry)}
+            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-40 truncate max-w-24"
+            title={"Logged by an integration: #{@entry.logged_via}"}
+            data-logged-by="integration"
+          >
+            <.icon name="hero-bolt" class="size-3 shrink-0" /> Other
+          </div>
           <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-40 truncate max-w-24">
             {User.capitalize_name(@entry.logged_by.first_name)}
           </div>

@@ -17,6 +17,8 @@ defmodule TryggWeb.Api.EntryJSON do
       data: entry.data,
       note: entry.note,
       client_id: entry.client_id,
+      # The integration that logged it, or nil when a person did.
+      logged_via: entry.logged_via,
       inserted_at: entry.inserted_at
     }
   end

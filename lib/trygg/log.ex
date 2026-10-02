@@ -176,6 +176,13 @@ defmodule Trygg.Log do
 
   ## Writes -----------------------------------------------------------------
 
+  # Whom to credit for a new entry. A request on an API token is credited to the
+  # integration, not to the caregiver who issued the token: it wasn't them.
+  defp author(%Scope{api_token: %Trygg.Families.ApiToken{name: name}}),
+    do: [logged_by_id: nil, logged_via: name]
+
+  defp author(%Scope{user: user}), do: [logged_by_id: user.id]
+
   @doc "Returns an `%Ecto.Changeset{}` for an entry form."
   def change_entry(%Entry{} = entry, attrs \\ %{}) do
     Entry.changeset(entry, attrs)
@@ -207,7 +214,7 @@ defmodule Trygg.Log do
         attrs
       end
 
-    %Entry{child_id: child.id, logged_by_id: scope.user.id}
+    struct!(Entry, [child_id: child.id] ++ author(scope))
     |> Entry.changeset(attrs)
     |> Repo.insert()
     |> broadcast(child.id, :created)
@@ -240,7 +247,7 @@ defmodule Trygg.Log do
       result =
         case Repo.get_by(Entry, child_id: child.id, client_id: client_id) do
           nil ->
-            %Entry{child_id: child.id, logged_by_id: scope.user.id}
+            struct!(Entry, [child_id: child.id] ++ author(scope))
             |> Entry.changeset(attrs)
             |> Repo.insert(
               on_conflict: {:replace, [:started_at, :ended_at, :data, :note, :updated_at]},
@@ -445,7 +452,7 @@ defmodule Trygg.Log do
           |> Map.put_new("started_at", DateTime.utc_now() |> DateTime.truncate(:second))
           |> Map.delete("ended_at")
 
-        %Entry{child_id: child.id, logged_by_id: scope.user.id}
+        struct!(Entry, [child_id: child.id] ++ author(scope))
         |> Entry.changeset(attrs)
         |> Repo.insert()
         |> broadcast(child.id, :created)
