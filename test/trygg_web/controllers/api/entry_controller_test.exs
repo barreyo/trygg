@@ -88,8 +88,12 @@ defmodule TryggWeb.Api.EntryControllerTest do
                json_response(conn, 201)
 
       entry = Log.get_entry!(scope, id)
-      assert entry.logged_by_id == scope.user.id
       assert entry.note == "from the fridge"
+
+      # Credited to the integration, not to the caregiver who issued the token.
+      assert entry.logged_by_id == nil
+      assert entry.logged_via == "test"
+      assert %{"data" => %{"logged_via" => "test"}} = json_response(conn, 201)
     end
 
     test "a read-only token is a 403 and logs nothing", %{conn: conn, scope: scope, child: child} do
