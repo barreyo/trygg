@@ -58,6 +58,13 @@ const unsigned long HOLD_MS = 800;           // long press: left/right switch ch
 const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after this much quiet
 const int LIST_ROWS = 5;
 
+// Screen brightness (0-255): dim at night so it doesn't light up the nursery.
+const int DAY_BRIGHTNESS = 90;
+const int NIGHT_BRIGHTNESS = 10;
+const int NIGHT_START_HOUR = 20;  // 8 PM local time...
+const int NIGHT_END_HOUR = 8;     // ...until 8 AM
+const unsigned long BRIGHTNESS_CHECK_MS = 30000;
+
 struct Child {
   long id;
   String name;
@@ -223,6 +230,22 @@ void successChime() {
   for (auto n : notes) {
     M5.Speaker.tone(n.hz, n.ms);
     delay(n.ms + 25);
+  }
+}
+
+// Dims the screen from NIGHT_START_HOUR until NIGHT_END_HOUR (local time). Until
+// the clock has synced the hour is unknown, so the brightness is left as it is.
+void updateBrightness() {
+  if (!clockSynced()) return;
+  time_t now = time(nullptr);
+  struct tm tm;
+  localtime_r(&now, &tm);
+  bool night = tm.tm_hour >= NIGHT_START_HOUR || tm.tm_hour < NIGHT_END_HOUR;
+  static int applied = -1;
+  int target = night ? NIGHT_BRIGHTNESS : DAY_BRIGHTNESS;
+  if (target != applied) {
+    M5.Display.setBrightness(target);
+    applied = target;
   }
 }
 
@@ -482,7 +505,7 @@ void dismissLogged() {
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
-  M5.Display.setBrightness(90);
+  M5.Display.setBrightness(DAY_BRIGHTNESS);
   M5.Speaker.setVolume(35);
   Serial.begin(115200);
   setenv("TZ", TIMEZONE, 1);
@@ -493,6 +516,12 @@ void setup() {
 
 void loop() {
   M5.update();
+
+  static unsigned long last_brightness_check = 0;
+  if (!last_brightness_check || millis() - last_brightness_check > BRIGHTNESS_CHECK_MS) {
+    last_brightness_check = millis() | 1;  // never 0, which means "not checked yet"
+    updateBrightness();
+  }
 
   // While the green "logged" screen is up every press is ignored (the chime above
   // blocks briefly, so a press made then is read now and dropped here), so a
