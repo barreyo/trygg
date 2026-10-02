@@ -13,6 +13,13 @@ On failure the tile goes red with a low beep and the reason (`Bad token`, `Token
 read-only`, `Can't reach server`…). A request that fails in transit is retried with the
 same `client_id`, so a lost response can never log the same change twice.
 
+## Night mode
+
+From 8 PM to 8 AM (local time, per `TIMEZONE`) the screen is dimmed to a low backlight so it
+doesn't light up the room, including the green "logged" screen; it comes back at 8 AM. Until the
+clock has synced after boot the brightness is left at the daytime level. The hours and levels are
+constants at the top of `src/main.cpp`.
+
 ## Switching children
 
 A tap logs when the button is let go. Holding a button for about a second does this instead
