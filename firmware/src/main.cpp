@@ -7,6 +7,7 @@
 // from config.h.
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <HTTPUpdate.h>
 #include <M5Unified.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -16,7 +17,27 @@
 #include <vector>
 
 #include "config.h"
+
+// A release image (`make fw-release`) is published on the server, so it must not carry the
+// credentials from config.h. It uses the ones the device saved when it was flashed over USB.
+#ifdef FW_RELEASE
+#undef WIFI_SSID
+#undef WIFI_PASSWORD
+#undef TRYGG_URL
+#undef TRYGG_TOKEN
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
+#define TRYGG_URL ""
+#define TRYGG_TOKEN ""
+#endif
 #include "icons.h"
+
+// Build time as a Unix timestamp, stamped by the Makefile. The server's firmware is
+// installed when its version is newer than this, so a build flashed over USB isn't
+// replaced by an older release. 0 when built without the Makefile.
+#ifndef FW_VERSION
+#define FW_VERSION 0
+#endif
 
 namespace {
 
@@ -58,6 +79,12 @@ const unsigned long HOLD_MS = 800;           // long press: left/right switch ch
 const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after this much quiet
 const int LIST_ROWS = 5;
 
+// Over-the-air updates: look for a newer release this often, but only once the device has
+// been left alone for a while (an update takes a few seconds and ignores the buttons).
+const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
+const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
+const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
+
 // Screen brightness (0-255): dim at night so it doesn't light up the nursery.
 const int DAY_BRIGHTNESS = 90;
 const int NIGHT_BRIGHTNESS = 10;
@@ -79,6 +106,13 @@ unsigned long banner_until = 0;
 unsigned long logged_until = 0;  // full-screen "logged" view is up until then
 String last_logged;              // e.g. "PEE 14:32", shown once the full-screen view is gone
 bool busy = false;
+
+// Where to connect and who as. Compiled in from config.h on a USB flash, which also saves
+// them to the device; an over-the-air image carries none and reads the saved ones.
+struct {
+  String ssid, password, url, token;
+} net;
+unsigned long last_activity = 0;  // last button press; updates wait for a quiet device
 
 // Buttons whose current press must not log: it was a long press, or started while
 // a full-screen view ignored the buttons. Cleared by the next press, so a button
@@ -251,11 +285,31 @@ void updateBrightness() {
 
 // ---- network ---------------------------------------------------------------
 
+void loadNetSettings() {
+  Preferences prefs;
+  prefs.begin("trygg", false);
+  if (strlen(WIFI_SSID) && strlen(TRYGG_URL) && strlen(TRYGG_TOKEN)) {
+    prefs.putString("ssid", WIFI_SSID);
+    prefs.putString("pass", WIFI_PASSWORD);
+    prefs.putString("url", TRYGG_URL);
+    prefs.putString("token", TRYGG_TOKEN);
+  }
+  net.ssid = prefs.getString("ssid", "");
+  net.password = prefs.getString("pass", "");
+  net.url = prefs.getString("url", "");
+  net.token = prefs.getString("token", "");
+  prefs.end();
+}
+
 bool connectWifi() {
   if (WiFi.status() == WL_CONNECTED) return true;
+  if (!net.ssid.length()) {
+    showBanner("Not configured: flash with config.h", COLOR_ERR);
+    return false;
+  }
   showBanner("Connecting to WiFi…", COLOR_BUSY);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(net.ssid.c_str(), net.password.c_str());
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     M5.update();
@@ -289,24 +343,26 @@ String uuid4() {
   return String(buf);
 }
 
+// Verify the server against the CA bundle built into the Arduino core. Needs a synced
+// clock for the certificate dates.
+void trustBundle(WiFiClientSecure& client) {
+  extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
+  client.setCACertBundle(rootca_crt_bundle_start);
+}
+
 // Sends one request and returns the HTTP status (negative on transport errors).
 // `out` receives the response body.
 int request(const char* method, const String& path, const String& body, String& out) {
-  String url = String(TRYGG_URL) + path;
+  String url = net.url + path;
   bool tls = url.startsWith("https://");
   WiFiClient plain;
   WiFiClientSecure secure;
-  if (tls) {
-    // Verify against the CA bundle built into the Arduino core. Needs a synced
-    // clock for the certificate dates.
-    extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
-    secure.setCACertBundle(rootca_crt_bundle_start);
-  }
+  if (tls) trustBundle(secure);
   HTTPClient http;
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
   if (!(tls ? http.begin(secure, url) : http.begin(plain, url))) return -1;
-  http.addHeader("Authorization", "Bearer " TRYGG_TOKEN);
+  http.addHeader("Authorization", "Bearer " + net.token);
   http.addHeader("Accept", "application/json");
   if (body.length()) http.addHeader("Content-Type", "application/json");
   int status = http.sendRequest(method, body);
@@ -389,6 +445,55 @@ bool loadChild(bool quiet = false) {
   if (!list_open) {
     drawName();
     showBanner("Ready", COLOR_DIM);
+  }
+  return true;
+}
+
+void updateProgress(int done, int total) {
+  static int shown = -1;
+  int pct = total > 0 ? (int)((int64_t)done * 100 / total) : 0;
+  if (pct == shown) return;
+  shown = pct;
+  drawBanner(String("Updating ") + pct + "%", COLOR_BUSY);
+}
+
+// Asks the server for the newest firmware and installs it when it is newer than this
+// build, then restarts into it. A download that fails or doesn't match the server's MD5
+// is discarded by the updater and the running firmware carries on. Returns false when
+// the check itself failed, so it is retried sooner than after a successful one.
+bool checkForUpdate() {
+  String body;
+  int status = request("GET", "/api/v1/firmware/button", "", body);
+  if (status == 404) return true;  // nothing published
+  if (status != 200) return false;
+  JsonDocument doc;
+  if (deserializeJson(doc, body)) return false;
+  int64_t latest = doc["version"].as<int64_t>();
+  if (latest <= FW_VERSION) return true;
+
+  Serial.printf("Firmware %lld available (running %d), updating\n", (long long)latest, (int)FW_VERSION);
+  showBanner("Updating firmware…", COLOR_BUSY);
+  String url = net.url + "/api/v1/firmware/button/image";
+  bool tls = url.startsWith("https://");
+  WiFiClient plain;
+  WiFiClientSecure secure;
+  if (tls) trustBundle(secure);
+  WiFiClient& client = tls ? static_cast<WiFiClient&>(secure) : plain;
+
+  httpUpdate.rebootOnUpdate(false);
+  httpUpdate.onProgress(updateProgress);
+  auto result = httpUpdate.update(client, url, "", [](HTTPClient* http) {
+    http->addHeader("Authorization", "Bearer " + net.token);
+  });
+  if (result == HTTP_UPDATE_OK) {
+    showBanner("Updated, restarting…", COLOR_OK);
+    delay(1500);
+    ESP.restart();
+  }
+  if (result == HTTP_UPDATE_FAILED) {
+    Serial.printf("Update failed: %s\n", httpUpdate.getLastErrorString().c_str());
+    showBanner("Update failed", COLOR_ERR, BANNER_MS);
+    return false;
   }
   return true;
 }
@@ -508,14 +613,19 @@ void setup() {
   M5.Display.setBrightness(DAY_BRIGHTNESS);
   M5.Speaker.setVolume(35);
   Serial.begin(115200);
+  Serial.printf("Trygg button, firmware %d\n", (int)FW_VERSION);
   setenv("TZ", TIMEZONE, 1);
   tzset();
+  loadNetSettings();
   drawAll();
   if (connectWifi()) loadChild();
 }
 
 void loop() {
   M5.update();
+  for (int i = 0; i < 3; i++) {
+    if (btn(i).wasPressed()) last_activity = millis();
+  }
 
   static unsigned long last_brightness_check = 0;
   if (!last_brightness_check || millis() - last_brightness_check > BRIGHTNESS_CHECK_MS) {
@@ -588,6 +698,14 @@ void loop() {
   if ((!child_name.length() || stale) && millis() - last_try > 10000) {
     last_try = millis();
     if (connectWifi()) loadChild(stale);
+  }
+
+  static unsigned long last_update_check = 0;
+  static unsigned long update_interval = 0;
+  if (millis() - last_update_check > update_interval && millis() - last_activity > UPDATE_QUIET_MS && clockSynced() &&
+      WiFi.status() == WL_CONNECTED) {
+    last_update_check = millis();
+    update_interval = checkForUpdate() ? UPDATE_CHECK_MS : UPDATE_RETRY_MS;
   }
   delay(10);
 }

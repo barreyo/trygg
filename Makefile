@@ -184,13 +184,39 @@ fw-config: firmware/.venv/bin/pio ## Create firmware/include/config.h (LAN URL +
 	    firmware/include/config.example.h > firmware/include/config.h
 	@echo "$(GREEN)Wrote firmware/include/config.h$(RESET) — set WIFI_SSID / WIFI_PASSWORD in it"
 
+# Every build is stamped with the time it was made; a device installs a release only if its
+# stamp is newer than its own (see FW_VERSION in firmware/src/main.cpp).
+FW_VERSION := $(shell date +%s)
+FW_BIN := firmware/.pio/build/m5stack-basic/firmware.bin
+PIO_STAMPED = PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=$(FW_VERSION)" $(PIO)
+
 .PHONY: fw-build
 fw-build: firmware/.venv/bin/pio ## Compile the M5Stack firmware
-	@$(PIO) run -d firmware
+	@$(PIO_STAMPED) run -d firmware
 
 .PHONY: fw-flash
 fw-flash: firmware/.venv/bin/pio ## Compile and flash the M5Stack over USB
-	@$(PIO) run -d firmware -t upload
+	@$(PIO_STAMPED) run -d firmware -t upload
+
+# Flash with a saved config: `make fw-flash-prod` copies firmware/include/config.h.prod over
+# config.h (both gitignored) and flashes it; likewise `fw-flash-dev` for config.h.dev.
+.PHONY: fw-flash-%
+fw-flash-%: firmware/.venv/bin/pio
+	@test -e firmware/include/config.h.$* || { echo "firmware/include/config.h.$* is missing: copy config.example.h to it and fill it in"; exit 1; }
+	@cp firmware/include/config.h.$* firmware/include/config.h
+	@echo "$(GREEN)Flashing with config.h.$*$(RESET)"
+	@$(PIO_STAMPED) run -d firmware -t upload
+
+# The image is built without WiFi/server/token (they stay on the device, from its USB flash),
+# since it is committed and served.
+.PHONY: fw-release
+fw-release: firmware/.venv/bin/pio ## Publish the build as priv/firmware/button.{bin,json}; deploy it and buttons update themselves
+	@test -e firmware/include/config.h || { echo "firmware/include/config.h is missing (it still supplies TIMEZONE and TRYGG_CHILD_ID)"; exit 1; }
+	@PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=$(FW_VERSION) -DFW_RELEASE" $(PIO) run -d firmware
+	@mkdir -p priv/firmware
+	@cp $(FW_BIN) priv/firmware/button.bin
+	@python3 -c 'import hashlib, json; print(json.dumps({"version": $(FW_VERSION), "md5": hashlib.md5(open("priv/firmware/button.bin", "rb").read()).hexdigest()}))' > priv/firmware/button.json
+	@echo "$(GREEN)Release $(FW_VERSION)$(RESET) is in priv/firmware: commit it and deploy, devices pick it up within hours"
 
 .PHONY: fw-monitor
 fw-monitor: firmware/.venv/bin/pio ## Serial monitor for the M5Stack
