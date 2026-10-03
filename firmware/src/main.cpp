@@ -2,9 +2,13 @@
 //
 //   A = PEE   B = POO   C = MIXED
 //
-// Shows the child's name on top and the emoji above each button. A press POSTs a
-// diaper entry to the Trygg REST API (see docs/api.md) with the family API token
-// from config.h.
+// Shows the child's name on top and the emoji above each button.
+//
+// Built for battery life: WiFi is off except while a sync runs. A press is
+// acknowledged on the spot (green screen + chime) and put on a queue. A background
+// task then joins WiFi, POSTs the queued diaper entries to the Trygg REST API (see
+// docs/api.md) with the family API token from config.h, and switches WiFi off again.
+// The UI never waits on the network, so presses made mid-sync are queued as well.
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <M5Unified.h>
@@ -49,11 +53,17 @@ const int TILE_W = 84;
 const int TILE_Y = 112;
 const int TILE_H = 120;
 
-const unsigned long CHILD_REFRESH_MS = 10UL * 60UL * 1000UL;
+const unsigned long CHILD_REFRESH_MS = 60UL * 60UL * 1000UL;  // names refresh whenever WiFi is up and they're older
 const unsigned long BANNER_MS = 4000;
 const unsigned long LOGGED_SCREEN_MS = 4000;
 const int HTTP_TIMEOUT_MS = 8000;
-const int MAX_ATTEMPTS = 3;
+const int MAX_ATTEMPTS = 3;  // per entry, per sync, before backing off
+const size_t QUEUE_MAX = 20;
+const unsigned long WIFI_FAST_JOIN_MS = 6000;  // rejoining the last-used access point
+const unsigned long WIFI_JOIN_MS = 15000;      // full scan
+const unsigned long CLOCK_WAIT_MS = 10000;     // first NTP sync after boot
+const unsigned long RETRY_BASE_MS = 15000;     // after a failed sync, doubling...
+const unsigned long RETRY_MAX_MS = 5UL * 60UL * 1000UL;  // ...up to this
 const unsigned long HOLD_MS = 800;           // long press: left/right switch child, middle lists them
 const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after this much quiet
 const int LIST_ROWS = 5;
@@ -70,15 +80,41 @@ struct Child {
   String name;
 };
 
-std::vector<Child> children;  // everything the token can see, as of the last load
+std::vector<Child> children;  // everything the token can see, as of the last load (UI task only)
 int current = -1;             // index into `children`
 String child_name;
 long child_id = 0;
-unsigned long child_loaded_at = 0;
 unsigned long banner_until = 0;
+String shown_banner;             // what the banner area currently says ("" = unknown, redraw)
 unsigned long logged_until = 0;  // full-screen "logged" view is up until then
 String last_logged;              // e.g. "PEE 14:32", shown once the full-screen view is gone
-bool busy = false;
+
+// A press waiting to be delivered. `client_id` is minted at press time, so every
+// retry is idempotent on the server.
+struct Pending {
+  uint8_t action;  // index into ACTIONS
+  long child_id;
+  time_t pressed_at;           // 0 if the clock hadn't synced yet...
+  unsigned long pressed_ms;    // ...then the time is worked out from this when sending
+  char client_id[37];
+};
+
+// Shared by the UI (Arduino loop) task and the sync task. The mutex guards `queue`,
+// `fetched` and `sync_error`; the volatile words are fine to read without it. The
+// sync task never draws, and the UI never waits on the network.
+SemaphoreHandle_t mu;
+TaskHandle_t sync_task;
+std::vector<Pending> queue;     // only the UI appends, only the sync task removes
+std::vector<Child> fetched;     // children fetched by the sync task, waiting for the UI to adopt
+char sync_error[40];            // latest failure the user should hear about
+volatile int pending_count = 0;
+volatile bool fetched_ready = false;
+volatile uint32_t error_seq = 0;
+volatile bool syncing = false;
+volatile bool have_children = false;
+volatile unsigned long child_loaded_at = 0;
+volatile unsigned long last_fail_at = 0;
+volatile unsigned long retry_delay = 0;  // 0: due right away
 
 // Buttons whose current press must not log: it was a long press, or started while
 // a full-screen view ignored the buttons. Cleared by the next press, so a button
@@ -109,6 +145,7 @@ void drawName() {
 
 // One line under the name: what just happened, or the connection state.
 void drawBanner(const String& text, uint16_t color) {
+  shown_banner = text;
   auto& d = M5.Display;
   d.fillRect(0, 60, d.width(), 44, COLOR_BG);
   d.setTextColor(color, COLOR_BG);
@@ -134,6 +171,8 @@ void drawTile(int i, uint16_t border) {
 
 void drawAll() {
   M5.Display.fillScreen(COLOR_BG);
+  shown_banner = "";  // wiped with the screen, so any timed message is gone too
+  banner_until = 0;
   drawName();
   for (int i = 0; i < 3; i++) drawTile(i, COLOR_IDLE);
 }
@@ -218,6 +257,26 @@ void showBanner(const String& text, uint16_t color, unsigned long ms = 0) {
   banner_until = ms ? millis() + ms : 0;
 }
 
+// The resting banner: sync progress while entries are waiting, else the last entry
+// (or the connection state before the first child list has arrived). Redrawn only
+// when it changes, and never over a timed message.
+void updateIdleBanner() {
+  if (banner_until) return;
+  String text;
+  uint16_t color = COLOR_DIM;
+  int waiting = pending_count;
+  if (waiting) {
+    text = syncing ? "Sending " + String(waiting) + "…" : String(waiting) + " waiting to send";
+    color = COLOR_BUSY;
+  } else if (!child_name.length()) {
+    text = syncing ? "Connecting…" : "Not connected";
+    color = syncing ? COLOR_BUSY : COLOR_DIM;
+  } else {
+    text = last_logged.length() ? "Last: " + last_logged : String("Ready");
+  }
+  if (text != shown_banner) drawBanner(text, color);
+}
+
 void beep(int hz, int ms) { M5.Speaker.tone(hz, ms); }
 
 // A little rising "ta-da-da-DING" (C6 E6 G6 C7). Blocks for about half a second,
@@ -251,42 +310,79 @@ void updateBrightness() {
 
 // ---- network ---------------------------------------------------------------
 
-bool connectWifi() {
-  if (WiFi.status() == WL_CONNECTED) return true;
-  showBanner("Connecting to WiFi…", COLOR_BUSY);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+// From here to `syncTask` the code runs on the sync task and must not touch the
+// display or UI state; it talks to the UI through the shared state at the top.
+
+struct Lock {
+  Lock() { xSemaphoreTake(mu, portMAX_DELAY); }
+  ~Lock() { xSemaphoreGive(mu); }
+};
+
+bool waitJoined(unsigned long ms) {
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    M5.update();
-    delay(100);
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    showBanner("No WiFi", COLOR_ERR);
-    return false;
-  }
-  configTime(0, 0, "pool.ntp.org", "time.google.com");
-  return true;
+  while (WiFi.status() != WL_CONNECTED && millis() - start < ms) vTaskDelay(pdMS_TO_TICKS(100));
+  return WiFi.status() == WL_CONNECTED;
 }
 
-String isoNow() {
-  time_t now = time(nullptr);
+// Joins the network and makes sure the clock is set (entries are stamped with it, and
+// TLS needs it). Rejoining the access point we used last time skips the channel scan,
+// which keeps the radio on for a second or two less.
+bool wifiUp() {
+  static bool have_ap = false;
+  static uint8_t ap_bssid[6];
+  static int32_t ap_channel = 0;
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(false);
+  bool joined = false;
+  if (have_ap) {
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD, ap_channel, ap_bssid);
+    joined = waitJoined(WIFI_FAST_JOIN_MS);
+    if (!joined) WiFi.disconnect();
+  }
+  if (!joined) {
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    joined = waitJoined(WIFI_JOIN_MS);
+  }
+  if (!joined) return false;
+  have_ap = true;
+  ap_channel = WiFi.channel();
+  memcpy(ap_bssid, WiFi.BSSID(), sizeof ap_bssid);
+
+  // Re-syncing on every join keeps the drift of the (WiFi-less) clock in check. Only
+  // the very first sync after boot is worth waiting for.
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  unsigned long start = millis();
+  while (!clockSynced() && millis() - start < CLOCK_WAIT_MS) vTaskDelay(pdMS_TO_TICKS(100));
+  return clockSynced();
+}
+
+void wifiOff() {
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+}
+
+void postError(const char* msg) {
+  Lock lock;
+  strlcpy(sync_error, msg, sizeof sync_error);
+  error_seq = error_seq + 1;
+}
+
+String isoAt(time_t t) {
   struct tm tm;
-  gmtime_r(&now, &tm);
+  gmtime_r(&t, &tm);
   char buf[25];
   strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tm);
   return String(buf);
 }
 
-String uuid4() {
+void uuid4(char (&out)[37]) {
   uint8_t b[16];
   esp_fill_random(b, sizeof b);
   b[6] = (b[6] & 0x0F) | 0x40;
   b[8] = (b[8] & 0x3F) | 0x80;
-  char buf[37];
-  snprintf(buf, sizeof buf, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", b[0], b[1], b[2],
+  snprintf(out, sizeof out, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", b[0], b[1], b[2],
            b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
-  return String(buf);
 }
 
 // Sends one request and returns the HTTP status (negative on transport errors).
@@ -350,18 +446,22 @@ void saveChoice() {
   prefs.end();
 }
 
-// Fetches the family's children. Keeps the current child across refreshes; the
-// first time, picks the remembered one (see preferredChildId), else the first.
-bool loadChild(bool quiet = false) {
+// A 4xx won't get better by retrying (408 and 429 will).
+bool permanent(int status) { return status >= 400 && status < 500 && status != 408 && status != 429; }
+
+// Sync task: fetches the family's children and hands them to the UI (adoptChildren).
+// Only failures worth telling the user about are reported; a flaky network just
+// means trying again later.
+bool fetchChildren() {
   String body;
   int status = request("GET", "/api/v1/children", "", body);
   if (status != 200) {
-    if (!quiet) showBanner(describeFailure(status), COLOR_ERR);
+    if (permanent(status)) postError(describeFailure(status).c_str());
     return false;
   }
   JsonDocument doc;
   if (deserializeJson(doc, body)) {
-    showBanner("Bad response", COLOR_ERR);
+    postError("Bad response");
     return false;
   }
   std::vector<Child> loaded;
@@ -371,12 +471,29 @@ bool loadChild(bool quiet = false) {
     read_only = read_only || c["role"] == "viewer";
   }
   if (loaded.empty()) {
-    showBanner("No children yet", COLOR_ERR);
+    postError("No children yet");
     return false;
   }
   if (read_only) {
-    showBanner("Token is read-only", COLOR_ERR);
+    postError("Token is read-only");
     return false;
+  }
+  Lock lock;
+  fetched = loaded;
+  fetched_ready = true;
+  return true;
+}
+
+// UI task: takes over a freshly fetched children list. Keeps the current child
+// across refreshes; the first time, picks the remembered one (see preferredChildId),
+// else the first.
+void adoptChildren() {
+  std::vector<Child> loaded;
+  {
+    Lock lock;
+    if (!fetched_ready) return;
+    loaded.swap(fetched);
+    fetched_ready = false;
   }
   long want = child_id ? child_id : preferredChildId();
   children = loaded;
@@ -386,11 +503,8 @@ bool loadChild(bool quiet = false) {
   }
   selectChild(idx);
   child_loaded_at = millis();
-  if (!list_open) {
-    drawName();
-    showBanner("Ready", COLOR_DIM);
-  }
-  return true;
+  have_children = true;
+  drawName();
 }
 
 // Long press left (-1) / right (+1): previous / next child, wrapping round.
@@ -430,74 +544,169 @@ void closeList(bool apply) {
     saveChoice();
   }
   drawAll();
-  showBanner(changed ? "Child " + String(current + 1) + " of " + String(children.size()) : String("Ready"),
-             changed ? COLOR_TEXT : COLOR_DIM, changed ? BANNER_MS : 0);
-  if (changed) beep(1400, 70);
+  if (changed) {
+    showBanner("Child " + String(current + 1) + " of " + String(children.size()), COLOR_TEXT, BANNER_MS);
+    beep(1400, 70);
+  } else {
+    updateIdleBanner();
+  }
 }
 
-// ---- logging ---------------------------------------------------------------
+// ---- syncing (runs on the sync task) -----------------------------------------
 
-// Retried with the same client_id, which makes the API idempotent: a request
-// whose response got lost can't create a second entry. Without a synced clock
-// there is no started_at to pin, so we send once and let the server stamp it.
-bool logDiaper(const Action& a, String& error) {
+// Posts one queued press. The entry is stamped with when the button was pressed, not
+// when it's delivered, and carries its client_id, so a request whose response got
+// lost can be repeated without creating a second entry.
+int postEntry(const Pending& p) {
+  time_t at = p.pressed_at ? p.pressed_at : time(nullptr) - (millis() - p.pressed_ms) / 1000;
   JsonDocument doc;
   doc["type"] = "diaper";
-  doc["data"]["kind"] = a.kind;
-  bool idempotent = clockSynced();
-  if (idempotent) {
-    doc["started_at"] = isoNow();
-    doc["client_id"] = uuid4();
-  }
+  doc["data"]["kind"] = ACTIONS[p.action].kind;
+  doc["started_at"] = isoAt(at);
+  doc["client_id"] = p.client_id;
   String body;
   serializeJson(doc, body);
-
-  String path = "/api/v1/children/" + String(child_id) + "/entries";
-  int status = -1;
-  for (int attempt = 1; attempt <= (idempotent ? MAX_ATTEMPTS : 1); attempt++) {
-    if (!connectWifi()) {
-      error = "No WiFi";
-      return false;
-    }
-    String response;
-    status = request("POST", path, body, response);
-    if (status == 200 || status == 201) return true;
-    if (status >= 400 && status < 500) break;  // won't get better by retrying
-    delay(500);
-  }
-  error = describeFailure(status);
-  return false;
+  String response;
+  return request("POST", "/api/v1/children/" + String(p.child_id) + "/entries", body, response);
 }
 
-void press(int i) {
-  if (busy) return;
-  busy = true;
-  const Action& a = ACTIONS[i];
-  setTiles(COLOR_BUSY, i);
-  showBanner(String("Logging ") + a.label + "…", COLOR_BUSY);
-
-  String error;
-  if (logDiaper(a, error)) {
-    String time = localTime();
-    last_logged = String(a.label) + (time.length() ? " " + time : "");
-    drawLogged(a, time);
-    logged_until = millis() + LOGGED_SCREEN_MS;
-    successChime();
-  } else {
-    setTiles(COLOR_ERR, i);
-    showBanner(error, COLOR_ERR, BANNER_MS);
-    beep(300, 400);
-    delay(700);
-    setTiles(COLOR_IDLE);
+// Sends the queue oldest first, picking up entries added meanwhile. Returns false
+// when the network or server let us down (the entry stays queued). An entry the
+// server rejects outright is dropped and the user told, since retrying can't help.
+bool deliverQueue() {
+  for (;;) {
+    Pending p;
+    {
+      Lock lock;
+      if (queue.empty()) return true;
+      p = queue.front();  // only this task removes entries, so it's still the head below
+    }
+    int status = -1;
+    for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      status = postEntry(p);
+      if (status == 200 || status == 201 || permanent(status)) break;
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    bool sent = status == 200 || status == 201;
+    if (!sent && !permanent(status)) return false;
+    if (!sent) postError(describeFailure(status).c_str());
+    Lock lock;
+    queue.erase(queue.begin());
+    pending_count = queue.size();
   }
-  busy = false;
+}
+
+bool needsSync() { return pending_count > 0 || (!have_children && !fetched_ready); }
+
+// One sync: WiFi up, deliver everything queued (and anything queued meanwhile),
+// refresh the children if we have none or they're stale, WiFi down.
+void runSync() {
+  if (!needsSync()) {
+    syncing = false;
+    return;
+  }
+  syncing = true;
+  bool ok = wifiUp();
+  bool refreshed = false;
+  while (ok) {
+    if (!deliverQueue()) {
+      ok = false;
+    } else if (!refreshed && (!have_children || millis() - child_loaded_at > CHILD_REFRESH_MS)) {
+      refreshed = true;
+      ok = fetchChildren();
+    } else if (pending_count == 0) {
+      break;
+    }
+  }
+  wifiOff();
+  if (ok) {
+    retry_delay = 0;
+  } else {
+    // Back off, so being out of range doesn't flatten the battery. A new press resets this.
+    retry_delay = retry_delay ? min(retry_delay * 2, RETRY_MAX_MS) : RETRY_BASE_MS;
+    last_fail_at = millis();
+  }
+  syncing = false;
+}
+
+void syncTask(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    runSync();
+  }
+}
+
+// ---- logging (runs on the UI task) -----------------------------------------
+
+// Wakes the sync task (a no-op if it's already running; it re-checks the queue
+// before switching WiFi off).
+void kickSync(bool now) {
+  if (now) retry_delay = 0;
+  syncing = true;
+  xTaskNotify(sync_task, 1, eSetBits);
+}
+
+// Queues a press for delivery. The caller gives the feedback; nothing here waits.
+bool enqueue(int i) {
+  Pending p;
+  p.action = i;
+  p.child_id = child_id;
+  p.pressed_at = clockSynced() ? time(nullptr) : 0;
+  p.pressed_ms = millis();
+  uuid4(p.client_id);
+  Lock lock;
+  if (queue.size() >= QUEUE_MAX) return false;
+  queue.push_back(p);
+  pending_count = queue.size();
+  return true;
+}
+
+// The click is acknowledged straight away, whatever the network is doing.
+void press(int i) {
+  const Action& a = ACTIONS[i];
+  if (!child_id) {
+    // Nothing to attach the entry to until the first children fetch has worked.
+    showBanner("Not connected yet", COLOR_ERR, BANNER_MS);
+    beep(300, 400);
+    kickSync(true);
+    return;
+  }
+  if (!enqueue(i)) {
+    showBanner("Too many waiting", COLOR_ERR, BANNER_MS);
+    beep(300, 400);
+    kickSync(true);
+    return;
+  }
+  kickSync(true);
+  String time = localTime();
+  last_logged = String(a.label) + (time.length() ? " " + time : "");
+  drawLogged(a, time);
+  logged_until = millis() + LOGGED_SCREEN_MS;
+  successChime();
 }
 
 // Leaves the full-screen "logged" view and puts the normal screen back.
 void dismissLogged() {
   logged_until = 0;
   drawAll();
-  showBanner(last_logged.length() ? "Last: " + last_logged : "Ready", COLOR_DIM);
+  updateIdleBanner();
+}
+
+// Picks up what the sync task has to say: a fresh children list, or a failure the
+// user should know about (a rejected entry, a bad token).
+void showSyncResults() {
+  if (fetched_ready) adoptChildren();
+  static uint32_t seen_error = 0;
+  if (error_seq != seen_error) {
+    char msg[sizeof sync_error];
+    {
+      Lock lock;
+      seen_error = error_seq;
+      strlcpy(msg, sync_error, sizeof msg);
+    }
+    showBanner(msg, COLOR_ERR, BANNER_MS);
+    beep(300, 400);
+  }
 }
 
 }  // namespace
@@ -510,8 +719,12 @@ void setup() {
   Serial.begin(115200);
   setenv("TZ", TIMEZONE, 1);
   tzset();
+  mu = xSemaphoreCreateMutex();
+  WiFi.persistent(false);  // don't write the credentials to flash on every join
+  WiFi.mode(WIFI_OFF);     // the radio stays off until there is something to send
+  xTaskCreatePinnedToCore(syncTask, "sync", 16384, nullptr, 1, &sync_task, 0);
   drawAll();
-  if (connectWifi()) loadChild();
+  kickSync(true);  // the first children fetch
 }
 
 void loop() {
@@ -522,6 +735,10 @@ void loop() {
     last_brightness_check = millis() | 1;  // never 0, which means "not checked yet"
     updateBrightness();
   }
+
+  // Retry a failed sync once its back-off is over. Presses and boot kick it directly.
+  bool retry_due = retry_delay == 0 || millis() - last_fail_at >= retry_delay;
+  if (!syncing && needsSync() && retry_due) kickSync(false);
 
   // While the green "logged" screen is up every press is ignored (the chime above
   // blocks briefly, so a press made then is read now and dropped here), so a
@@ -577,17 +794,11 @@ void loop() {
     if (logged_until || list_open) break;
   }
 
-  if (banner_until && millis() > banner_until) {
-    banner_until = 0;
-    drawBanner(child_name.length() ? "Ready" : "Not connected", COLOR_DIM);
-  }
-
-  // Not set up yet (or a stale name): keep trying in the background.
-  bool stale = child_name.length() && millis() - child_loaded_at > CHILD_REFRESH_MS;
-  static unsigned long last_try = 0;
-  if ((!child_name.length() || stale) && millis() - last_try > 10000) {
-    last_try = millis();
-    if (connectWifi()) loadChild(stale);
+  // A press above may have put the green screen up, which these would draw over.
+  if (!logged_until && !list_open) {
+    if (banner_until && millis() > banner_until) banner_until = 0;
+    showSyncResults();
+    updateIdleBanner();
   }
   delay(10);
 }
