@@ -139,4 +139,31 @@ defmodule TryggWeb.TimelineLiveTest do
 
     assert_redirect(lv, ~p"/")
   end
+
+  test "an entry logged by an integration says Other, not a person's name", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    {:ok, token} =
+      Trygg.ApiTokens.create_token(scope, child.family_id, %{
+        name: "Home Assistant",
+        role: :caregiver
+      })
+
+    {:ok, api_scope} = Trygg.ApiTokens.authenticate(token.secret)
+    {:ok, by_api} = Log.create_entry(api_scope, child, :diaper, %{"data" => %{"kind" => "pee"}})
+    {:ok, by_me} = Log.create_entry(scope, child, :diaper, %{"data" => %{"kind" => "poo"}})
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+
+    api_row = "#entries-#{by_api.id}"
+    assert has_element?(lv, "#{api_row} [data-logged-by=integration]", "Other")
+    assert has_element?(lv, "#{api_row} [title='Logged by an integration: Home Assistant']")
+    refute render(element(lv, api_row)) =~ scope.user.first_name
+
+    me_row = "#entries-#{by_me.id}"
+    refute has_element?(lv, "#{me_row} [data-logged-by=integration]")
+    assert has_element?(lv, me_row, Trygg.Accounts.User.capitalize_name(scope.user.first_name))
+  end
 end

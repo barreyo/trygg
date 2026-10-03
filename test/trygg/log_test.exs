@@ -35,6 +35,55 @@ defmodule Trygg.LogTest do
       refute Entry.running?(entry)
     end
 
+    test "an entry logged on an API token is credited to the integration, not a person", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, token} =
+        Trygg.ApiTokens.create_token(scope, child.family_id, %{
+          name: "Home Assistant",
+          role: :caregiver
+        })
+
+      {:ok, api_scope} = Trygg.ApiTokens.authenticate(token.secret)
+      diaper = %{"data" => %{"kind" => "pee"}}
+
+      {:ok, created} = Log.create_entry(api_scope, child, :diaper, diaper)
+      {:ok, timer} = Log.start_timer(api_scope, child, :sleep)
+
+      {:ok, synced} =
+        Log.sync_entry(api_scope, child, %{
+          "client_id" => Ecto.UUID.generate(),
+          "type" => "diaper",
+          "started_at" => DateTime.to_iso8601(DateTime.utc_now()),
+          "data" => diaper["data"]
+        })
+
+      for entry <- [created, timer, synced] do
+        assert entry.logged_by_id == nil
+        assert entry.logged_via == "Home Assistant"
+        assert Entry.logged_by_integration?(entry)
+      end
+
+      # A person's own entries are unaffected.
+      {:ok, mine} = Log.create_entry(scope, child, :diaper, diaper)
+      assert mine.logged_by_id == scope.user.id
+      assert mine.logged_via == nil
+      refute Entry.logged_by_integration?(mine)
+    end
+
+    test "the credit survives the token being revoked", %{scope: scope, child: child} do
+      {:ok, token} =
+        Trygg.ApiTokens.create_token(scope, child.family_id, %{name: "Bridge", role: :caregiver})
+
+      {:ok, api_scope} = Trygg.ApiTokens.authenticate(token.secret)
+      {:ok, entry} = Log.create_entry(api_scope, child, :diaper, %{"data" => %{"kind" => "pee"}})
+
+      {:ok, _} = Trygg.ApiTokens.revoke_token(scope, token)
+
+      assert Log.get_entry!(scope, entry.id).logged_via == "Bridge"
+    end
+
     test "diaper requires a kind", %{scope: scope, child: child} do
       assert {:error, _} = Log.create_entry(scope, child, :diaper, %{"data" => %{}})
       assert {:ok, e} = Log.create_entry(scope, child, :diaper, %{"data" => %{"kind" => "mixed"}})
