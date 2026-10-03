@@ -5,13 +5,34 @@ The screen shows the child's name on top and the emoji above each button. A pres
 POSTs a `diaper` entry to the [REST API](../docs/api.md) with a family API token;
 it shows up live in the app for everyone in the family.
 
-Feedback: the tile goes yellow while sending. When the entry is logged the whole screen
-turns green for 4 seconds with the emoji, "PEE logged" and the local time, and plays a
-little rising chime. Buttons are ignored while it's up, so a fumbled double tap can't log
-twice.
-On failure the tile goes red with a low beep and the reason (`Bad token`, `Token is
-read-only`, `Can't reach server`…). A request that fails in transit is retried with the
-same `client_id`, so a lost response can never log the same change twice.
+Feedback: the moment a button is let go the whole screen turns green for 4 seconds with the
+emoji, "PEE logged" and the local time, and plays a little rising chime. Buttons are ignored
+while it's up, so a fumbled double tap can't log twice.
+
+## Battery: WiFi is off until there's something to send
+
+The press is only *queued* at that moment; delivery happens in the background (a sync task on
+the other CPU core, so the buttons never wait on the network):
+
+1. A press puts `{child, kind, time, client_id}` on a queue and wakes the sync task.
+2. The task switches WiFi on, joins (rejoining the last access point directly, which skips
+   the channel scan), makes sure the clock is set, and POSTs the queue oldest first.
+3. Presses made while it's running join the same WiFi session: the task re-checks the queue
+   before it lets go. Otherwise a later press simply starts a new cycle.
+4. WiFi goes off again and the device waits for the next press.
+
+Entries are stamped with when the button was pressed, not when they were delivered. The
+clock keeps running with WiFi off and is re-synced over NTP on every join. Each press has its
+own `client_id`, so a retry after a lost response can never log the same change twice.
+
+If the network or server is out of reach the entries stay queued (up to 20, in RAM) and the
+banner reads "N waiting to send"; the retry interval doubles from 15 s up to 5 min, and the
+next press retries at once. An entry the server rejects outright (`Bad token`, `Token is
+read-only`, `Child not found`…) is dropped and the banner says why, with a low beep. A press
+before the first successful connection after boot is refused ("Not connected yet"), since
+there's no child to log it for yet.
+
+A power cut or reset loses whatever is still queued.
 
 ## Night mode
 
@@ -56,7 +77,8 @@ certificate is verified against the CA bundle built into the Arduino core.
 
 ## Notes
 
-- The name is refreshed every 10 minutes (renames, a new child).
+- The children (names, new child) are refreshed on a sync when they're over an hour old; the
+  device never wakes WiFi just for that.
 - The first build downloads the ESP32 toolchain (~1 GB, cached in `~/.platformio`).
   `make` creates the Python venv in `firmware/.venv` on demand.
 - Icons are rendered from the macOS emoji font into `src/icons.h` (`make fw-icons`);
