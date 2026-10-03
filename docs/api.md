@@ -38,6 +38,16 @@ enough access is `403`. Errors are `{"errors": {...}}`.
 | `POST`   | `/api/v1/children/:id/entries/:entry_id/stop`| Stop a running sleep. Optional `ended_at`, `data`, `note`. `409` if not running |
 | `DELETE` | `/api/v1/children/:id/entries/:entry_id`     | `204`                                                   |
 
+### Firmware
+
+The M5Stack button ([`firmware/`](../firmware/README.md)) updates itself from two endpoints,
+which accept any valid token:
+
+| Method | Path                              | Notes                                                       |
+| ------ | --------------------------------- | ----------------------------------------------------------- |
+| `GET`  | `/api/v1/firmware/button`         | `{"version", "size", "md5"}` of the current release; `404` if none |
+| `GET`  | `/api/v1/firmware/button/image`   | The image, with its MD5 in `x-md5`                          |
+
 ### Logging an entry
 
 ```sh

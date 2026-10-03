@@ -51,6 +51,9 @@ defmodule TryggWeb.Router do
     post "/children/:child_id/entries", EntryController, :create
     post "/children/:child_id/entries/:id/stop", EntryController, :stop
     delete "/children/:child_id/entries/:id", EntryController, :delete
+
+    get "/firmware/button", FirmwareController, :show
+    get "/firmware/button/image", FirmwareController, :image
   end
 
   # Oban Web dashboard. Open in dev (like LiveDashboard); in production it is

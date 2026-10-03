@@ -11,6 +11,7 @@
 // The UI never waits on the network, so presses made mid-sync are queued as well.
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <HTTPUpdate.h>
 #include <M5Unified.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -20,7 +21,27 @@
 #include <vector>
 
 #include "config.h"
+
+// A release image (`make fw-release`) is published on the server, so it must not carry the
+// credentials from config.h. It uses the ones the device saved when it was flashed over USB.
+#ifdef FW_RELEASE
+#undef WIFI_SSID
+#undef WIFI_PASSWORD
+#undef TRYGG_URL
+#undef TRYGG_TOKEN
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
+#define TRYGG_URL ""
+#define TRYGG_TOKEN ""
+#endif
 #include "icons.h"
+
+// Build time as a Unix timestamp, stamped by the Makefile. The server's firmware is
+// installed when its version is newer than this, so a build flashed over USB isn't
+// replaced by an older release. 0 when built without the Makefile.
+#ifndef FW_VERSION
+#define FW_VERSION 0
+#endif
 
 namespace {
 
@@ -67,6 +88,12 @@ const unsigned long RETRY_MAX_MS = 5UL * 60UL * 1000UL;  // ...up to this
 const unsigned long HOLD_MS = 800;           // long press: left/right switch child, middle lists them
 const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after this much quiet
 const int LIST_ROWS = 5;
+
+// Over-the-air updates: look for a newer release this often, but only once the device has
+// been left alone for a while (an update takes a few seconds and ignores the buttons).
+const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
+const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
+const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
 
 // Screen brightness (0-255): dim at night so it doesn't light up the nursery.
 const int DAY_BRIGHTNESS = 90;
@@ -115,6 +142,20 @@ volatile bool have_children = false;
 volatile unsigned long child_loaded_at = 0;
 volatile unsigned long last_fail_at = 0;
 volatile unsigned long retry_delay = 0;  // 0: due right away
+
+// Over-the-air updates. The sync task checks for a release and installs it; the UI shows
+// the progress and does the restart, once nothing is waiting in the (RAM-only) queue.
+volatile int update_pct = -1;                  // download progress, -1 when not downloading
+volatile bool restart_pending = false;         // a new image is installed, running the old one until restart
+volatile unsigned long last_activity = 0;      // last button press; updates only start on a quiet device
+volatile unsigned long last_update_check = 0;  // 0: not checked since boot
+volatile unsigned long update_interval = 0;    // how long after that check the next one is due
+
+// Where to connect and who as. Compiled in from config.h on a USB flash, which also saves
+// them to the device; an over-the-air image carries none and reads the saved ones.
+struct {
+  String ssid, password, url, token;
+} net;
 
 // Buttons whose current press must not log: it was a long press, or started while
 // a full-screen view ignored the buttons. Cleared by the next press, so a button
@@ -265,7 +306,10 @@ void updateIdleBanner() {
   String text;
   uint16_t color = COLOR_DIM;
   int waiting = pending_count;
-  if (waiting) {
+  if (update_pct >= 0) {
+    text = "Updating " + String(update_pct) + "%";
+    color = COLOR_BUSY;
+  } else if (waiting) {
     text = syncing ? "Sending " + String(waiting) + "…" : String(waiting) + " waiting to send";
     color = COLOR_BUSY;
   } else if (!child_name.length()) {
@@ -310,6 +354,22 @@ void updateBrightness() {
 
 // ---- network ---------------------------------------------------------------
 
+void loadNetSettings() {
+  Preferences prefs;
+  prefs.begin("trygg", false);
+  if (strlen(WIFI_SSID) && strlen(TRYGG_URL) && strlen(TRYGG_TOKEN)) {
+    prefs.putString("ssid", WIFI_SSID);
+    prefs.putString("pass", WIFI_PASSWORD);
+    prefs.putString("url", TRYGG_URL);
+    prefs.putString("token", TRYGG_TOKEN);
+  }
+  net.ssid = prefs.getString("ssid", "");
+  net.password = prefs.getString("pass", "");
+  net.url = prefs.getString("url", "");
+  net.token = prefs.getString("token", "");
+  prefs.end();
+}
+
 // From here to `syncTask` the code runs on the sync task and must not touch the
 // display or UI state; it talks to the UI through the shared state at the top.
 
@@ -317,6 +377,8 @@ struct Lock {
   Lock() { xSemaphoreTake(mu, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mu); }
 };
+
+void postError(const char* msg);
 
 bool waitJoined(unsigned long ms) {
   unsigned long start = millis();
@@ -332,16 +394,22 @@ bool wifiUp() {
   static uint8_t ap_bssid[6];
   static int32_t ap_channel = 0;
 
+  if (!net.ssid.length()) {
+    static bool reported = false;
+    if (!reported) postError("Not configured: flash with config.h");
+    reported = true;
+    return false;
+  }
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(false);
   bool joined = false;
   if (have_ap) {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD, ap_channel, ap_bssid);
+    WiFi.begin(net.ssid.c_str(), net.password.c_str(), ap_channel, ap_bssid);
     joined = waitJoined(WIFI_FAST_JOIN_MS);
     if (!joined) WiFi.disconnect();
   }
   if (!joined) {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.begin(net.ssid.c_str(), net.password.c_str());
     joined = waitJoined(WIFI_JOIN_MS);
   }
   if (!joined) return false;
@@ -385,24 +453,26 @@ void uuid4(char (&out)[37]) {
            b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
 }
 
+// Verify the server against the CA bundle built into the Arduino core. Needs a synced
+// clock for the certificate dates.
+void trustBundle(WiFiClientSecure& client) {
+  extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
+  client.setCACertBundle(rootca_crt_bundle_start);
+}
+
 // Sends one request and returns the HTTP status (negative on transport errors).
 // `out` receives the response body.
 int request(const char* method, const String& path, const String& body, String& out) {
-  String url = String(TRYGG_URL) + path;
+  String url = net.url + path;
   bool tls = url.startsWith("https://");
   WiFiClient plain;
   WiFiClientSecure secure;
-  if (tls) {
-    // Verify against the CA bundle built into the Arduino core. Needs a synced
-    // clock for the certificate dates.
-    extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
-    secure.setCACertBundle(rootca_crt_bundle_start);
-  }
+  if (tls) trustBundle(secure);
   HTTPClient http;
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
   if (!(tls ? http.begin(secure, url) : http.begin(plain, url))) return -1;
-  http.addHeader("Authorization", "Bearer " TRYGG_TOKEN);
+  http.addHeader("Authorization", "Bearer " + net.token);
   http.addHeader("Accept", "application/json");
   if (body.length()) http.addHeader("Content-Type", "application/json");
   int status = http.sendRequest(method, body);
@@ -554,6 +624,57 @@ void closeList(bool apply) {
 
 // ---- syncing (runs on the sync task) -----------------------------------------
 
+void updateProgress(int done, int total) { update_pct = total > 0 ? (int)((int64_t)done * 100 / total) : 0; }
+
+// A check is due on the first sync after boot, then every UPDATE_CHECK_MS (UPDATE_RETRY_MS
+// after one that failed), and only on a device nobody has pressed for a minute: the
+// download takes some seconds. Not once an image is installed and waiting for its restart.
+bool updateDue() {
+  if (restart_pending) return false;
+  bool quiet = !last_activity || millis() - last_activity > UPDATE_QUIET_MS;
+  return quiet && (!last_update_check || millis() - last_update_check > update_interval);
+}
+
+// Asks the server for the newest firmware and installs it when it is newer than this
+// build; the UI restarts into it. WiFi is up and the clock set by then (wifiUp), which
+// the HTTPS download needs. A download that fails or doesn't match the server's MD5 is
+// discarded by the updater and the running firmware carries on.
+void checkForUpdate() {
+  last_update_check = millis() | 1;  // never 0, which means "not checked yet"
+  update_interval = UPDATE_RETRY_MS;  // until a check has worked
+  String body;
+  int status = request("GET", "/api/v1/firmware/button", "", body);
+  if (status == 404) update_interval = UPDATE_CHECK_MS;  // nothing published
+  if (status != 200) return;
+  JsonDocument doc;
+  if (deserializeJson(doc, body)) return;
+  update_interval = UPDATE_CHECK_MS;
+  int64_t latest = doc["version"].as<int64_t>();
+  if (latest <= FW_VERSION) return;
+
+  Serial.printf("Firmware %lld available (running %d), updating\n", (long long)latest, (int)FW_VERSION);
+  String url = net.url + "/api/v1/firmware/button/image";
+  bool tls = url.startsWith("https://");
+  WiFiClient plain;
+  WiFiClientSecure secure;
+  if (tls) trustBundle(secure);
+  WiFiClient& client = tls ? static_cast<WiFiClient&>(secure) : plain;
+
+  httpUpdate.rebootOnUpdate(false);
+  httpUpdate.onProgress(updateProgress);
+  update_pct = 0;
+  auto result = httpUpdate.update(client, url, "", [](HTTPClient* http) {
+    http->addHeader("Authorization", "Bearer " + net.token);
+  });
+  update_pct = -1;
+  if (result == HTTP_UPDATE_OK) {
+    restart_pending = true;
+  } else if (result == HTTP_UPDATE_FAILED) {
+    Serial.printf("Update failed: %s\n", httpUpdate.getLastErrorString().c_str());
+    update_interval = UPDATE_RETRY_MS;
+  }
+}
+
 // Posts one queued press. The entry is stamped with when the button was pressed, not
 // when it's delivered, and carries its client_id, so a request whose response got
 // lost can be repeated without creating a second entry.
@@ -596,10 +717,11 @@ bool deliverQueue() {
   }
 }
 
-bool needsSync() { return pending_count > 0 || (!have_children && !fetched_ready); }
+bool needsSync() { return pending_count > 0 || (!have_children && !fetched_ready) || updateDue(); }
 
 // One sync: WiFi up, deliver everything queued (and anything queued meanwhile),
-// refresh the children if we have none or they're stale, WiFi down.
+// refresh the children if we have none or they're stale, look for new firmware if it's
+// time, WiFi down.
 void runSync() {
   if (!needsSync()) {
     syncing = false;
@@ -608,12 +730,16 @@ void runSync() {
   syncing = true;
   bool ok = wifiUp();
   bool refreshed = false;
+  bool update_checked = false;
   while (ok) {
     if (!deliverQueue()) {
       ok = false;
     } else if (!refreshed && (!have_children || millis() - child_loaded_at > CHILD_REFRESH_MS)) {
       refreshed = true;
       ok = fetchChildren();
+    } else if (!update_checked && updateDue()) {
+      update_checked = true;
+      checkForUpdate();  // its own back-off; a failed check doesn't fail the sync
     } else if (pending_count == 0) {
       break;
     }
@@ -717,18 +843,23 @@ void setup() {
   M5.Display.setBrightness(DAY_BRIGHTNESS);
   M5.Speaker.setVolume(35);
   Serial.begin(115200);
+  Serial.printf("Trygg button, firmware %d\n", (int)FW_VERSION);
   setenv("TZ", TIMEZONE, 1);
   tzset();
+  loadNetSettings();
   mu = xSemaphoreCreateMutex();
   WiFi.persistent(false);  // don't write the credentials to flash on every join
   WiFi.mode(WIFI_OFF);     // the radio stays off until there is something to send
-  xTaskCreatePinnedToCore(syncTask, "sync", 16384, nullptr, 1, &sync_task, 0);
+  xTaskCreatePinnedToCore(syncTask, "sync", 24576, nullptr, 1, &sync_task, 0);  // TLS + the updater need room
   drawAll();
   kickSync(true);  // the first children fetch
 }
 
 void loop() {
   M5.update();
+  for (int i = 0; i < 3; i++) {
+    if (btn(i).wasPressed()) last_activity = millis();
+  }
 
   static unsigned long last_brightness_check = 0;
   if (!last_brightness_check || millis() - last_brightness_check > BRIGHTNESS_CHECK_MS) {
@@ -799,6 +930,15 @@ void loop() {
     if (banner_until && millis() > banner_until) banner_until = 0;
     showSyncResults();
     updateIdleBanner();
+  }
+
+  // A new image is installed: restart into it once nothing is waiting to be sent (the
+  // queue is RAM only) and nobody is using the buttons.
+  if (restart_pending && !syncing && pending_count == 0 && !logged_until && !list_open &&
+      millis() - last_activity > 5000) {
+    showBanner("Updated, restarting…", COLOR_OK);
+    delay(1500);
+    ESP.restart();
   }
   delay(10);
 }

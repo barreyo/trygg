@@ -1,4 +1,5 @@
-// Copy to config.h (gitignored) and fill in — `make fw-config` does it for you.
+// Copy to config.h (gitignored) and fill in — `make fw-config` does it for you. For several
+// environments keep config.h.dev / config.h.prod and flash with `make fw-flash-dev|prod`.
 #pragma once
 
 // 2.4 GHz only: the ESP32 can't join a 5 GHz-only network.

@@ -63,7 +63,7 @@ The device talks to your Mac over WiFi, so the dev server must listen on the LAN
 make fw-config          # writes firmware/include/config.h: LAN IP, timezone + a fresh dev token
 $EDITOR firmware/include/config.h   # set WIFI_SSID / WIFI_PASSWORD (2.4 GHz only)
 make dev-lan            # dev server on 0.0.0.0 (PORT=4012 make dev-lan if 4000 is taken)
-make fw-flash           # build + flash over USB-C
+make fw-flash           # build + flash over USB-C (needed once; see "Updating over the air")
 make fw-monitor         # optional serial monitor
 ```
 
@@ -74,6 +74,54 @@ makes the device's API calls from the Mac (`--read-only` to skip creating entrie
 `mix trygg.dev_token` locally, or the **Sharing → API access** page (give it "Read and
 log" access) for a real server. Point `TRYGG_URL` at an `https://` address and the
 certificate is verified against the CA bundle built into the Arduino core.
+
+## Production
+
+Keep one config per environment next to `config.h` (all gitignored) and flash from them:
+
+```sh
+cp firmware/include/config.example.h firmware/include/config.h.prod
+$EDITOR firmware/include/config.h.prod   # WiFi, TRYGG_URL "https://track.backmanwong.family",
+                                         # and a "Read and log" token from Sharing → API access
+make fw-flash-prod      # copies config.h.prod over config.h, then flashes
+make fw-flash-dev       # same with config.h.dev (see "Local dev setup")
+```
+
+The device saves the WiFi, URL and token from the config it was flashed with, so it keeps
+working after an over-the-air update (below), which carries none of them.
+
+## Updating over the air
+
+After the first USB flash, new firmware can reach the button without plugging it in:
+
+```sh
+make fw-release         # build (without credentials), write priv/firmware/button.{bin,json}
+git add priv/firmware && git commit   # then deploy Trygg as usual
+```
+
+WiFi is off until there's something to send, so the update check rides on the sync task
+(see "Battery" above): on the first sync after boot, then at most every 6 hours, the task joins
+WiFi, sets the clock (the HTTPS download needs it), delivers any queued presses, and then asks
+`GET /api/v1/firmware/button` (with the token) whether a newer build exists. Nothing else wakes
+the radio for it, and it only checks when nobody has pressed a button for a minute. If the server's
+`version` is newer than the running build, the task downloads `/api/v1/firmware/button/image` while
+the banner shows "Updating NN%" (presses in the meantime are queued as usual), verifies the MD5,
+and the device restarts into the new image once the queue is empty and the buttons are idle, since
+the queue is lost on a restart. A failed or corrupt download is discarded and the old firmware
+keeps running; a failed check is retried after 15 minutes.
+
+- Versions are build timestamps (stamped by `make fw-build`/`fw-flash`/`fw-release`). A build you
+  flash over USB is newer than the last release, so it isn't overwritten until you release again.
+  To roll back, release a build of the old code: that is a new version too.
+- The release image has no WiFi password, URL or token in it (they're committed and served);
+  the device keeps the ones from its last USB flash. To change them, flash over USB again.
+  `TIMEZONE` and `TRYGG_CHILD_ID` still come from `config.h` at release time.
+- The very first OTA-capable build has to go over USB (`make fw-flash-prod`): the partition table
+  changed to `default_16MB.csv` (two 6.5 MB app slots) for the v2.7 kit's 16 MB of flash.
+- There is no automatic rollback of a bad but valid image (a build that can't reach WiFi, say);
+  that takes a USB flash. Test a release on the bench before deploying it.
+- Use an `https://` `TRYGG_URL` in production: the download is only as trustworthy as the
+  connection, since images aren't signed.
 
 ## Notes
 
