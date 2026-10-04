@@ -57,6 +57,31 @@ defmodule TryggWeb.UserLive.LoginTest do
       refute has_element?(lv, "#login_form_code")
     end
 
+    test "restores the code step when the client resumes a pending login", %{conn: conn} do
+      user = user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      # The page is carrying the hook that remembers/restores the pending login.
+      assert has_element?(lv, "#login-resume[phx-hook='LoginResume']")
+      refute has_element?(lv, "#login_form_code")
+
+      render_hook(lv, "resume", %{"email" => user.email})
+
+      assert has_element?(lv, "#login_form_code input[name='user[email]'][value='#{user.email}']")
+      refute has_element?(lv, "#login_form_magic")
+      assert has_element?(lv, "#login-resume[data-sent-to='#{user.email}']")
+    end
+
+    test "ignores a malformed resume request", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      render_hook(lv, "resume", %{"email" => "not-an-email"})
+      render_hook(lv, "resume", %{"email" => String.duplicate("a", 300) <> "@example.com"})
+
+      assert has_element?(lv, "#login_form_magic")
+      refute has_element?(lv, "#login_form_code")
+    end
+
     test "logs in with the emailed code", %{conn: conn} do
       user = user_fixture()
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")

@@ -29,6 +29,18 @@ defmodule TryggWeb.UserSessionControllerTest do
       assert response =~ ~p"/users/log-out"
     end
 
+    test "sets a persistent session cookie so iOS keeps it when the app is killed", %{
+      conn: conn,
+      user: user
+    } do
+      {token, _hashed_token} = generate_user_magic_link_token(user)
+
+      conn = post(conn, ~p"/users/log-in", %{"user" => %{"token" => token}})
+
+      assert %{max_age: max_age} = conn.resp_cookies["_trygg_key"]
+      assert max_age == 365 * 24 * 60 * 60
+    end
+
     test "logs the user in with return to", %{conn: conn, user: user} do
       {token, _hashed_token} = generate_user_magic_link_token(user)
 
