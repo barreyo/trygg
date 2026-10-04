@@ -18,6 +18,10 @@ defmodule TryggWeb.Api.FirmwareController do
   end
 
   # `x-md5` is what the ESP32's HTTPUpdate checks the download against.
+  #
+  # `release.path` comes from `Firmware.latest/0` (a fixed file under the
+  # firmware dir), not from the request, so there is nothing to traverse.
+  # sobelow_skip ["Traversal.SendFile"]
   def image(conn, _params) do
     with {:ok, release} <- fetch_latest() do
       conn
