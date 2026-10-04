@@ -10,7 +10,12 @@ defmodule TryggWeb.UserLive.Login do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm space-y-4">
+      <div
+        id="login-resume"
+        phx-hook="LoginResume"
+        data-sent-to={@sent_to}
+        class="mx-auto max-w-sm space-y-4"
+      >
         <%= if @sent_to do %>
           <div class="text-center">
             <.header>
@@ -59,7 +64,9 @@ defmodule TryggWeb.UserLive.Login do
             <button
               type="button"
               id="login_start_over"
-              phx-click="start_over"
+              phx-click={
+                JS.dispatch("trygg:login-clear", to: "#login-resume") |> JS.push("start_over")
+              }
               class="font-semibold text-brand hover:underline cursor-pointer"
             >
               Send a new one
@@ -163,6 +170,24 @@ defmodule TryggWeb.UserLive.Login do
      |> put_flash(:email, email)
      |> push_navigate(to: ~p"/users/log-in")}
   end
+
+  # Sent by the LoginResume hook when the page comes back on the email step
+  # but this browser has a recent, unfinished login (the flash that carried the
+  # code step is short-lived and doesn't survive a reload). Only restores the
+  # code form; the code itself is still verified by the session controller.
+  def handle_event("resume", %{"email" => email}, %{assigns: %{sent_to: nil}} = socket)
+      when is_binary(email) and byte_size(email) <= 254 do
+    email = String.trim(email)
+
+    if String.contains?(email, "@") do
+      form = to_form(%{"email" => email}, as: "user", id: "login_form_magic")
+      {:noreply, assign(socket, sent_to: email, form: form)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("resume", _params, socket), do: {:noreply, socket}
 
   def handle_event("start_over", _params, socket) do
     form = to_form(%{"email" => socket.assigns.sent_to}, as: "user", id: "login_form_magic")

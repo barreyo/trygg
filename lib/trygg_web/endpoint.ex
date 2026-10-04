@@ -3,11 +3,18 @@ defmodule TryggWeb.Endpoint do
 
   # Cookie session: signed and encrypted. `secure` is compile-time so the
   # production release always sets the Secure flag; Fly terminates TLS.
+  #
+  # `max_age` makes this a persistent cookie. Without it, it is a browser-session
+  # cookie that iOS drops whenever an installed (home screen) app is killed,
+  # taking the CSRF token and login-flow state with it and leaving the
+  # remember-me cookie as the only thing keeping the user signed in. Matches
+  # the remember-me cookie and session token validity (see `UserAuth`).
   @session_options [
     store: :cookie,
     key: "_trygg_key",
     signing_salt: "P//bBZWg",
     encryption_salt: "trygg_cookie",
+    max_age: 365 * 24 * 60 * 60,
     same_site: "Lax",
     secure: Mix.env() == :prod
   ]
