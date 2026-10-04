@@ -15,6 +15,9 @@ defmodule Trygg.Firmware do
 
   @doc "The current release for the button, or `:error` when none has been published."
   @spec latest() :: {:ok, release()} | :error
+  # The path is `@device` (a constant) under `dir/0` (app config / priv), so no
+  # request input ever reaches it.
+  # sobelow_skip ["Traversal.FileModule"]
   def latest do
     with {:ok, json} <- File.read(file("#{@device}.json")),
          {:ok, %{"version" => version, "md5" => md5}} when is_integer(version) <-
