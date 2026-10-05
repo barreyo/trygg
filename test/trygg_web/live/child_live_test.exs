@@ -87,6 +87,26 @@ defmodule TryggWeb.ChildLiveTest do
     assert has_element?(lv, "#child_gestation_extra_days option[selected][value='4']")
   end
 
+  test "the vitamin D reminder can be turned on and off", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    refute child.vitamin_d_reminder
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+    assert has_element?(lv, "#vitamin-d-help")
+
+    {:error, {:live_redirect, _}} =
+      lv |> form("#child-form", child: %{vitamin_d_reminder: "true"}) |> render_submit()
+
+    assert Families.get_child!(scope, child.id).vitamin_d_reminder
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+
+    {:error, {:live_redirect, _}} =
+      lv |> form("#child-form", child: %{vitamin_d_reminder: "false"}) |> render_submit()
+
+    refute Families.get_child!(scope, child.id).vitamin_d_reminder
+  end
+
   test "the list updates live when a child is added from another session", %{
     conn: conn,
     scope: scope

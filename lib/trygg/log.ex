@@ -104,6 +104,7 @@ defmodule Trygg.Log do
       last_diaper: last_of_type(child, :diaper),
       last_sleep: last_of_type(child, :sleep),
       running: running_timers(scope, child),
+      vitamin_d_given_today?: vitamin_d_given?(child, Child.local_today(child)),
       today: %{
         feedings: count_between(child, :feeding, day_start, day_end),
         volume_ml: volume_ml_between(child, day_start, day_end),
@@ -113,6 +114,23 @@ defmodule Trygg.Log do
         sleep_seconds: sleep_seconds_between(child, day_start, day_end)
       }
     }
+  end
+
+  @doc """
+  Whether a feed logged on the child's local calendar `date` included a vitamin
+  D drop. Unscoped — also called by the reminder scan, which has no caregiver.
+  """
+  @spec vitamin_d_given?(Child.t(), Date.t()) :: boolean()
+  def vitamin_d_given?(%Child{} = child, %Date{} = date) do
+    {from, to} = Child.day_bounds(child, date)
+
+    Repo.exists?(
+      from e in Entry,
+        where:
+          e.child_id == ^child.id and e.type == :feeding and
+            e.started_at >= ^from and e.started_at < ^to and
+            fragment("?->>'vitamin_d' = 'true'", e.data)
+    )
   end
 
   defp last_of_type(child, type) do

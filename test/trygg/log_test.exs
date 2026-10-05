@@ -14,6 +14,59 @@ defmodule Trygg.LogTest do
     %{scope: scope, child: child_fixture(scope)}
   end
 
+  describe "vitamin D on a feed" do
+    defp feed(scope, child, data, attrs \\ %{}) do
+      Log.create_entry(
+        scope,
+        child,
+        :feeding,
+        Map.merge(%{"data" => Map.put(data, "amount_ml", "90")}, attrs)
+      )
+    end
+
+    test "is stored only when ticked", %{scope: scope, child: child} do
+      {:ok, given} = feed(scope, child, %{"vitamin_d" => "true"})
+      {:ok, unticked} = feed(scope, child, %{"vitamin_d" => "false"})
+      {:ok, absent} = feed(scope, child, %{})
+
+      assert given.data["vitamin_d"] == true
+      assert Entry.vitamin_d?(given)
+      refute Map.has_key?(unticked.data, "vitamin_d")
+      refute Map.has_key?(absent.data, "vitamin_d")
+      refute Entry.vitamin_d?(absent)
+    end
+
+    test "only feeds can carry it", %{scope: scope, child: child} do
+      {:ok, diaper} =
+        Log.create_entry(scope, child, :diaper, %{
+          "data" => %{"kind" => "pee", "vitamin_d" => true}
+        })
+
+      refute Map.has_key?(diaper.data, "vitamin_d")
+      refute Entry.vitamin_d?(diaper)
+    end
+
+    test "summary and vitamin_d_given?/2 look at the child's local day", %{
+      scope: scope,
+      child: child
+    } do
+      today = Child.local_today(child)
+      refute Log.summary(scope, child).vitamin_d_given_today?
+
+      yesterday = DateTime.add(DateTime.utc_now(), -2 * 86_400, :second)
+      {:ok, _} = feed(scope, child, %{"vitamin_d" => true}, %{"started_at" => yesterday})
+      refute Log.summary(scope, child).vitamin_d_given_today?
+      refute Log.vitamin_d_given?(child, today)
+
+      {:ok, entry} = feed(scope, child, %{"vitamin_d" => true})
+      assert Log.summary(scope, child).vitamin_d_given_today?
+      assert Log.vitamin_d_given?(child, today)
+
+      {:ok, _} = Log.delete_entry(scope, entry)
+      refute Log.summary(scope, child).vitamin_d_given_today?
+    end
+  end
+
   describe "create_entry/4 validation" do
     test "a feed requires an amount and is instantaneous", %{scope: scope, child: child} do
       assert {:error, cs} =

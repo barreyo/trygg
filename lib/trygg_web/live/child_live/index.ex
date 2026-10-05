@@ -183,6 +183,16 @@ defmodule TryggWeb.ChildLive.Index do
           type="time"
           label="Night starts"
         />
+        <.input
+          :if={@live_action == :edit}
+          field={@form[:vitamin_d_reminder]}
+          type="checkbox"
+          label="Vitamin D drop reminder"
+        />
+        <p :if={@live_action == :edit} id="vitamin-d-help" class="text-xs opacity-60 -mt-2">
+          Caregivers get a notification if no drop has been logged by 18:00 in {@child.name}'s
+          time zone. Tick it on a bottle. Turn this off once it's no longer needed.
+        </p>
 
         <div class="flex gap-2 pt-2">
           <.button

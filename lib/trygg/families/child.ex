@@ -32,6 +32,13 @@ defmodule Trygg.Families.Child do
     field :day_start, :time, default: ~T[08:00:00]
     field :night_start, :time, default: ~T[20:00:00]
 
+    # Daily vitamin D drop tracking. When on, caregivers get a push if no drop
+    # has been logged by `Trygg.Log.VitaminDReminders.deadline/0` in the
+    # child's time zone. `vitamin_d_reminded_on` is bookkeeping set by the
+    # reminder scan (never cast) so it fires at most once per local day.
+    field :vitamin_d_reminder, :boolean, default: false
+    field :vitamin_d_reminded_on, :date
+
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
 
@@ -56,6 +63,7 @@ defmodule Trygg.Families.Child do
       :timezone,
       :day_start,
       :night_start,
+      :vitamin_d_reminder,
       :gestation_weeks,
       :gestation_extra_days
     ])

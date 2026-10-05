@@ -33,6 +33,26 @@ defmodule Trygg.Push.Notifier do
     :ok
   end
 
+  @doc """
+  Nudges `user`'s devices that no vitamin D drop has been logged for `child`
+  today. Sent by `Trygg.Log.VitaminDReminders`, which does its own once-a-day
+  bookkeeping. No-op (returns `:ok`) when push is disabled or `user` has no
+  subscriptions.
+  """
+  @spec deliver_vitamin_d_reminder(Child.t(), User.t()) :: :ok
+  def deliver_vitamin_d_reminder(%Child{} = child, %User{} = user) do
+    if Push.enabled?() do
+      Push.enqueue(user, %{
+        title: "Vitamin D drop for #{child.name}",
+        body: "No vitamin D drop has been logged today. Tick it when you log the next bottle.",
+        url: "/c/#{child.id}",
+        tag: "vitamin-d-#{child.id}"
+      })
+    end
+
+    :ok
+  end
+
   defp body(child, %{never_measured?: true}) do
     "No weight has been logged for #{child.name} yet. Add the first one when you can."
   end

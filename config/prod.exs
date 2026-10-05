@@ -25,7 +25,8 @@ config :trygg, TryggWeb.Endpoint,
 # Background jobs. Same plugins as config/config.exs plus the `Cron` plugin,
 # which enqueues the weight-check reminder scan every 6 hours; per-caregiver
 # cadence is decided inside the job (their `weight_reminder_days` preference,
-# or the CDC well-child interval). A `plugins:` list replaces rather than
+# or the CDC well-child interval). The vitamin D scan runs every 15 minutes so
+# the evening nudge lands soon after 18:00 in each child's own time zone. A `plugins:` list replaces rather than
 # merges, so the base three are repeated here.
 config :trygg, Oban,
   plugins: [
@@ -35,7 +36,8 @@ config :trygg, Oban,
     {Oban.Cron,
      crontab: [
        {"0 */6 * * *", Trygg.Growth.WeightReminderWorker},
-       {"*/30 * * * *", Trygg.Reports.PredictionWorker}
+       {"*/30 * * * *", Trygg.Reports.PredictionWorker},
+       {"*/15 * * * *", Trygg.Log.VitaminDReminderWorker}
      ]}
   ]
 
