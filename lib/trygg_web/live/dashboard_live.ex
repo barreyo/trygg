@@ -39,6 +39,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
       |> assign(:editing, nil)
+      |> assign(:edit_vitamin_d?, false)
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
       |> assign(:vapid_public_key, Push.vapid_public_key())
@@ -360,13 +361,15 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("edit", %{"id" => id}, socket) do
     entry = Log.get_entry!(socket.assigns.current_scope, id)
-    params = entry_edit_params(entry, socket.assigns.current_child)
+    child = socket.assigns.current_child
+    params = entry_edit_params(entry, child)
 
     {:noreply,
      socket
      |> clear_photo_upload()
      |> assign(sheet: nil, sheet_form: nil)
-     |> assign(editing: entry, edit_form: to_form(params, as: :entry))}
+     |> assign(editing: entry, edit_form: to_form(params, as: :entry))
+     |> assign(:edit_vitamin_d?, offer_vitamin_d?(child, entry))}
   end
 
   def handle_event("cancel_edit", _params, socket) do
@@ -1162,6 +1165,7 @@ defmodule TryggWeb.DashboardLive do
         entry={@editing}
         form={@edit_form}
         upload={@uploads.photo}
+        vitamin_d?={@edit_vitamin_d?}
         photo_src={@editing.photo_key && ~p"/c/#{@current_child}/log/#{@editing.id}/photo"}
       />
     </Layouts.app>

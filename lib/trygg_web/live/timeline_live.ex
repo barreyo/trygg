@@ -63,6 +63,7 @@ defmodule TryggWeb.TimelineLive do
         entry={@editing}
         form={@edit_form}
         upload={@uploads.photo}
+        vitamin_d?={@edit_vitamin_d?}
         photo_src={@editing.photo_key && ~p"/c/#{@current_child}/log/#{@editing.id}/photo"}
       />
     </Layouts.app>
@@ -79,6 +80,7 @@ defmodule TryggWeb.TimelineLive do
       |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
       |> assign(:filter, nil)
       |> assign(:editing, nil)
+      |> assign(:edit_vitamin_d?, false)
       |> assign(:edit_form, nil)
       |> allow_upload(:photo,
         accept: Log.photo_accept(),
@@ -165,12 +167,14 @@ defmodule TryggWeb.TimelineLive do
 
   def handle_event("edit", %{"id" => id}, socket) do
     entry = Log.get_entry!(socket.assigns.current_scope, id)
-    params = entry_edit_params(entry, socket.assigns.current_child)
+    child = socket.assigns.current_child
+    params = entry_edit_params(entry, child)
 
     {:noreply,
      socket
      |> clear_photo_upload()
-     |> assign(editing: entry, edit_form: to_form(params, as: :entry))}
+     |> assign(editing: entry, edit_form: to_form(params, as: :entry))
+     |> assign(:edit_vitamin_d?, offer_vitamin_d?(child, entry))}
   end
 
   def handle_event("cancel_edit", _params, socket) do

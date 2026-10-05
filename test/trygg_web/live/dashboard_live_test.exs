@@ -715,6 +715,48 @@ defmodule TryggWeb.DashboardLiveTest do
       refute has_element?(lv, "#vitamin-d-field")
     end
 
+    test "can be added to an already logged bottle", %{conn: conn, scope: scope, child: child} do
+      entry = entry_fixture(scope, child, %{:type => :feeding})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+      assert has_element?(lv, "#edit-vitamin-d")
+
+      lv |> form("#edit-entry-form", entry: %{vitamin_d: "true"}) |> render_submit()
+
+      assert %{data: %{"vitamin_d" => true}} = Log.get_entry!(scope, entry.id)
+      assert has_element?(lv, "[data-vitamin-d]")
+    end
+
+    test "isn't offered on other bottles once today's drop is logged", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      entry_fixture(scope, child, %{
+        :type => :feeding,
+        "data" => %{"amount_ml" => 90, "vitamin_d" => true}
+      })
+
+      other = entry_fixture(scope, child, %{:type => :feeding})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{other.id}"])) |> render_click()
+
+      assert has_element?(lv, "#edit-entry-form")
+      refute has_element?(lv, "#edit-vitamin-d")
+    end
+
+    test "isn't offered when the reminder is off", %{conn: conn, scope: scope, child: child} do
+      {:ok, child} = Families.update_child(scope, child, %{vitamin_d_reminder: false})
+      entry = entry_fixture(scope, child, %{:type => :feeding})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+
+      refute has_element?(lv, "#edit-vitamin-d")
+    end
+
     test "can be unticked from the edit sheet", %{conn: conn, scope: scope, child: child} do
       entry =
         entry_fixture(scope, child, %{
