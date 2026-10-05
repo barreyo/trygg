@@ -152,6 +152,44 @@ defmodule TryggWeb.LogComponents do
       "hover:bg-primary-content/30 hover:border-primary-content/40"
   end
 
+  @doc "Marks a feed that included the day's vitamin D drop."
+  def vitamin_d_badge(assigns) do
+    ~H"""
+    <span
+      data-vitamin-d
+      class="badge badge-warning badge-sm shrink-0 gap-1 whitespace-nowrap font-medium"
+    >
+      <span aria-hidden="true">☀️</span> Vitamin D
+    </span>
+    """
+  end
+
+  @doc """
+  The "vitamin D drop given" checkbox for a bottle form. Posts `entry[vitamin_d]`
+  as `"true"` when ticked and `"false"` otherwise.
+  """
+  attr :checked, :boolean, default: false
+  attr :id, :string, default: "vitamin-d-field"
+
+  def vitamin_d_field(assigns) do
+    ~H"""
+    <label
+      id={@id}
+      class="flex items-center gap-3 rounded-box bg-warning/10 px-3 py-2.5 cursor-pointer"
+    >
+      <input type="hidden" name="entry[vitamin_d]" value="false" />
+      <input
+        type="checkbox"
+        name="entry[vitamin_d]"
+        value="true"
+        checked={@checked}
+        class="checkbox checkbox-warning"
+      />
+      <span class="font-medium"><span aria-hidden="true">☀️</span> Vitamin D drop given</span>
+    </label>
+    """
+  end
+
   @doc "One row in a timeline / recent list."
   attr :entry, Entry, required: true
   attr :unit_system, :atom, default: :metric
@@ -188,8 +226,11 @@ defmodule TryggWeb.LogComponents do
               Sleeping <span class="snooze" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
             </div>
           <% else %>
-            <div class="font-semibold leading-tight truncate">
-              {entry_title(@entry, @unit_system)}
+            <div class="flex items-center gap-2 min-w-0">
+              <div class="font-semibold leading-tight truncate">
+                {entry_title(@entry, @unit_system)}
+              </div>
+              <.vitamin_d_badge :if={Entry.vitamin_d?(@entry)} />
             </div>
             <div
               :if={entry_detail(@entry, @unit_system)}
@@ -391,7 +432,8 @@ defmodule TryggWeb.LogComponents do
       "started_at" => to_local_input(child, e.started_at),
       "ended_at" => to_local_input(child, e.ended_at),
       "note" => e.note,
-      "amount" => amount_display(e)
+      "amount" => amount_display(e),
+      "vitamin_d" => to_string(Entry.vitamin_d?(e))
     }
   end
 
@@ -423,7 +465,7 @@ defmodule TryggWeb.LogComponents do
             "started_at" => started_at,
             "ended_at" => ended_at,
             "note" => params["note"],
-            "data" => merge_amount(entry, params["amount"])
+            "data" => merge_data(entry, params)
           }
           |> Map.merge(photo_attrs(params))
 
@@ -640,6 +682,11 @@ defmodule TryggWeb.LogComponents do
             step="any"
             label="Amount (ml)"
           />
+          <.vitamin_d_field
+            :if={Entry.vitamin_d?(@entry)}
+            id="edit-vitamin-d"
+            checked={@form.params["vitamin_d"] == "true"}
+          />
           <.input field={@form[:note]} type="text" label="Note" />
 
           <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
@@ -679,10 +726,20 @@ defmodule TryggWeb.LogComponents do
   defp amount_display(%Entry{data: %{"amount_ml" => ml}}) when is_number(ml), do: ml
   defp amount_display(_), do: nil
 
-  defp merge_amount(%Entry{data: data} = e, raw) do
-    case {has_amount?(e), parse_number(raw)} do
-      {true, n} when is_number(n) -> Map.put(data || %{}, "amount_ml", n)
-      _ -> data || %{}
+  defp merge_data(%Entry{data: data} = e, params) do
+    data = data || %{}
+
+    data =
+      case {has_amount?(e), parse_number(params["amount"])} do
+        {true, n} when is_number(n) -> Map.put(data, "amount_ml", n)
+        _ -> data
+      end
+
+    # The checkbox only exists on feeds that already carry the drop, so it's
+    # an untick that clears it; an absent field leaves the data alone.
+    case params["vitamin_d"] do
+      "false" -> Map.delete(data, "vitamin_d")
+      _ -> data
     end
   end
 

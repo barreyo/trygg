@@ -284,6 +284,7 @@ defmodule TryggWeb.DashboardLive do
           "at" => Child.to_local_input(socket.assigns.current_child, now()),
           "bottle_contents" => last_bottle_contents(last),
           "amount" => trim(last_bottle_amount(last, socket.assigns.unit_system)),
+          "vitamin_d" => "false",
           "note" => ""
         },
         as: :entry
@@ -434,7 +435,11 @@ defmodule TryggWeb.DashboardLive do
             %{
               "type" => "feeding",
               "started_at" => at,
-              "data" => %{"bottle_contents" => params["bottle_contents"], "amount_ml" => ml},
+              "data" => %{
+                "bottle_contents" => params["bottle_contents"],
+                "amount_ml" => ml,
+                "vitamin_d" => params["vitamin_d"]
+              },
               "note" => blank(params["note"])
             },
             consume_photo(socket)
@@ -1149,6 +1154,7 @@ defmodule TryggWeb.DashboardLive do
         form={@sheet_form}
         unit_system={@unit_system}
         photo_upload={@uploads.photo}
+        vitamin_d_prompt?={vitamin_d_prompt?(@current_child, @summary)}
       />
 
       <.edit_modal
@@ -1194,6 +1200,7 @@ defmodule TryggWeb.DashboardLive do
   attr :form, :any, default: nil
   attr :unit_system, :atom, required: true
   attr :photo_upload, :any, required: true
+  attr :vitamin_d_prompt?, :boolean, default: false
 
   defp sheet(assigns) do
     assigns = assign(assigns, :unit, Units.unit_label(:volume, assigns.unit_system))
@@ -1332,6 +1339,11 @@ defmodule TryggWeb.DashboardLive do
                   {contents_option_label(c)}
                 </option>
               </select>
+
+              <.vitamin_d_field
+                :if={@vitamin_d_prompt?}
+                checked={@form.params["vitamin_d"] == "true"}
+              />
 
               <.time_field form={@form} field={:at} label="When" />
 
@@ -1515,6 +1527,13 @@ defmodule TryggWeb.DashboardLive do
 
   defp last_bottle_contents(%Entry{data: %{"bottle_contents" => c}}) when is_binary(c), do: c
   defp last_bottle_contents(_last), do: "formula"
+
+  # Offer the vitamin D tick on a bottle only while the child's reminder is on
+  # and today's drop hasn't been logged yet.
+  defp vitamin_d_prompt?(%Child{vitamin_d_reminder: true}, %{vitamin_d_given_today?: false}),
+    do: true
+
+  defp vitamin_d_prompt?(_child, _summary), do: false
 
   defp feed_time(%Entry{started_at: at}), do: at
 

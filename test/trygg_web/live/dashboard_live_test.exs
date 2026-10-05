@@ -657,6 +657,83 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "vitamin D drop" do
+    import Trygg.LogFixtures
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      child = child_fixture(scope)
+      {:ok, child} = Families.update_child(scope, child, %{vitamin_d_reminder: true})
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    defp open_bottle_sheet(lv) do
+      lv |> element("button", "Log a bottle") |> render_click()
+      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
+    end
+
+    test "can be logged with a bottle and shows on the feed", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      open_bottle_sheet(lv)
+
+      assert has_element?(lv, "#vitamin-d-field")
+
+      lv |> form("#bottle-form", entry: %{vitamin_d: "true"}) |> render_submit()
+
+      assert [%{data: %{"vitamin_d" => true}}] = Log.list_entries(scope, child)
+      assert has_element?(lv, "[data-vitamin-d]")
+    end
+
+    test "a bottle without the tick doesn't record it", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      open_bottle_sheet(lv)
+      lv |> form("#bottle-form") |> render_submit()
+
+      assert [%{data: data}] = Log.list_entries(scope, child)
+      refute Map.has_key?(data, "vitamin_d")
+      refute has_element?(lv, "[data-vitamin-d]")
+    end
+
+    test "the option disappears once today's drop is logged", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      open_bottle_sheet(lv)
+      lv |> form("#bottle-form", entry: %{vitamin_d: "true"}) |> render_submit()
+
+      lv |> element("button", "Log a bottle") |> render_click()
+      refute has_element?(lv, "#vitamin-d-field")
+    end
+
+    test "is hidden when the reminder is off", %{conn: conn, scope: scope, child: child} do
+      {:ok, child} = Families.update_child(scope, child, %{vitamin_d_reminder: false})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      open_bottle_sheet(lv)
+
+      refute has_element?(lv, "#vitamin-d-field")
+    end
+
+    test "can be unticked from the edit sheet", %{conn: conn, scope: scope, child: child} do
+      entry =
+        entry_fixture(scope, child, %{
+          :type => :feeding,
+          "data" => %{"amount_ml" => 90, "vitamin_d" => true}
+        })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+      assert has_element?(lv, "#edit-vitamin-d")
+
+      lv |> form("#edit-entry-form", entry: %{vitamin_d: "false"}) |> render_submit()
+
+      assert %{data: data} = Log.get_entry!(scope, entry.id)
+      refute Map.has_key?(data, "vitamin_d")
+      assert data["amount_ml"] == 90.0
+    end
+  end
+
   describe "pull to refresh" do
     setup %{conn: conn} do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})

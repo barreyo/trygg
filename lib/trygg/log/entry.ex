@@ -117,7 +117,9 @@ defmodule Trygg.Log.Entry do
     data =
       drop_nils(%{
         "bottle_contents" => enum(raw["bottle_contents"], @bottle_contents),
-        "amount_ml" => amount
+        "amount_ml" => amount,
+        # Only ever stored as `true`: a missing key means no drop was given.
+        "vitamin_d" => if(truthy?(raw["vitamin_d"]), do: true)
       })
 
     cond do
@@ -156,6 +158,8 @@ defmodule Trygg.Log.Entry do
     put_change(changeset, :data, data)
   end
 
+  defp truthy?(value), do: value in [true, "true", "on", "1", 1]
+
   defp enum(value, allowed) do
     v = blank_to_nil(value)
     if v in allowed, do: v, else: nil
@@ -185,6 +189,10 @@ defmodule Trygg.Log.Entry do
   @doc "Whether this entry is an unfinished timer."
   def running?(%__MODULE__{type: type, ended_at: nil}) when type in @timer_types, do: true
   def running?(%__MODULE__{}), do: false
+
+  @doc "Whether a vitamin D drop was given with this feed."
+  def vitamin_d?(%__MODULE__{type: :feeding, data: %{"vitamin_d" => true}}), do: true
+  def vitamin_d?(%__MODULE__{}), do: false
 
   @doc "Whether this entry has a photo attached."
   def has_photo?(%__MODULE__{photo_key: key}) when is_binary(key) and key != "", do: true
