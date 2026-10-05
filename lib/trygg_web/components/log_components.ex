@@ -426,6 +426,24 @@ defmodule TryggWeb.LogComponents do
 
   ## Edit sheet ----------------------------------------------------------
 
+  @doc """
+  Whether the edit sheet should offer the vitamin D checkbox for `entry`: it's a
+  feed that already carries the drop (so it can be unticked), or the child's
+  reminder is on and no drop was logged on the entry's local day (so a forgotten
+  one can be added after the fact).
+  """
+  @spec offer_vitamin_d?(Child.t(), Entry.t()) :: boolean()
+  def offer_vitamin_d?(%Child{} = child, %Entry{type: :feeding} = entry) do
+    Entry.vitamin_d?(entry) or
+      (child.vitamin_d_reminder and
+         not Log.vitamin_d_given?(child, local_date(child, entry.started_at)))
+  end
+
+  def offer_vitamin_d?(_child, _entry), do: false
+
+  defp local_date(%Child{timezone: tz}, %DateTime{} = dt),
+    do: dt |> DateTime.shift_zone!(tz) |> DateTime.to_date()
+
   @doc "Form params for the shared entry edit sheet."
   def entry_edit_params(%Entry{} = e, %Child{} = child) do
     %{
@@ -646,6 +664,7 @@ defmodule TryggWeb.LogComponents do
   attr :form, :any, required: true
   attr :upload, Phoenix.LiveView.UploadConfig, required: true
   attr :photo_src, :string, default: nil
+  attr :vitamin_d?, :boolean, default: false, doc: "offer the vitamin D checkbox (feeds only)"
 
   def edit_modal(assigns) do
     ~H"""
@@ -683,7 +702,7 @@ defmodule TryggWeb.LogComponents do
             label="Amount (ml)"
           />
           <.vitamin_d_field
-            :if={Entry.vitamin_d?(@entry)}
+            :if={@vitamin_d?}
             id="edit-vitamin-d"
             checked={@form.params["vitamin_d"] == "true"}
           />
@@ -735,9 +754,10 @@ defmodule TryggWeb.LogComponents do
         _ -> data
       end
 
-    # The checkbox only exists on feeds that already carry the drop, so it's
-    # an untick that clears it; an absent field leaves the data alone.
+    # The checkbox is only offered on some feeds; an absent field leaves the
+    # data alone.
     case params["vitamin_d"] do
+      "true" -> Map.put(data, "vitamin_d", true)
       "false" -> Map.delete(data, "vitamin_d")
       _ -> data
     end

@@ -166,4 +166,20 @@ defmodule TryggWeb.TimelineLiveTest do
     refute has_element?(lv, "#{me_row} [data-logged-by=integration]")
     assert has_element?(lv, me_row, Trygg.Accounts.User.capitalize_name(scope.user.first_name))
   end
+
+  test "a forgotten vitamin D drop can be added to a logged bottle", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    {:ok, child} = Trygg.Families.update_child(scope, child, %{vitamin_d_reminder: true})
+    entry = entry_fixture(scope, child, %{:type => :feeding})
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+    lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+    lv |> form("#edit-entry-form", entry: %{vitamin_d: "true"}) |> render_submit()
+
+    assert %{data: %{"vitamin_d" => true}} = Log.get_entry!(scope, entry.id)
+    assert has_element?(lv, "[data-vitamin-d]")
+  end
 end
