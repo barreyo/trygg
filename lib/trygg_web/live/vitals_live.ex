@@ -150,7 +150,7 @@ defmodule TryggWeb.VitalsLive do
             <p
               :if={@percentile_note}
               id="percentile-source"
-              class="text-xs opacity-50 px-3 py-2 border-t border-base-300"
+              class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
             >
               {@percentile_note} · 5th–95th
               <span :if={@corrected_age} id="corrected-age">· {@corrected_age}</span>

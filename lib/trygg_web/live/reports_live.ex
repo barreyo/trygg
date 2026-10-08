@@ -182,7 +182,7 @@ defmodule TryggWeb.ReportsLive do
               class={[
                 "text-sm text-center mt-2 tabular-nums min-h-5",
                 @caption && "font-medium",
-                !@caption && "opacity-50 text-xs"
+                !@caption && "opacity-60 text-xs"
               ]}
             >
               {@caption || "Tap a block for details"}
@@ -247,7 +247,7 @@ defmodule TryggWeb.ReportsLive do
                rather than letting it grow a screen and a half tall. --%>
           <div class="md:max-w-sm md:mx-auto">
             <.week_calendar id="week-calendar" days={@days} child={@child} today_date={@today_date} />
-            <p class="text-xs opacity-50 text-center mt-2">Tap a day to open it</p>
+            <p class="text-xs opacity-60 text-center mt-2">Tap a day to open it</p>
           </div>
         </:right>
       </Layouts.columns>

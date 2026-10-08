@@ -438,7 +438,7 @@ defmodule TryggWeb.ReportComponents do
         class={[
           "text-sm text-center mt-1 tabular-nums min-h-5",
           @caption && "font-medium",
-          !@caption && "opacity-50 text-xs"
+          !@caption && "opacity-60 text-xs"
         ]}
       >
         {@caption || "Tap a day for the total · tap again to open it"}
@@ -524,7 +524,7 @@ defmodule TryggWeb.ReportComponents do
           </button>
         </li>
       </ul>
-      <p class="text-[11px] opacity-50 px-3 py-1.5 border-t border-base-content/10">
+      <p class="text-xs opacity-60 px-3 py-1.5 border-t border-base-content/10">
         {Alerts.disclaimer()}
       </p>
     </section>
@@ -1187,7 +1187,7 @@ defmodule TryggWeb.ReportComponents do
         class={[
           "text-sm text-center mt-2 tabular-nums min-h-5",
           @caption && "font-medium",
-          !@caption && "opacity-50 text-xs"
+          !@caption && "opacity-60 text-xs"
         ]}
       >
         {@caption || "Tap a time to see how often they're asleep"}
@@ -1207,7 +1207,7 @@ defmodule TryggWeb.ReportComponents do
         id={"#{@id}-legend"}
         class="flex items-center justify-center gap-2 text-xs mt-3"
       >
-        <span class="opacity-55">Rarely asleep</span>
+        <span class="opacity-70">Rarely asleep</span>
         <span
           class="flex h-3 overflow-hidden rounded-sm border border-base-content/10"
           aria-hidden="true"
@@ -1217,7 +1217,7 @@ defmodule TryggWeb.ReportComponents do
           <span class="w-5 bg-primary/70"></span>
           <span class="w-5 bg-primary"></span>
         </span>
-        <span class="opacity-55">Usually asleep</span>
+        <span class="opacity-70">Usually asleep</span>
       </div>
     </div>
     """

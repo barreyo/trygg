@@ -65,14 +65,14 @@ defmodule TryggWeb.LogComponents do
           <div class="text-lg sm:text-xl font-semibold leading-tight tabular-nums break-words">
             {@value}
           </div>
-          <div :if={@sub} class="text-xs opacity-60 leading-snug break-words mt-0.5">{@sub}</div>
+          <div :if={@sub} class="text-xs opacity-70 leading-snug break-words mt-0.5">{@sub}</div>
         </div>
         <div :if={@badge} id={@badge_id} class="text-right shrink-0">
           <div class="text-lg font-semibold leading-tight tabular-nums">{@badge}</div>
           <div :if={@badge_label} class="text-xs opacity-60">{@badge_label}</div>
         </div>
       </div>
-      <div :if={@today} class="text-[11px] opacity-50 leading-snug break-words tabular-nums">
+      <div :if={@today} class="text-xs opacity-70 leading-snug break-words tabular-nums">
         {@today}
       </div>
       <div
@@ -306,13 +306,13 @@ defmodule TryggWeb.LogComponents do
           </div>
           <div
             :if={Entry.logged_by_integration?(@entry)}
-            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-40 truncate max-w-24"
+            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-60 truncate max-w-24"
             title={"Logged by an integration: #{@entry.logged_via}"}
             data-logged-by="integration"
           >
             <.icon name="hero-bolt" class="size-3 shrink-0" /> Other
           </div>
-          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-40 truncate max-w-24">
+          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-60 truncate max-w-24">
             {User.capitalize_name(@entry.logged_by.first_name)}
           </div>
         </div>
@@ -647,7 +647,7 @@ defmodule TryggWeb.LogComponents do
   def photo_field(assigns) do
     ~H"""
     <div class="fieldset mb-2" phx-drop-target={@upload.ref}>
-      <span class="label mb-1">Photo <span class="opacity-50">(optional)</span></span>
+      <span class="label mb-1">Photo <span class="opacity-60">(optional)</span></span>
 
       <div :if={@current_src && @upload.entries == []} class="mb-2 space-y-1">
         <img

@@ -136,6 +136,46 @@
   --color-diaper-mixed-content: oklch(98% 0.02 60);
 }
 
+/*
+ * Readable accent text. The theme's brand/status colors are tuned as *fills*
+ * (buttons, badges, tints): used as text they come out at ~2.2-3.6:1 on the
+ * page surface (orange on near-white, indigo on true black), under the 4.5:1
+ * small text needs. These "ink" variants are the same hues pulled darker on
+ * the light theme and lighter on the dark one, and `text-primary` & friends
+ * pick them up. The filled-button look is untouched.
+ */
+:root {
+  --ink-primary: color-mix(in oklab, var(--color-primary) 72%, black);
+  --ink-info: color-mix(in oklab, var(--color-info) 78%, black);
+  --ink-success: color-mix(in oklab, var(--color-success) 68%, black);
+  --ink-warning: color-mix(in oklab, var(--color-warning) 74%, black);
+  --ink-error: color-mix(in oklab, var(--color-error) 88%, black);
+}
+:root[data-theme="dark"] {
+  --ink-primary: color-mix(in oklab, var(--color-primary) 72%, white);
+  --ink-info: color-mix(in oklab, var(--color-info) 86%, white);
+  --ink-success: var(--color-success);
+  --ink-warning: var(--color-warning);
+  --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --ink-primary: color-mix(in oklab, var(--color-primary) 72%, white);
+    --ink-info: color-mix(in oklab, var(--color-info) 86%, white);
+    --ink-success: var(--color-success);
+    --ink-warning: var(--color-warning);
+    --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
+  }
+}
+@layer utilities {
+  /* `bg-primary-content` marks a button that sits *on* a primary surface */
+  .text-primary:not(.bg-primary-content) { color: var(--ink-primary); }
+  .text-info { color: var(--ink-info); }
+  .text-success { color: var(--ink-success); }
+  .text-warning { color: var(--ink-warning); }
+  .text-error { color: var(--ink-error); }
+}
+
 /* This file is for your main application CSS */
 
 /*
@@ -366,7 +406,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   }
   .input { padding-inline: 1rem; }
   .textarea { padding: 0.75rem 1rem; }
-  .input::placeholder, .textarea::placeholder { opacity: 0.55; font-weight: 500; }
+  .input::placeholder, .textarea::placeholder { opacity: 0.62; font-weight: 500; }
 
   /* After the base rule above, so an error border isn't flattened back to grey */
   .input-error, .select-error, .textarea-error {

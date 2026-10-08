@@ -569,7 +569,7 @@ defmodule TryggWeb.Layouts do
         <span class="flex-1 min-w-0 leading-tight">
           <span class="font-semibold text-lg truncate flex items-center gap-1">
             <span class="truncate">{@current_child.name}</span>
-            <.icon name="hero-chevron-down" class="size-4 opacity-50 shrink-0" />
+            <.icon name="hero-chevron-down" class="size-4 opacity-60 shrink-0" />
           </span>
           <span class="text-xs opacity-60 truncate block">
             {@age || "Tap to switch child"}
@@ -590,7 +590,7 @@ defmodule TryggWeb.Layouts do
           {child_initial(@current_child)}
         </span>
         <span class="font-medium text-sm truncate">{@current_child.name}</span>
-        <.icon name="hero-chevron-down" class="size-3.5 opacity-50 shrink-0" />
+        <.icon name="hero-chevron-down" class="size-3.5 opacity-60 shrink-0" />
       </button>
 
       <div
@@ -603,7 +603,7 @@ defmodule TryggWeb.Layouts do
           @variant == :compact && "w-72"
         ]}
       >
-        <p class="px-2.5 pt-1.5 pb-1 text-xs font-medium uppercase tracking-wide opacity-50">
+        <p class="px-2.5 pt-1.5 pb-1 text-xs font-medium uppercase tracking-wide opacity-60">
           Switch child
         </p>
         <.link

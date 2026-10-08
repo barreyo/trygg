@@ -241,7 +241,7 @@ defmodule TryggWeb.GrowthComponents do
         class={[
           "text-sm text-center mt-1 tabular-nums min-h-5",
           @chart.caption && "font-medium",
-          !@chart.caption && "opacity-50 text-xs"
+          !@chart.caption && "opacity-60 text-xs"
         ]}
       >
         {@chart.caption || "Tap a point for the reading"}
