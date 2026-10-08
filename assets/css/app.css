@@ -693,30 +693,44 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 }
 .login-beat { animation: login-beat 2.4s ease-in-out infinite; }
 
-/* "Create an account" call to action: a glint sweeps across now and then */
-.login-cta { position: relative; overflow: hidden; isolation: isolate; }
+/* "Create an account" call to action: a glint sweeps across now and then.
+   The glint is a gradient that slides by `background-position` inside the
+   button's own box, so the button needs no `overflow: hidden` (which would
+   clip its toy edge and focus ring). */
+.login-cta { position: relative; isolation: isolate; }
 .login-cta::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%);
-  transform: translateX(-120%);
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%) no-repeat;
+  background-size: 60% 100%;
+  background-position: -120% 0;
   animation: login-glint 5.5s ease-in-out 1.6s infinite;
 }
 @keyframes login-glint {
-  0%   { transform: translateX(-120%); }
-  22%  { transform: translateX(120%); }
-  100% { transform: translateX(120%); }
+  0%   { background-position: -120% 0; }
+  22%  { background-position: 220% 0; }
+  100% { background-position: 220% 0; }
 }
 .login-cta-arrow { display: inline-block; transition: transform 200ms ease; }
 .login-cta:hover .login-cta-arrow,
 .login-cta:focus-visible .login-cta-arrow { transform: translateX(4px); }
 
-/* Lift via the individual `translate` property so the rise animation's
-   held end-state (`transform: none`) can't override it */
+/* Lift via the individual `translate` property, so it composes with (rather
+   than fights) the rise animation's `transform` */
 .login-new-card { transition: translate 200ms ease; }
 .login-new-card:hover { translate: 0 -2px; }
+
+/* While a field has focus the sky holds still: nothing twinkles behind the
+   thing being typed, and the phone's GPU gets a rest. (`:has()` is progressive;
+   without it the sky just keeps going.) */
+.login-stage:has(input:focus) .login-sky *,
+.login-stage:has(input:focus) .login-hero * {
+  animation-play-state: paused;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .login-sky, .login-scene-in, .login-rise, .login-star, .login-twinkle, .login-shoot,

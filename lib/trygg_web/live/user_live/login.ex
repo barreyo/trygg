@@ -35,7 +35,7 @@ defmodule TryggWeb.UserLive.Login do
         <%= if @sent_to do %>
           <.login_hero :if={@immersive} variant={:mail} />
 
-          <div class="login-rise text-center" style="--d: 0.15s">
+          <div class={["login-rise text-center", @immersive && "login-copy"]} style="--d: 0.15s">
             <h1 class={["text-2xl font-bold", @immersive && "text-white drop-shadow"]}>
               Check your email
             </h1>
@@ -63,7 +63,7 @@ defmodule TryggWeb.UserLive.Login do
 
           <div
             class={[
-              "login-rise rounded-3xl p-4",
+              "login-rise rounded-box p-4",
               @immersive && "bg-base-100/95 shadow-lg shadow-black/30 backdrop-blur-md"
             ]}
             style="--d: 0.25s"
@@ -95,7 +95,7 @@ defmodule TryggWeb.UserLive.Login do
             class={[
               "login-rise text-center text-sm",
               if(@immersive,
-                do: "text-white/75 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]",
+                do: "login-copy text-white/75 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]",
                 else: "opacity-70"
               )
             ]}
@@ -109,8 +109,8 @@ defmodule TryggWeb.UserLive.Login do
                 JS.dispatch("trygg:login-clear", to: "#login-resume") |> JS.push("start_over")
               }
               class={[
-                "cursor-pointer font-semibold hover:underline",
-                if(@immersive, do: "text-amber-200", else: "text-brand")
+                "-my-2 inline-block cursor-pointer py-2 font-semibold underline underline-offset-4",
+                if(@immersive, do: "text-amber-200", else: "text-primary")
               ]}
             >
               Send a new one
@@ -120,7 +120,7 @@ defmodule TryggWeb.UserLive.Login do
           <div
             :if={!@current_scope}
             id="login-no-account-hint"
-            class="login-rise rounded-3xl border border-warning/50 bg-base-100/95 p-4 text-sm shadow-lg shadow-black/30 backdrop-blur-md"
+            class="login-rise rounded-box border border-warning/50 bg-base-100/95 p-4 text-sm shadow-lg shadow-black/30 backdrop-blur-md"
             style="--d: 0.45s"
           >
             <p class="font-semibold">Nothing arrived?</p>
@@ -140,7 +140,7 @@ defmodule TryggWeb.UserLive.Login do
         <% else %>
           <.login_hero :if={@immersive} variant={:night} />
 
-          <div class="login-rise text-center" style="--d: 0.15s">
+          <div class={["login-rise text-center", @immersive && "login-copy"]} style="--d: 0.15s">
             <h1 class={["text-2xl font-bold", @immersive && "text-white drop-shadow"]}>
               {if @current_scope, do: "Log in", else: "Welcome to Trygg"}
             </h1>
@@ -162,7 +162,7 @@ defmodule TryggWeb.UserLive.Login do
           <div
             :if={!@current_scope}
             id="login-new-here"
-            class="login-rise login-new-card relative overflow-hidden rounded-3xl border border-primary/40 bg-base-100 bg-gradient-to-br from-primary/20 via-base-100 to-base-100 p-4 shadow-lg shadow-black/30"
+            class="login-rise login-new-card relative overflow-hidden rounded-box border border-primary/40 bg-base-100 bg-gradient-to-br from-primary/20 via-base-100 to-base-100 p-4 shadow-lg shadow-black/30"
             style="--d: 0.25s"
           >
             <div class="flex items-start gap-3">
@@ -198,7 +198,7 @@ defmodule TryggWeb.UserLive.Login do
 
           <div
             class={[
-              "login-rise rounded-3xl p-4",
+              "login-rise rounded-box p-4",
               @immersive && "bg-base-100/95 shadow-lg shadow-black/30 backdrop-blur-md"
             ]}
             style="--d: 0.4s"

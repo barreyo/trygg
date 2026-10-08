@@ -21,14 +21,14 @@ defmodule TryggWeb.UserLive.Registration do
 
         <.login_hero variant={:night} />
 
-        <div class="login-rise text-center" style="--d: 0.15s">
+        <div class="login-rise login-copy text-center" style="--d: 0.15s">
           <h1 class="text-2xl font-bold text-white drop-shadow">Register for an account</h1>
           <p class="mt-2 text-sm text-white/80 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]">
             Already registered?
             <.link
               navigate={~p"/users/log-in"}
               id="register-login-link"
-              class="font-semibold text-amber-200 hover:underline"
+              class="font-semibold text-amber-200 underline underline-offset-4"
             >
               Log in
             </.link>
@@ -37,7 +37,7 @@ defmodule TryggWeb.UserLive.Registration do
         </div>
 
         <div
-          class="login-rise rounded-3xl bg-base-100/95 p-4 shadow-lg shadow-black/30 backdrop-blur-md"
+          class="login-rise rounded-box bg-base-100/95 p-4 shadow-lg shadow-black/30 backdrop-blur-md"
           style="--d: 0.25s"
         >
           <.form for={@form} id="registration_form" phx-submit="save" phx-change="validate">
@@ -75,7 +75,7 @@ defmodule TryggWeb.UserLive.Registration do
         </div>
 
         <p
-          class="login-rise text-center text-sm text-white/75 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]"
+          class="login-rise login-copy text-center text-sm text-white/75 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]"
           style="--d: 0.35s"
         >
           No password to remember. We'll email you a code to get in.
