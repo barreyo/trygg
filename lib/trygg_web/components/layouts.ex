@@ -57,6 +57,11 @@ defmodule TryggWeb.Layouts do
     default: false,
     doc: "widen the content column on tablet/desktop, for pages laid out with `columns/1`"
 
+  attr :immersive, :boolean,
+    default: false,
+    doc:
+      "drop the top bar so the page can paint its own full-bleed background (the signed-out login screen)"
+
   slot :inner_block, required: true
   slot :actions, doc: "optional controls rendered at the right of the top bar"
 
@@ -91,7 +96,10 @@ defmodule TryggWeb.Layouts do
         current_tab={@current_tab}
       />
 
-      <header class="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 pt-[env(safe-area-inset-top)]">
+      <header
+        :if={!@immersive}
+        class="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 pt-[env(safe-area-inset-top)]"
+      >
         <div class={[@column_class, "flex items-center gap-2 px-4 min-h-14 py-1.5"]}>
           <%!-- On a tab page the back arrow only leads Home, which the sidebar
                already offers on desktop. --%>
@@ -154,7 +162,8 @@ defmodule TryggWeb.Layouts do
         class={[
           @column_class,
           "flex-1 px-4 py-4",
-          if(@current_child, do: "pb-28 lg:pb-8", else: "pb-8")
+          if(@current_child, do: "pb-28 lg:pb-8", else: "pb-8"),
+          @immersive && "pt-[max(1rem,env(safe-area-inset-top))]"
         ]}
       >
         <.demo_banner :if={@current_child && Child.expecting?(@current_child)} child={@current_child} />

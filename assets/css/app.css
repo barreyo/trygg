@@ -47,12 +47,14 @@
   --color-warning-content: oklch(98% 0.022 95.277);
   --color-error: oklch(58% 0.253 17.585);
   --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
+  /* Shape tokens: chunky, round and roomy. Buttons and inputs are ~44px tall
+     (comfortable for small, sleepy, or toddler-adjacent thumbs). */
+  --radius-selector: 0.75rem;
+  --radius-field: 1.1rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.26rem;
+  --size-field: 0.275rem;
+  --border: 2px;
   --depth: 1;
   --noise: 0;
 }
@@ -82,14 +84,26 @@
   --color-warning-content: oklch(98% 0.022 95.277);
   --color-error: oklch(58% 0.253 17.585);
   --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
+  /* Shape tokens: chunky, round and roomy. Buttons and inputs are ~44px tall
+     (comfortable for small, sleepy, or toddler-adjacent thumbs). */
+  --radius-selector: 0.75rem;
+  --radius-field: 1.1rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.26rem;
+  --size-field: 0.275rem;
+  --border: 2px;
   --depth: 1;
   --noise: 0;
+}
+
+/*
+ * A friendlier typeface with no download: `ui-rounded` resolves to SF Rounded
+ * on Apple devices (where this app is mostly used as an installed PWA) and
+ * falls straight through to the normal system font everywhere else.
+ */
+@theme {
+  --font-sans: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
 /* Add variants based on LiveView classes */
@@ -286,92 +300,220 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 }
 
 /*
- * Login / registration illustration — see `TryggWeb.LoginComponents`.
+ * Playful controls — the whole app's buttons, inputs and labels.
  *
- * Every rule here only *adds* motion to a scene and page that already look
- * right standing still, so the reduced-motion block at the end can simply
- * switch the animations off. Entrance animations use `both` fill and run once
- * when the element is inserted; LiveView patches later never replay them.
+ * daisyUI emits `.btn`/`.input`/… in `@layer utilities`, so this block sits in
+ * the same layer *after* it and wins ties; it only touches properties that
+ * daisyUI drives through variables or that nothing in the app overrides
+ * per-call (sizes, radii and colors still come from the tokens above and from
+ * Tailwind classes on the element).
+ *
+ *  - Buttons are little toys: a solid colored bottom edge that squishes flat
+ *    when pressed, with a springy overshoot on the way back.
+ *  - Inputs are soft pillows: a gently tinted fill, a thick border, and a
+ *    glowing ring in the brand color on focus. 1rem text, so iOS Safari
+ *    doesn't zoom the page when one is focused.
  */
-.login-scene { background: #120e3d; -webkit-tap-highlight-color: transparent; }
-.login-scene svg * { transform-box: fill-box; transform-origin: center; }
+@layer utilities {
+  .btn {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    transition-property: color, background-color, border-color, box-shadow, translate;
+    transition-duration: 220ms;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* The toy edge: filled buttons only (ghost / link / outline / soft stay flat) */
+  .btn:not(.btn-ghost, .btn-link, .btn-outline, .btn-soft, .btn-dash) {
+    --btn-shadow: 0 4px 0 0 color-mix(in oklab, var(--btn-bg) 58%, #000);
+  }
+
+  @media (hover: hover) {
+    .btn:not(.btn-ghost, .btn-link, .btn-outline, .btn-soft, .btn-dash):hover {
+      translate: 0 -1px;
+      --btn-shadow: 0 5px 0 0 color-mix(in oklab, var(--btn-bg) 58%, #000);
+    }
+  }
+
+  .btn:not(.btn-ghost, .btn-link, .btn-outline, .btn-soft, .btn-dash):active:not(.btn-active) {
+    translate: 0 4px;
+    --btn-shadow: 0 0 0 0 color-mix(in oklab, var(--btn-bg) 58%, #000);
+  }
+
+  /* Flat variants just get the springy press */
+  .btn:is(.btn-ghost, .btn-link, .btn-outline, .btn-soft, .btn-dash):active:not(.btn-active) {
+    translate: 0 1px;
+  }
+
+  /* Round icon buttons get a slightly shallower edge */
+  .btn-circle:not(.btn-ghost, .btn-link, .btn-outline, .btn-soft, .btn-dash),
+  .btn-square:not(.btn-ghost, .btn-link, .btn-outline, .btn-soft, .btn-dash) {
+    --btn-shadow: 0 3px 0 0 color-mix(in oklab, var(--btn-bg) 58%, #000);
+  }
+
+  .input, .select, .textarea {
+    --input-color: color-mix(in oklab, var(--color-base-content) 16%, transparent);
+    background-color: color-mix(in oklab, var(--color-base-content) 3%, var(--color-base-100));
+    font-size: 1rem;
+    font-weight: 500;
+    box-shadow: 0 2px 0 0 color-mix(in oklab, var(--color-base-content) 8%, transparent) inset;
+    transition:
+      border-color 180ms ease,
+      background-color 180ms ease,
+      box-shadow 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .input { padding-inline: 1rem; }
+  .textarea { padding: 0.75rem 1rem; }
+  .input::placeholder, .textarea::placeholder { opacity: 0.55; font-weight: 500; }
+
+  /* After the base rule above, so an error border isn't flattened back to grey */
+  .input-error, .select-error, .textarea-error {
+    --input-color: var(--color-error);
+    border-color: var(--color-error);
+  }
+
+  .input:focus, .input:focus-within,
+  .select:focus, .select:focus-within,
+  .textarea:focus {
+    --input-color: var(--color-primary);
+    border-color: var(--color-primary);
+    background-color: var(--color-base-100);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-primary) 24%, transparent);
+    outline: none;
+  }
+
+  .input-error:focus, .input-error:focus-within,
+  .select-error:focus, .select-error:focus-within,
+  .textarea-error:focus {
+    --input-color: var(--color-error);
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-error) 24%, transparent);
+  }
+
+  /* Friendlier labels */
+  .label { font-size: 0.9rem; font-weight: 600; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .input, .select, .textarea { transition-duration: 0.01ms; }
+}
+
+/*
+ * Login screen night sky — see `TryggWeb.LoginComponents`.
+ *
+ * A fixed full-viewport backdrop (`.login-sky`) plus a hero character
+ * (`.login-hero`) in the page flow. Every rule here only *adds* motion to a
+ * page that already looks right standing still, so the reduced-motion block
+ * at the end can simply switch the animations off. Entrance animations use
+ * `both` fill and run once when the element is inserted; LiveView patches
+ * later never replay them.
+ */
+.login-sky {
+  background: linear-gradient(to bottom, #120e3d 0%, #271d6b 55%, #4a2f86 88%, #7a4486 100%);
+  animation: login-fade-in 900ms ease-out both;
+}
+.login-horizon {
+  background: radial-gradient(ellipse 90% 38% at 50% 100%, rgb(255 157 92 / 0.42), transparent 70%);
+}
+
+@keyframes login-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 @keyframes login-scene-in {
-  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  from { opacity: 0; transform: scale(0.9) translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
-.login-scene-in { animation: login-scene-in 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.login-scene-in { animation: login-scene-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) 150ms both; }
 
 @keyframes login-rise {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(18px); }
   to   { opacity: 1; transform: none; }
 }
 .login-rise { animation: login-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0s); }
 
-/* Soft glow behind the page header that slowly breathes */
-@keyframes login-breathe {
-  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
-  50%      { opacity: 1;   transform: translateX(-50%) scale(1.08); }
-}
-.login-aura {
+/* Stars: a sparkle shape (clip-path) or a plain dot, twinkling out of phase */
+.login-star {
   position: absolute;
-  top: -2rem;
-  left: 50%;
-  width: 150%;
-  height: 18rem;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(
-    closest-side,
-    color-mix(in oklab, var(--color-primary) 26%, transparent),
-    transparent
-  );
-  animation: login-breathe 9s ease-in-out infinite;
+  aspect-ratio: 1;
+  background: var(--c, #fff);
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  animation: login-twinkle 3.4s ease-in-out infinite;
+  animation-delay: var(--d, 0s);
 }
+.login-star-dot { clip-path: none; border-radius: 9999px; }
 
 @keyframes login-twinkle {
   0%, 100% { opacity: 0.3; transform: scale(calc(var(--s, 1) * 0.65)); }
   50%      { opacity: 1;   transform: scale(calc(var(--s, 1) * 1.15)); }
 }
-.login-twinkle { animation: login-twinkle 3.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.login-twinkle { transform-box: fill-box; transform-origin: center; animation: login-twinkle 3.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
+/* One shooting star every ~12s, travelling along its own (rotated) axis */
+@keyframes login-shoot {
+  0%   { opacity: 0; transform: rotate(24deg) translateX(0); }
+  2%   { opacity: 1; }
+  11%  { opacity: 0; transform: rotate(24deg) translateX(70vw); }
+  100% { opacity: 0; transform: rotate(24deg) translateX(70vw); }
+}
+.login-shoot {
+  position: absolute;
+  top: 9%;
+  left: 4%;
+  width: 90px;
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, transparent, #fff);
+  box-shadow: 0 0 8px 1px rgb(255 255 255 / 0.5);
+  opacity: 0;
+  transform: rotate(24deg);
+  animation: login-shoot 12s ease-in infinite;
+  animation-delay: 3s;
+}
 
 @keyframes login-bob {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-5px); }
 }
-.login-bob { animation: login-bob var(--dur, 6s) ease-in-out infinite; animation-delay: var(--delay, 0s); }
-
-@keyframes login-drift {
-  from { transform: translateX(0); }
-  to   { transform: translateX(var(--dx, 24px)); }
-}
-.login-drift { animation: login-drift var(--dur, 18s) ease-in-out infinite alternate; }
+.login-bob { transform-box: fill-box; transform-origin: center; animation: login-bob var(--dur, 6s) ease-in-out infinite; animation-delay: var(--delay, 0s); }
 
 @keyframes login-halo {
   0%, 100% { opacity: 0.75; transform: scale(1); }
   50%      { opacity: 1;    transform: scale(1.12); }
 }
-.login-halo { animation: login-halo 6s ease-in-out infinite; }
+.login-halo { transform-box: fill-box; transform-origin: center; animation: login-halo 6s ease-in-out infinite; }
 
-/* One shooting star every ~11s: visible for the first ~12% of the cycle */
-@keyframes login-shoot {
-  0%   { opacity: 0; transform: translate(0, 0); }
-  2%   { opacity: 1; }
-  12%  { opacity: 0; transform: translate(150px, 58px); }
-  100% { opacity: 0; transform: translate(150px, 58px); }
+@keyframes login-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--dx, 30vw)); }
 }
-.login-shoot { animation: login-shoot 11s ease-in infinite; animation-delay: 2.5s; opacity: 0; }
+.login-cloud { animation: login-drift var(--dur, 70s) ease-in-out infinite alternate; }
 
-/* The cradle rocks about the point where its rocker touches the ground */
+/* Hearts float from the bottom of the screen to the top, swaying as they go */
+@keyframes login-rising {
+  0%   { opacity: 0; transform: translate(0, 0); }
+  10%  { opacity: 0.45; }
+  50%  { transform: translate(14px, -55dvh); }
+  90%  { opacity: 0.3; }
+  100% { opacity: 0; transform: translate(-6px, -108dvh); }
+}
+.login-rising {
+  position: absolute;
+  bottom: -24px;
+  opacity: 0;
+  animation: login-rising var(--dur, 20s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+/* The hero and everything animating inside its svg pivots about its own box */
+.login-hero svg * { transform-box: fill-box; transform-origin: center; }
+
+/* The cradle rocks about the bottom of its rocker (where it touches the cloud) */
 @keyframes login-rock {
   from { transform: rotate(-4.5deg); }
   to   { transform: rotate(4.5deg); }
 }
-.login-scene .login-cradle {
-  transform-box: view-box;
-  transform-origin: 160px 162px;
-  animation: login-rock 2.8s ease-in-out infinite alternate;
-}
+.login-hero .login-cradle,
+.login-hero .login-hop { transform-origin: 50% 100%; }
+.login-hero .login-cradle { animation: login-rock 2.8s ease-in-out infinite alternate; }
 
 /* A tap sets the cradle wobbling harder, then it settles back to rocking */
 @keyframes login-nudge {
@@ -381,7 +523,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   70%  { transform: rotate(-6deg); }
   100% { transform: rotate(4.5deg); }
 }
-.login-scene.is-popping .login-cradle {
+.login-hero.is-popping .login-cradle {
   animation:
     login-nudge 900ms ease-out 1,
     login-rock 2.8s ease-in-out 900ms infinite alternate;
@@ -394,7 +536,6 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   60%  { transform: translateY(0) scale(1.04, 0.95); }
   100% { transform: translateY(0) scale(1, 1); }
 }
-.login-scene .login-hop { transform-box: view-box; transform-origin: 160px 162px; }
 #login-resume:has(.login-cta:hover, .login-cta:focus-visible) .login-hop {
   animation: login-hop 520ms ease-out;
 }
@@ -412,9 +553,9 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   100% { opacity: 0; transform: translate(var(--x, 0), -52px) scale(1.1); }
 }
 .login-pop { opacity: 0; }
-.login-scene.is-popping .login-pop { animation: login-pop 1100ms ease-out both; animation-delay: var(--d, 0s); }
+.login-hero.is-popping .login-pop { animation: login-pop 1100ms ease-out both; animation-delay: var(--d, 0s); }
 
-/* "Check your email" scene */
+/* "Check your email" hero */
 @keyframes login-float {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50%      { transform: translateY(-6px) rotate(2deg); }
@@ -464,20 +605,20 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 .login-cta:hover .login-cta-arrow,
 .login-cta:focus-visible .login-cta-arrow { transform: translateX(4px); }
 
-/* The "new here" card lifts a touch under the finger / pointer */
+/* Lift via the individual `translate` property so the rise animation's
+   held end-state (`transform: none`) can't override it */
 .login-new-card { transition: translate 200ms ease; }
 .login-new-card:hover { translate: 0 -2px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-scene-in, .login-rise, .login-aura, .login-twinkle, .login-bob, .login-drift,
-  .login-halo, .login-shoot, .login-z, .login-float, .login-slip, .login-dot,
-  .login-trail, .login-beat, .login-cta::after,
-  .login-scene .login-cradle, .login-scene.is-popping .login-cradle,
-  .login-scene.is-popping .login-pop,
+  .login-sky, .login-scene-in, .login-rise, .login-star, .login-twinkle, .login-shoot,
+  .login-bob, .login-halo, .login-cloud, .login-rising, .login-z, .login-float,
+  .login-slip, .login-dot, .login-trail, .login-beat, .login-cta::after,
+  .login-hero .login-cradle, .login-hero.is-popping .login-cradle,
+  .login-hero.is-popping .login-pop,
   #login-resume:has(.login-cta:hover, .login-cta:focus-visible) .login-hop {
     animation: none;
   }
   .login-z { opacity: 0.7; }
-  .login-aura { transform: translateX(-50%); }
   .login-cta-arrow, .login-new-card { transition: none; }
 }

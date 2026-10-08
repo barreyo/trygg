@@ -15,6 +15,7 @@ defmodule TryggWeb.UserLive.LoginTest do
     test "shows the illustration on both steps", %{conn: conn} do
       user = user_fixture()
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      assert has_element?(lv, "#login-sky")
       assert has_element?(lv, "#login-scene-night[phx-hook='LoginScene']")
 
       {:ok, lv, _html} =
@@ -22,6 +23,7 @@ defmodule TryggWeb.UserLive.LoginTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/users/log-in")
 
+      assert has_element?(lv, "#login-sky")
       assert has_element?(lv, "#login-scene-mail")
       refute has_element?(lv, "#login-scene-night")
     end
@@ -179,6 +181,7 @@ defmodule TryggWeb.UserLive.LoginTest do
       assert html =~ "You need to reauthenticate"
       refute html =~ "Register"
       refute has_element?(lv, "#login-new-here")
+      refute has_element?(lv, "#login-sky")
       assert html =~ "Email me a login link"
 
       assert html =~
