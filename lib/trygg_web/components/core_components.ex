@@ -92,12 +92,15 @@ defmodule TryggWeb.CoreComponents do
     * transparent tap highlight — no grey/blue flash on tap on mobile Safari /
       Chrome; we show our own `:active` feedback instead.
     * `select-none` — a long-press or drag doesn't select the label.
-    * a gentle press-down (`active:scale`) so a tap feels registered on touch.
+    * a press-down so a tap feels registered on touch.
 
   The playful look (chunky size, round corners, the colored "toy" edge that
-  squishes flat when pressed, springy motion) is not set here: it comes from
-  the shape tokens in the daisyUI themes and the "Playful controls" block in
-  `assets/css/app.css`, so every button and input in the app picks it up.
+  squishes flat when pressed, springy motion) and that press-down are not set
+  here: they come from the shape tokens in the daisyUI themes and the
+  "Playful controls" block in `assets/css/app.css`, so every button and input
+  in the app picks them up. Don't add `active:scale-*` or `transition-*`
+  utilities on top of it: they stack with the `translate` press and replace
+  the springy transition.
 
   ## Attributes
 
@@ -138,8 +141,7 @@ defmodule TryggWeb.CoreComponents do
   slot :inner_block, required: true
 
   @button_base "btn touch-manipulation select-none cursor-pointer " <>
-                 "[-webkit-tap-highlight-color:transparent] " <>
-                 "transition-transform active:scale-[.97] disabled:active:scale-100"
+                 "[-webkit-tap-highlight-color:transparent]"
 
   @button_variants %{
     nil => nil,

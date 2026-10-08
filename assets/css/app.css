@@ -342,6 +342,25 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 }
 
 /*
+ * Touch floor for the compact button sizes. With the roomier `--size-field`
+ * token, daisyUI's `xs`/`sm` come out at ~26px / ~35px tall with 11px / 12px
+ * labels: fine for a mouse, too small for a thumb at 3 AM. These keep the
+ * "smaller than a normal button" hierarchy but stay comfortably tappable.
+ */
+@layer utilities {
+  .btn-xs {
+    --fontsize: 0.8125rem;
+    --btn-p: 0.75rem;
+    --size: 2.25rem;
+  }
+  .btn-sm {
+    --fontsize: 0.875rem;
+    --btn-p: 0.875rem;
+    --size: 2.5rem;
+  }
+}
+
+/*
  * Playful controls — the whole app's buttons, inputs and labels.
  *
  * daisyUI emits `.btn`/`.input`/… in `@layer utilities`, so this block sits in

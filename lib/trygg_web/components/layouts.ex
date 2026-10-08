@@ -106,7 +106,6 @@ defmodule TryggWeb.Layouts do
           <.button
             :if={@back}
             variant="ghost"
-            size="sm"
             navigate={@back}
             class={["btn-circle -ml-2", @current_tab && "lg:hidden"]}
             aria-label="Back"
@@ -280,15 +279,17 @@ defmodule TryggWeb.Layouts do
           </.button>
         </div>
       </div>
-      <button
+      <.button
         id="install-prompt-dismiss"
         type="button"
-        class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
+        variant="ghost"
+        size="xs"
+        class="btn-circle -mr-1 -mt-1"
         aria-label="Dismiss"
         data-install-action="dismiss"
       >
         <.icon name="hero-x-mark" class="size-4" />
-      </button>
+      </.button>
     </div>
     """
   end
@@ -581,7 +582,7 @@ defmodule TryggWeb.Layouts do
         :if={@variant == :compact}
         type="button"
         tabindex="0"
-        class="flex items-center gap-1.5 max-w-36 h-10 pl-1 pr-2 rounded-full border border-base-300 bg-base-200 cursor-pointer select-none touch-manipulation hover:bg-base-300 active:scale-[.97] [-webkit-tap-highlight-color:transparent]"
+        class="flex items-center gap-1.5 max-w-36 h-11 pl-1.5 pr-2.5 rounded-full border border-base-300 bg-base-200 cursor-pointer select-none touch-manipulation hover:bg-base-300 active:bg-base-300 [-webkit-tap-highlight-color:transparent]"
         id="child-switcher-trigger"
         aria-haspopup="menu"
         aria-label={"Switch child, currently #{@current_child.name}"}
@@ -668,7 +669,6 @@ defmodule TryggWeb.Layouts do
         tabindex="0"
         type="button"
         variant="ghost"
-        size="sm"
         class="btn-circle"
         aria-label="Menu"
       >
