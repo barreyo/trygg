@@ -1,5 +1,5 @@
 // Mirrors the essentials of the current LiveView screen — which child, its
-// name, the caregiver's unit system and write access — into IndexedDB, so the
+// name, the caregiver's unit system, write access and which trackers it shows — into IndexedDB, so the
 // LiveView-free offline screen (`offline.js` / the `OfflinePanel` hook) knows
 // what it is logging for. Also relays the dashboard's `offline:snapshot`
 // push (last few entries + any running sleep) into the `snapshot` store so the
@@ -11,7 +11,7 @@
 import {contextPut, snapshotPut} from "../offline/db"
 
 function persist(el) {
-  const {childId, childName, unitSystem, canWrite, tz} = el.dataset
+  const {childId, childName, unitSystem, canWrite, tz, trackedTypes} = el.dataset
   if (!childId || canWrite !== "true") return
 
   contextPut({
@@ -20,6 +20,7 @@ function persist(el) {
     unitSystem: unitSystem === "imperial" ? "imperial" : "metric",
     canWrite: true,
     tz: tz || "UTC",
+    trackedTypes: trackedTypes ? trackedTypes.split(",") : ["feeding", "diaper", "sleep"],
     updatedAt: Date.now(),
   }).catch(() => {})
 }

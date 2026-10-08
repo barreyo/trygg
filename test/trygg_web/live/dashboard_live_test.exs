@@ -849,6 +849,99 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "configurable layout" do
+    import Trygg.LogFixtures
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      child = child_fixture(scope, %{timezone: "Etc/UTC"})
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    test "everything shows by default", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      for id <- ~w(glance-feed glance-diaper glance-sleep log-sleep log-bottle log-diaper) do
+        assert has_element?(lv, "##{id}"), id
+      end
+    end
+
+    test "a bottles-only child gets bottle cards and buttons only", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, child} = Families.update_child(scope, child, %{tracked_types: [:feeding]})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#glance-feed")
+      assert has_element?(lv, "#log-bottle")
+      refute has_element?(lv, "#glance-diaper")
+      refute has_element?(lv, "#glance-sleep")
+      refute has_element?(lv, "#log-sleep")
+      refute has_element?(lv, "#log-diaper")
+
+      lv |> element("button[phx-value-kind='earlier']") |> render_click()
+      assert has_element?(lv, "#quick-sheet button[phx-value-kind='bottle']")
+      refute has_element?(lv, "#quick-sheet button[phx-value-kind='sleep_past']")
+      refute has_element?(lv, "#quick-sheet button[phx-value-kind='diaper_past']")
+    end
+
+    test "recent entries of untracked types are left out", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      feed = entry_fixture(scope, child, %{:type => :feeding})
+      diaper = entry_fixture(scope, child, %{:type => :diaper})
+      {:ok, child} = Families.update_child(scope, child, %{tracked_types: [:feeding]})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#entries-#{feed.id}")
+      refute has_element?(lv, "#entries-#{diaper.id}")
+    end
+
+    test "diaper alerts are dropped when diapers aren't tracked", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      now = DateTime.utc_now()
+
+      entry_fixture(scope, child, %{
+        :type => :diaper,
+        "started_at" => DateTime.add(now, -7 * 3600, :second)
+      })
+
+      entry_fixture(scope, child, %{
+        :type => :feeding,
+        "started_at" => DateTime.add(now, -30 * 60, :second)
+      })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#home-alerts-no-wet-diaper")
+
+      {:ok, child} = Families.update_child(scope, child, %{tracked_types: [:feeding]})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#home-alerts-no-wet-diaper")
+    end
+
+    test "the layout changes live when an owner edits it elsewhere", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#glance-sleep")
+
+      {:ok, _} = Families.update_child(scope, child, %{tracked_types: [:feeding, :diaper]})
+
+      refute has_element?(lv, "#glance-sleep")
+      assert has_element?(lv, "#glance-diaper")
+    end
+  end
+
   describe "realtime child rename" do
     setup :register_and_log_in_user
 

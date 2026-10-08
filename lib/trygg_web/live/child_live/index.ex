@@ -183,6 +183,33 @@ defmodule TryggWeb.ChildLive.Index do
           type="time"
           label="Night starts"
         />
+        <fieldset id="tracked-types" class="fieldset">
+          <legend class="fieldset-legend">Track on Home</legend>
+          <%!-- Always submitted, so unticking everything still sends an (empty)
+               list for the changeset to reject. --%>
+          <input type="hidden" name="child[tracked_types][]" value="" />
+          <label :for={{type, label} <- tracker_options()} class="label gap-2 py-1">
+            <input
+              type="checkbox"
+              id={"tracked-#{type}"}
+              name="child[tracked_types][]"
+              value={type}
+              checked={to_string(type) in tracked_values(@form)}
+              class="checkbox checkbox-sm"
+            />{label}
+          </label>
+          <p
+            :for={msg <- Enum.map(@form[:tracked_types].errors, &translate_error/1)}
+            class="mt-1.5 flex gap-2 items-center text-sm text-error"
+          >
+            <.icon name="hero-exclamation-circle" class="size-5" />
+            {msg}
+          </p>
+          <p class="text-xs opacity-60">
+            What the Home screen shows and offers to log, for everyone caring for {@form[:name].value ||
+              "the baby"}. Hidden entries stay in the full log and reports.
+          </p>
+        </fieldset>
         <.input
           :if={@live_action == :edit}
           field={@form[:vitamin_d_reminder]}
@@ -291,6 +318,10 @@ defmodule TryggWeb.ChildLive.Index do
   end
 
   defp arrived_defaults(_child, _status), do: %{}
+
+  defp tracker_options, do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep"]
+
+  defp tracked_values(form), do: Enum.map(List.wrap(form[:tracked_types].value), &to_string/1)
 
   # Where Back / Cancel lead: a new child hasn't got a page yet, an existing one does.
   defp cancel_path(:edit, %Child{id: id} = child) when not is_nil(id), do: ~p"/c/#{child}"

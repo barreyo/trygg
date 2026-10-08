@@ -37,6 +37,24 @@ defmodule Trygg.Reports.Alerts do
     |> Enum.sort_by(&@severity_rank[&1.severity])
   end
 
+  @tracker_by_id %{
+    "no-wet-diaper" => :diaper,
+    "low-wet-pace" => :diaper,
+    "low-wet-day" => :diaper,
+    "feeding-check" => :feeding,
+    "intake-below-guide" => :feeding,
+    "sleep-shift" => :sleep,
+    "growth-burst" => :sleep
+  }
+
+  @doc """
+  The tracker (`:feeding`, `:diaper` or `:sleep`) an alert is derived from, or
+  `nil` for ones that aren't (growth). Lets Home drop alerts about things a
+  child isn't being tracked for — a diaper-free log would otherwise warn about
+  "no wet diaper" forever.
+  """
+  def tracker(%{id: id}), do: Map.get(@tracker_by_id, id)
+
   @doc "The one-line disclaimer shown under any alert list."
   def disclaimer, do: "Not medical advice — call your pediatrician if you're worried."
 
