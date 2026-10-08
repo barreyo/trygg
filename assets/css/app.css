@@ -284,3 +284,200 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   .trygg-skeleton, .trygg-reveal { animation: none; }
   #main-content, .loading-dim { transition: none; }
 }
+
+/*
+ * Login / registration illustration — see `TryggWeb.LoginComponents`.
+ *
+ * Every rule here only *adds* motion to a scene and page that already look
+ * right standing still, so the reduced-motion block at the end can simply
+ * switch the animations off. Entrance animations use `both` fill and run once
+ * when the element is inserted; LiveView patches later never replay them.
+ */
+.login-scene { background: #120e3d; -webkit-tap-highlight-color: transparent; }
+.login-scene svg * { transform-box: fill-box; transform-origin: center; }
+
+@keyframes login-scene-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.login-scene-in { animation: login-scene-in 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+.login-rise { animation: login-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0s); }
+
+/* Soft glow behind the page header that slowly breathes */
+@keyframes login-breathe {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
+  50%      { opacity: 1;   transform: translateX(-50%) scale(1.08); }
+}
+.login-aura {
+  position: absolute;
+  top: -2rem;
+  left: 50%;
+  width: 150%;
+  height: 18rem;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--color-primary) 26%, transparent),
+    transparent
+  );
+  animation: login-breathe 9s ease-in-out infinite;
+}
+
+@keyframes login-twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(calc(var(--s, 1) * 0.65)); }
+  50%      { opacity: 1;   transform: scale(calc(var(--s, 1) * 1.15)); }
+}
+.login-twinkle { animation: login-twinkle 3.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
+@keyframes login-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+.login-bob { animation: login-bob var(--dur, 6s) ease-in-out infinite; animation-delay: var(--delay, 0s); }
+
+@keyframes login-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--dx, 24px)); }
+}
+.login-drift { animation: login-drift var(--dur, 18s) ease-in-out infinite alternate; }
+
+@keyframes login-halo {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.12); }
+}
+.login-halo { animation: login-halo 6s ease-in-out infinite; }
+
+/* One shooting star every ~11s: visible for the first ~12% of the cycle */
+@keyframes login-shoot {
+  0%   { opacity: 0; transform: translate(0, 0); }
+  2%   { opacity: 1; }
+  12%  { opacity: 0; transform: translate(150px, 58px); }
+  100% { opacity: 0; transform: translate(150px, 58px); }
+}
+.login-shoot { animation: login-shoot 11s ease-in infinite; animation-delay: 2.5s; opacity: 0; }
+
+/* The cradle rocks about the point where its rocker touches the ground */
+@keyframes login-rock {
+  from { transform: rotate(-4.5deg); }
+  to   { transform: rotate(4.5deg); }
+}
+.login-scene .login-cradle {
+  transform-box: view-box;
+  transform-origin: 160px 162px;
+  animation: login-rock 2.8s ease-in-out infinite alternate;
+}
+
+/* A tap sets the cradle wobbling harder, then it settles back to rocking */
+@keyframes login-nudge {
+  0%   { transform: rotate(0); }
+  20%  { transform: rotate(-11deg); }
+  45%  { transform: rotate(9deg); }
+  70%  { transform: rotate(-6deg); }
+  100% { transform: rotate(4.5deg); }
+}
+.login-scene.is-popping .login-cradle {
+  animation:
+    login-nudge 900ms ease-out 1,
+    login-rock 2.8s ease-in-out 900ms infinite alternate;
+}
+
+/* The cradle hops when the Create an account button is hovered or focused */
+@keyframes login-hop {
+  0%   { transform: translateY(0) scale(1, 1); }
+  30%  { transform: translateY(-7px) scale(0.98, 1.03); }
+  60%  { transform: translateY(0) scale(1.04, 0.95); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+.login-scene .login-hop { transform-box: view-box; transform-origin: 160px 162px; }
+#login-resume:has(.login-cta:hover, .login-cta:focus-visible) .login-hop {
+  animation: login-hop 520ms ease-out;
+}
+
+@keyframes login-z {
+  0%   { opacity: 0; transform: translate(0, 4px) scale(0.7); }
+  25%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(10px, -22px) scale(1.15); }
+}
+.login-z { opacity: 0; animation: login-z 3.6s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
+@keyframes login-pop {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.3); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x, 0), -52px) scale(1.1); }
+}
+.login-pop { opacity: 0; }
+.login-scene.is-popping .login-pop { animation: login-pop 1100ms ease-out both; animation-delay: var(--d, 0s); }
+
+/* "Check your email" scene */
+@keyframes login-float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-6px) rotate(2deg); }
+}
+.login-float { animation: login-float 5s ease-in-out infinite; }
+
+@keyframes login-slip {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+.login-slip { animation: login-slip 3s ease-in-out infinite; }
+
+@keyframes login-dot {
+  0%, 100% { opacity: 0.25; transform: scale(0.7); }
+  40%      { opacity: 1;    transform: scale(1.25); }
+}
+.login-dot { animation: login-dot 2.2s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
+@keyframes login-trail { to { stroke-dashoffset: -18; } }
+.login-trail { animation: login-trail 1.4s linear infinite; }
+
+@keyframes login-beat {
+  0%, 100% { transform: scale(1); }
+  15%      { transform: scale(1.22); }
+  30%      { transform: scale(1); }
+  45%      { transform: scale(1.14); }
+}
+.login-beat { animation: login-beat 2.4s ease-in-out infinite; }
+
+/* "Create an account" call to action: a glint sweeps across now and then */
+.login-cta { position: relative; overflow: hidden; isolation: isolate; }
+.login-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: login-glint 5.5s ease-in-out 1.6s infinite;
+}
+@keyframes login-glint {
+  0%   { transform: translateX(-120%); }
+  22%  { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+.login-cta-arrow { display: inline-block; transition: transform 200ms ease; }
+.login-cta:hover .login-cta-arrow,
+.login-cta:focus-visible .login-cta-arrow { transform: translateX(4px); }
+
+/* The "new here" card lifts a touch under the finger / pointer */
+.login-new-card { transition: translate 200ms ease; }
+.login-new-card:hover { translate: 0 -2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-scene-in, .login-rise, .login-aura, .login-twinkle, .login-bob, .login-drift,
+  .login-halo, .login-shoot, .login-z, .login-float, .login-slip, .login-dot,
+  .login-trail, .login-beat, .login-cta::after,
+  .login-scene .login-cradle, .login-scene.is-popping .login-cradle,
+  .login-scene.is-popping .login-pop,
+  #login-resume:has(.login-cta:hover, .login-cta:focus-visible) .login-hop {
+    animation: none;
+  }
+  .login-z { opacity: 0.7; }
+  .login-aura { transform: translateX(-50%); }
+  .login-cta-arrow, .login-new-card { transition: none; }
+}

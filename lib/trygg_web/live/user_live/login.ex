@@ -6,6 +6,8 @@ defmodule TryggWeb.UserLive.Login do
   alias Trygg.RateLimit
   alias TryggWeb.RequestIp
 
+  import TryggWeb.LoginComponents, only: [login_scene: 1]
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -14,10 +16,14 @@ defmodule TryggWeb.UserLive.Login do
         id="login-resume"
         phx-hook="LoginResume"
         data-sent-to={@sent_to}
-        class="mx-auto max-w-sm space-y-4"
+        class="relative isolate mx-auto max-w-sm space-y-5"
       >
+        <div class="login-aura" aria-hidden="true"></div>
+
         <%= if @sent_to do %>
-          <div class="text-center">
+          <.login_scene variant={:mail} />
+
+          <div class="login-rise text-center" style="--d: 0.15s">
             <.header>
               <p>Check your email</p>
               <:subtitle>
@@ -93,7 +99,9 @@ defmodule TryggWeb.UserLive.Login do
             </.button>
           </div>
         <% else %>
-          <div class="text-center">
+          <.login_scene variant={:night} />
+
+          <div class="login-rise text-center" style="--d: 0.15s">
             <.header>
               <p>{if @current_scope, do: "Log in", else: "Welcome to Trygg"}</p>
               <:subtitle>
@@ -109,25 +117,35 @@ defmodule TryggWeb.UserLive.Login do
           <div
             :if={!@current_scope}
             id="login-new-here"
-            class="rounded-box border border-base-300 bg-base-200/50 p-4 space-y-3"
+            class="login-rise login-new-card relative overflow-hidden rounded-box border border-primary/30 bg-gradient-to-br from-primary/15 via-base-100 to-base-100 p-4 shadow-sm"
+            style="--d: 0.25s"
           >
-            <div>
-              <p class="font-semibold">1. New here?</p>
-              <p class="text-sm opacity-70">
-                Create an account to get started. Takes a few seconds.
-              </p>
+            <div class="flex items-start gap-3">
+              <span class="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-content shadow">
+                <.icon name="hero-sparkles" class="size-5" />
+              </span>
+              <div>
+                <p class="font-semibold">New to Trygg?</p>
+                <p class="text-sm opacity-70">
+                  Create your account first — it only takes a few seconds.
+                </p>
+              </div>
             </div>
             <.button
               navigate={~p"/users/register"}
               id="login-register-link"
               variant="primary"
-              class="w-full"
+              class="login-cta mt-4 w-full"
             >
-              Create an account <span aria-hidden="true">→</span>
+              Create an account <span class="login-cta-arrow" aria-hidden="true">→</span>
             </.button>
           </div>
 
-          <div :if={!@current_scope} class="divider text-xs uppercase opacity-60">
+          <div
+            :if={!@current_scope}
+            class="login-rise divider text-xs uppercase opacity-60"
+            style="--d: 0.35s"
+          >
             Already registered?
           </div>
 
@@ -146,6 +164,8 @@ defmodule TryggWeb.UserLive.Login do
             id="login_form_magic"
             action={~p"/users/log-in"}
             phx-submit="submit_magic"
+            class="login-rise"
+            style="--d: 0.45s"
           >
             <.input
               readonly={!!@current_scope}

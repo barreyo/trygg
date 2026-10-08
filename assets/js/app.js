@@ -36,6 +36,7 @@ import ChildSwipe from "./hooks/child_swipe"
 import OfflineContext from "./hooks/offline_context"
 import ChartScrub from "./hooks/chart_scrub"
 import LoginResume from "./hooks/login_resume"
+import LoginScene from "./hooks/login_scene"
 import {installOfflinePanel} from "./offline/panel_toggle"
 import {startAutoSync} from "./offline/auto_sync"
 
@@ -57,6 +58,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     OfflineContext,
     ChartScrub,
     LoginResume,
+    LoginScene,
   },
 })
 

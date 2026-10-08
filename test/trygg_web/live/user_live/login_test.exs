@@ -12,6 +12,20 @@ defmodule TryggWeb.UserLive.LoginTest do
       refute has_element?(lv, "#app-menu")
     end
 
+    test "shows the illustration on both steps", %{conn: conn} do
+      user = user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      assert has_element?(lv, "#login-scene-night[phx-hook='LoginScene']")
+
+      {:ok, lv, _html} =
+        form(lv, "#login_form_magic", user: %{email: user.email})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/users/log-in")
+
+      assert has_element?(lv, "#login-scene-mail")
+      refute has_element?(lv, "#login-scene-night")
+    end
+
     test "puts account creation ahead of the login form", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
