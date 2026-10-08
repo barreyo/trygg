@@ -45,6 +45,94 @@ defmodule TryggWeb.TimelineLiveTest do
     refute filtered =~ "Bottle"
   end
 
+  test "a type can be narrowed down further", %{conn: conn, scope: scope, child: child} do
+    pee = entry_fixture(scope, child, %{:type => :diaper, "data" => %{"kind" => "pee"}})
+    poo = entry_fixture(scope, child, %{:type => :diaper, "data" => %{"kind" => "poo"}})
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+    refute has_element?(lv, "#log-subfilters")
+
+    lv |> element("#filter-diaper") |> render_click()
+    assert has_element?(lv, "#log-subfilters")
+    assert has_element?(lv, "#entries-#{pee.id}")
+    assert has_element?(lv, "#entries-#{poo.id}")
+
+    lv |> element("#subfilter-poo") |> render_click()
+    refute has_element?(lv, "#entries-#{pee.id}")
+    assert has_element?(lv, "#entries-#{poo.id}")
+
+    lv |> element("#subfilter-all") |> render_click()
+    assert has_element?(lv, "#entries-#{pee.id}")
+
+    # Switching type drops the narrower choice.
+    lv |> element("#subfilter-pee") |> render_click()
+    lv |> element("#filter-feeding") |> render_click()
+    assert has_element?(lv, "#subfilter-formula")
+    assert has_element?(lv, "#subfilter-donor")
+    refute has_element?(lv, "#subfilter-pee")
+  end
+
+  test "feeds can be narrowed to formula or donor milk", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    formula =
+      entry_fixture(scope, child, %{
+        :type => :feeding,
+        "data" => %{"bottle_contents" => "formula", "amount_ml" => 90}
+      })
+
+    donor =
+      entry_fixture(scope, child, %{
+        :type => :feeding,
+        "data" => %{"bottle_contents" => "donor", "amount_ml" => 90}
+      })
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+    lv |> element("#filter-feeding") |> render_click()
+    lv |> element("#subfilter-donor") |> render_click()
+
+    assert has_element?(lv, "#entries-#{donor.id}")
+    refute has_element?(lv, "#entries-#{formula.id}")
+  end
+
+  test "older entries load a page at a time, all the way back", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    now = DateTime.utc_now()
+
+    entries =
+      for i <- 1..120 do
+        entry_fixture(scope, child, %{
+          :type => :diaper,
+          "started_at" => DateTime.add(now, -i * 3600 * 6, :second),
+          "data" => %{"kind" => "pee"}
+        })
+      end
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+    assert has_element?(lv, "#entries-#{Enum.at(entries, 0).id}")
+    refute has_element?(lv, "#entries-#{Enum.at(entries, 99).id}")
+    assert has_element?(lv, "#log-load-more")
+    refute has_element?(lv, "#log-end")
+
+    lv |> element("#log-load-more") |> render_click()
+    assert has_element?(lv, "#entries-#{Enum.at(entries, 99).id}")
+    assert has_element?(lv, "#log-load-more")
+
+    lv |> element("#log-load-more") |> render_click()
+    assert has_element?(lv, "#entries-#{Enum.at(entries, 119).id}")
+    refute has_element?(lv, "#log-load-more")
+    assert has_element?(lv, "#log-end")
+
+    # A live update keeps the older pages on screen.
+    entry_fixture(scope, child, type: :diaper)
+    assert has_element?(lv, "#entries-#{Enum.at(entries, 119).id}")
+  end
+
   test "editing an entry updates its note", %{conn: conn, scope: scope, child: child} do
     entry = entry_fixture(scope, child, type: :diaper)
 

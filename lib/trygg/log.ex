@@ -32,7 +32,10 @@ defmodule Trygg.Log do
   Lists a child's entries, newest first.
 
   Options: `:type` (atom), `:types` (list of atoms), `:since` (`DateTime`), `:until` (`DateTime`),
-  `:limit` (integer).
+  `:limit` (integer), `:data` (a map of string keys to string values that the
+  entry's `data` must match, e.g. `%{"kind" => "pee"}`), and `:before` (a
+  `{started_at, id}` cursor — the last entry of the previous page — to continue
+  from, for keyset pagination).
   """
   def list_entries(%Scope{} = scope, %Child{} = child, opts \\ []) do
     Families.authorize!(scope, child, :viewer)
@@ -43,6 +46,8 @@ defmodule Trygg.Log do
     |> filter_types(opts[:types])
     |> filter_since(opts[:since])
     |> filter_until(opts[:until])
+    |> filter_data(opts[:data])
+    |> filter_before(opts[:before])
     |> order_by(desc: :started_at, desc: :id)
     |> maybe_limit(opts[:limit])
     |> preload(:logged_by)
@@ -648,6 +653,20 @@ defmodule Trygg.Log do
 
   defp filter_until(query, nil), do: query
   defp filter_until(query, until), do: where(query, [e], e.started_at < ^until)
+
+  defp filter_data(query, nil), do: query
+
+  defp filter_data(query, data) do
+    Enum.reduce(data, query, fn {key, value}, query ->
+      where(query, [e], fragment("?->>? = ?", e.data, type(^key, :string), type(^value, :string)))
+    end)
+  end
+
+  defp filter_before(query, nil), do: query
+
+  defp filter_before(query, {started_at, id}) do
+    where(query, [e], e.started_at < ^started_at or (e.started_at == ^started_at and e.id < ^id))
+  end
 
   defp maybe_limit(query, nil), do: query
   defp maybe_limit(query, limit), do: limit(query, ^limit)

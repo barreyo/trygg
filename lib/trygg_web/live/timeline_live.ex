@@ -4,10 +4,23 @@ defmodule TryggWeb.TimelineLive do
   alias Trygg.Accounts.Scope
   alias Trygg.Families
   alias Trygg.Log
+  alias Trygg.Log.Entry
   alias TryggWeb.Loading
 
-  @limit 200
+  @page_size 50
   @filters [nil, :feeding, :diaper, :sleep]
+
+  # The finer breakdown offered once a type is picked: `{id, label, data}`,
+  # where `data` is what an entry's `data` map must match
+  # (see `Trygg.Log.list_entries/3`). Derived from the entry schema's allowed
+  # values so a new bottle content, diaper kind or sleep place shows up here.
+  @subfilters %{
+    feeding:
+      Enum.map(Entry.bottle_contents(), &{&1, String.capitalize(&1), %{"bottle_contents" => &1}}) ++
+        [{"vitamin_d", "Vitamin D", %{"vitamin_d" => "true"}}],
+    diaper: Enum.map(Entry.diaper_kinds(), &{&1, String.capitalize(&1), %{"kind" => &1}}),
+    sleep: Enum.map(Entry.sleep_locations(), &{&1, String.capitalize(&1), %{"location" => &1}})
+  }
 
   @impl true
   def render(assigns) do
@@ -28,10 +41,39 @@ defmodule TryggWeb.TimelineLive do
           type="button"
           variant={if @filter == f, do: "primary", else: nil}
           size="sm"
+          id={"filter-#{f || "all"}"}
           phx-click={JS.push("filter", value: %{type: f && to_string(f)}, loading: "#log-entries")}
           class="shrink-0"
         >
           {filter_label(f)}
+        </.button>
+      </div>
+
+      <div
+        :if={subfilters(@filter) != []}
+        id="log-subfilters"
+        class="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4"
+      >
+        <.button
+          type="button"
+          id="subfilter-all"
+          variant={if @subfilter == nil, do: "neutral", else: nil}
+          size="xs"
+          phx-click={JS.push("subfilter", value: %{id: ""}, loading: "#log-entries")}
+          class="shrink-0"
+        >
+          All
+        </.button>
+        <.button
+          :for={{id, label, _data} <- subfilters(@filter)}
+          type="button"
+          id={"subfilter-#{id}"}
+          variant={if @subfilter == id, do: "neutral", else: nil}
+          size="xs"
+          phx-click={JS.push("subfilter", value: %{id: id}, loading: "#log-entries")}
+          class="shrink-0"
+        >
+          {label}
         </.button>
       </div>
 
@@ -56,6 +98,25 @@ defmodule TryggWeb.TimelineLive do
             on_click={@can_write && JS.push("edit", value: %{id: entry.id})}
           />
         </div>
+
+        <div :if={@has_more?} class="py-4 text-center">
+          <.button
+            id="log-load-more"
+            type="button"
+            size="sm"
+            phx-click="load_more"
+            phx-disable-with="Loading…"
+          >
+            Load older entries
+          </.button>
+        </div>
+        <p
+          :if={!@has_more? && !@entries_empty?}
+          id="log-end"
+          class="py-6 text-center text-xs opacity-40"
+        >
+          That's everything.
+        </p>
       </.loadable>
 
       <.edit_modal
@@ -79,6 +140,10 @@ defmodule TryggWeb.TimelineLive do
       |> assign(:unit_system, socket.assigns.current_scope.user.unit_system)
       |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
       |> assign(:filter, nil)
+      |> assign(:subfilter, nil)
+      |> assign(:has_more?, false)
+      |> assign(:cursor, nil)
+      |> assign(:loaded_count, 0)
       |> assign(:editing, nil)
       |> assign(:edit_vitamin_d?, false)
       |> assign(:edit_form, nil)
@@ -101,6 +166,9 @@ defmodule TryggWeb.TimelineLive do
     do: {:noreply, Loading.done(socket, result, &apply_entries/2)}
 
   @impl true
+  # A new entry joins the top of the list, so the reload window grows by one to
+  # keep the oldest page-loaded entry on screen.
+  def handle_info({:log, :created, _entry}, socket), do: {:noreply, load_entries(socket, 1)}
   def handle_info({:log, _action, _entry}, socket), do: {:noreply, load_entries(socket)}
 
   def handle_info({:child_updated, child}, socket) do
@@ -159,8 +227,35 @@ defmodule TryggWeb.TimelineLive do
 
   @impl true
   def handle_event("filter", %{"type" => type}, socket) do
-    filter = if type in [nil, ""], do: nil, else: String.to_existing_atom(type)
-    {:noreply, socket |> assign(:filter, filter) |> load_entries()}
+    filter = Enum.find(@filters, &(to_string(&1) == to_string(type)))
+
+    {:noreply,
+     socket
+     |> assign(filter: filter, subfilter: nil, loaded_count: 0)
+     |> load_entries()}
+  end
+
+  def handle_event("subfilter", %{"id" => id}, socket) do
+    sub =
+      Enum.find_value(subfilters(socket.assigns.filter), fn {sid, _, _} -> sid == id && id end)
+
+    {:noreply, socket |> assign(subfilter: sub, loaded_count: 0) |> load_entries()}
+  end
+
+  def handle_event("load_more", _params, %{assigns: %{cursor: nil}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("load_more", _params, socket) do
+    {entries, more?} = fetch_page(socket, @page_size, socket.assigns.cursor)
+
+    {:noreply,
+     socket
+     |> stream(:entries, entries)
+     |> assign(
+       has_more?: more?,
+       cursor: cursor_after(entries, socket.assigns.cursor),
+       loaded_count: socket.assigns.loaded_count + length(entries)
+     )}
   end
 
   def handle_event("retry_load", _params, socket), do: {:noreply, load_entries(socket)}
@@ -218,24 +313,61 @@ defmodule TryggWeb.TimelineLive do
 
   # The first load goes through `TryggWeb.Loading` (skeleton, then a task);
   # once the list is on screen, filter changes and realtime updates reload it
-  # in place.
-  defp load_entries(socket) do
-    scope = socket.assigns.current_scope
-    child = socket.assigns.current_child
-    filter = socket.assigns.filter
-    fetch = fn -> Log.list_entries(scope, child, type: filter, limit: @limit) end
+  # in place. A reload keeps as many entries on screen as were already loaded
+  # (at least one page), so a live update doesn't snap the list back to the top.
+  defp load_entries(socket, extra \\ 0) do
+    fetch = fetch_fun(socket, max(socket.assigns.loaded_count + extra, @page_size), nil)
 
     if socket.assigns.loaded?,
       do: apply_entries(socket, fetch.()),
       else: Loading.run(socket, fetch, &apply_entries/2)
   end
 
-  defp apply_entries(socket, entries) do
+  defp apply_entries(socket, {entries, more?}) do
     socket
-    |> assign(:entries_empty?, entries == [])
+    |> assign(
+      entries_empty?: entries == [],
+      has_more?: more?,
+      cursor: cursor_after(entries, nil),
+      loaded_count: length(entries)
+    )
     |> stream(:entries, entries, reset: true)
   end
 
+  defp fetch_page(socket, limit, cursor), do: fetch_fun(socket, limit, cursor).()
+
+  # A zero-arity fetch capturing plain values only (it may run in a task).
+  # Asks for one entry past `limit` to learn whether there's another page.
+  defp fetch_fun(socket, limit, cursor) do
+    %{current_scope: scope, current_child: child, filter: filter, subfilter: sub} = socket.assigns
+    data = sub_data(filter, sub)
+
+    fn ->
+      entries =
+        Log.list_entries(scope, child,
+          type: filter,
+          data: data,
+          before: cursor,
+          limit: limit + 1
+        )
+
+      {page, rest} = Enum.split(entries, limit)
+      {page, rest != []}
+    end
+  end
+
+  defp cursor_after([], cursor), do: cursor
+
+  defp cursor_after(entries, _cursor) do
+    last = List.last(entries)
+    {last.started_at, last.id}
+  end
+
+  defp sub_data(filter, sub) do
+    Enum.find_value(subfilters(filter), fn {id, _label, data} -> id == sub && data end)
+  end
+
+  defp subfilters(filter), do: Map.get(@subfilters, filter, [])
   defp filters, do: @filters
   defp filter_label(nil), do: "All"
   defp filter_label(:feeding), do: "Feeds"

@@ -14,6 +14,44 @@ defmodule Trygg.LogTest do
     %{scope: scope, child: child_fixture(scope)}
   end
 
+  describe "list_entries/3 filtering and paging" do
+    test ":data matches the entry's data fields", %{scope: scope, child: child} do
+      entry_fixture(scope, child, %{:type => :diaper, "data" => %{"kind" => "pee"}})
+      poo = entry_fixture(scope, child, %{:type => :diaper, "data" => %{"kind" => "poo"}})
+
+      assert [found] = Log.list_entries(scope, child, type: :diaper, data: %{"kind" => "poo"})
+      assert found.id == poo.id
+    end
+
+    test ":data can match vitamin D on a feed", %{scope: scope, child: child} do
+      {:ok, plain} = feed(scope, child, %{})
+      {:ok, with_drop} = feed(scope, child, %{"vitamin_d" => "true"})
+
+      assert [found] = Log.list_entries(scope, child, data: %{"vitamin_d" => "true"})
+      assert found.id == with_drop.id
+      refute found.id == plain.id
+    end
+
+    test ":before continues from a cursor, including entries sharing a timestamp", %{
+      scope: scope,
+      child: child
+    } do
+      at = ~U[2026-09-01 10:00:00Z]
+
+      ids =
+        for _ <- 1..5 do
+          entry_fixture(scope, child, %{"started_at" => at}).id
+        end
+
+      newest_first = Enum.reverse(ids)
+      [first, second] = Log.list_entries(scope, child, limit: 2)
+      assert [first.id, second.id] == Enum.take(newest_first, 2)
+
+      rest = Log.list_entries(scope, child, before: {second.started_at, second.id})
+      assert Enum.map(rest, & &1.id) == Enum.drop(newest_first, 2)
+    end
+  end
+
   describe "vitamin D on a feed" do
     defp feed(scope, child, data, attrs \\ %{}) do
       Log.create_entry(
