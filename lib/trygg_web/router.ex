@@ -79,6 +79,9 @@ defmodule TryggWeb.Router do
 
       live_dashboard "/dashboard", metrics: TryggWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+
+      get "/emails", TryggWeb.EmailPreviewController, :index
+      get "/emails/:name", TryggWeb.EmailPreviewController, :show
     end
   end
 

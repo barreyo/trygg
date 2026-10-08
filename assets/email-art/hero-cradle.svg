@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 240" width="600" height="240">
+<title>A baby asleep in a cradle</title>
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#120e3d"/><stop offset="0.55" stop-color="#271d6b"/>
+  <stop offset="0.88" stop-color="#4a2f86"/><stop offset="1" stop-color="#7a4486"/>
+</linearGradient>
+<radialGradient id="horizon" cx="0.5" cy="1" r="0.6">
+  <stop offset="0" stop-color="#ff9d5c" stop-opacity="0.5"/><stop offset="1" stop-color="#ff9d5c" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="bowl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb468"/><stop offset="1" stop-color="#e5702a"/></linearGradient>
+<linearGradient id="hood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc884"/><stop offset="1" stop-color="#ee8738"/></linearGradient>
+<linearGradient id="cloudfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cdc0f2"/></linearGradient>
+<linearGradient id="scalebody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6e6"/><stop offset="1" stop-color="#ffd9a8"/></linearGradient>
+<radialGradient id="herohalo"><stop offset="0" stop-color="#9a86ff" stop-opacity="0.42"/><stop offset="1" stop-color="#9a86ff" stop-opacity="0"/></radialGradient>
+<radialGradient id="moonglow"><stop offset="0" stop-color="#ffe9a8" stop-opacity="0.55"/><stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/></radialGradient>
+<symbol id="sparkle" viewBox="-5 -5 10 10" overflow="visible"><path d="M0,-5 L1.3,-1.3 L5,0 L1.3,1.3 L0,5 L-1.3,1.3 L-5,0 L-1.3,-1.3Z"/></symbol>
+<path id="heart" d="M0,5 C-9,-1 -7,-9 -2.2,-8.6 C-0.8,-8.4 0,-7.4 0,-6.6 C0,-7.4 0.8,-8.4 2.2,-8.6 C7,-9 9,-1 0,5Z"/>
+<mask id="moonmask"><rect width="100" height="100" fill="#fff"/><circle cx="60" cy="42" r="17" fill="#000"/></mask>
+</defs>
+<rect width="600" height="240" fill="url(#sky)"/>
+<rect width="600" height="240" fill="url(#horizon)"/>
+<g>
+  <circle cx="141.6" cy="143.8" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="508.5" y="51.9" width="8" height="8" fill="#ffffff" opacity="0.9"/>
+  <circle cx="54.1" cy="30.2" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="195.7" cy="4.4" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="566.6" cy="66.6" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="108.2" cy="40.8" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="479.0" cy="103.0" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="246.8" y="12.1" width="6" height="6" fill="#fff3c4" opacity="0.9"/>
+  <circle cx="20.7" cy="77.2" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="158.3" y="47.5" width="8" height="8" fill="#ffffff" opacity="0.9"/>
+  <circle cx="533.1" cy="113.6" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="69.8" y="82.9" width="10" height="10" fill="#ffe29a" opacity="0.9"/>
+  <circle cx="445.6" cy="0.0" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="581.2" y="118.3" width="12" height="12" fill="#ffffff" opacity="0.9"/>
+  <circle cx="128.9" cy="98.5" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="496.7" y="7.699999999999999" width="6" height="6" fill="#fff3c4" opacity="0.9"/>
+  <circle cx="41.3" cy="134.9" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="553.8" cy="21.3" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="95.4" cy="145.6" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="466.3" cy="57.7" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="7.9" cy="32.0" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="146.5" y="3.3" width="6" height="6" fill="#fff3c4" opacity="0.9"/>
+  <circle cx="520.4" cy="68.4" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="58.0" y="38.7" width="8" height="8" fill="#ffffff" opacity="0.9"/>
+  <circle cx="432.8" cy="104.8" r="1.3" fill="#fff" opacity="0.85"/>
+</g>
+<!-- moon -->
+<svg x="478" y="14" width="84" height="84" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="url(#moonglow)"/>
+  <circle cx="50" cy="50" r="20" fill="#ffe08a" mask="url(#moonmask)"/>
+</svg>
+<!-- faint clouds -->
+<g fill="#fff" opacity="0.1"><ellipse cx="86" cy="150" rx="40" ry="11"/><circle cx="70" cy="142" r="11"/><circle cx="96" cy="138" r="14"/></g>
+<g fill="#fff" opacity="0.08"><ellipse cx="522" cy="176" rx="36" ry="10"/><circle cx="508" cy="169" r="10"/><circle cx="532" cy="165" r="13"/></g>
+<!-- hero -->
+<g transform="translate(205 22) scale(1.25) translate(-88 -28)">
+
+<circle cx="160" cy="112" r="78" fill="url(#herohalo)"/>
+<g transform="translate(104 66)"><use href="#heart" fill="#ff7fa3"/></g>
+<g transform="translate(222 108)">
+  <path d="M0,-9 C5,-2 8,2 8,6 C8,10 4,12.5 0,12.5 C-4,12.5 -8,10 -8,6 C-8,2 -5,-2 0,-9Z" fill="#ffd24a"/>
+  <path d="M-3.6,5 C-3.6,7.2 -2.2,8.6 -0.5,9" stroke="#fff6cf" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+</g>
+<use href="#sparkle" x="214" y="52" width="9" height="9" fill="#fff3c4"/>
+<use href="#sparkle" x="94" y="108" width="7" height="7" fill="#ffffff"/>
+<g fill="url(#cloudfill)">
+  <ellipse cx="160" cy="172" rx="70" ry="10"/><circle cx="116" cy="169" r="11"/><circle cx="136" cy="166" r="12"/>
+  <circle cx="184" cy="166" r="12"/><circle cx="205" cy="169" r="10"/>
+</g>
+<path d="M106,148 Q160,176 214,148" fill="none" stroke="#8f4a1d" stroke-width="5" stroke-linecap="round"/>
+<path d="M112,113 C110,88 128,78 144,80 C140,90 139,102 140,113Z" fill="#b5561c"/>
+<circle cx="152" cy="103" r="13.5" fill="#ffdcc8"/>
+<path d="M151,90.5 q3,-5 6.5,-1.5" fill="none" stroke="#8a5a3a" stroke-width="2" stroke-linecap="round"/>
+<path d="M146,103 q2.5,2.6 5,0 M154,103 q2.5,2.6 5,0 M151.5,109 q1.5,1.3 3,0" fill="none" stroke="#5a3a2a" stroke-width="1.4" stroke-linecap="round"/>
+<circle cx="145.5" cy="108" r="2.6" fill="#ff9fb2" opacity="0.55"/><circle cx="160" cy="108" r="2.6" fill="#ff9fb2" opacity="0.55"/>
+<path d="M160,109 C168,101 178,110 188,104 C198,99 206,104 210,108 L210,120 L160,120Z" fill="#bba2ff"/>
+<path d="M160,115 C168,107 178,116 188,110 C198,105 206,110 210,114" fill="none" stroke="#e4d8ff" stroke-width="2" stroke-linecap="round"/>
+<circle cx="168" cy="107" r="4" fill="#ffdcc8"/>
+<path d="M112,112 H208 C208,138 190,154 160,154 C130,154 112,138 112,112Z" fill="url(#bowl)"/>
+<path d="M114,125 H206" stroke="#fff2dd" stroke-opacity="0.55" stroke-width="2" stroke-dasharray="4 3" fill="none"/>
+<use href="#sparkle" x="135" y="129" width="10" height="10" fill="#fff4d6" opacity="0.85"/>
+<use href="#sparkle" x="155" y="134" width="10" height="10" fill="#fff4d6" opacity="0.85"/>
+<use href="#sparkle" x="175" y="129" width="10" height="10" fill="#fff4d6" opacity="0.85"/>
+<path d="M107,112 H213" stroke="#ffd9a8" stroke-width="5" stroke-linecap="round"/>
+<path d="M107,113 C104,82 124,70 146,73 C141,84 140,99 141,113Z" fill="url(#hood)"/>
+<path d="M113,108 C112,90 124,80 138,78" fill="none" stroke="#fff2dd" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
+<g fill="#e9e0ff" font-weight="800" font-family="ui-sans-serif, system-ui, sans-serif">
+  <text x="166" y="86" font-size="9">Z</text><text x="172" y="78" font-size="12">Z</text><text x="180" y="68" font-size="15">Z</text>
+</g>
+<g transform="translate(160 88)" fill="#ff7fa3">
+  <use href="#heart" x="-34" y="-22" opacity="0.95"/><use href="#heart" x="4" y="-34" opacity="0.95"/><use href="#heart" x="38" y="-20" opacity="0.95"/>
+</g>
+</g>
+<!-- hills -->
+<path d="M0,214 C100,196 190,208 300,202 C410,196 500,210 600,200 L600,240 L0,240Z" fill="#231b5e"/>
+<path d="M0,230 C120,218 220,226 320,222 C430,218 520,226 600,222 L600,240 L0,240Z" fill="#150f3f"/>
+</svg>

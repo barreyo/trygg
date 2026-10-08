@@ -1,48 +1,23 @@
 defmodule Trygg.Families.FamilyNotifier do
   @moduledoc false
-  import Swoosh.Email
 
   alias Trygg.Mailer
-
-  # Delivers the email using the application mailer.
-  defp deliver(recipient, subject, body) do
-    email =
-      new()
-      |> to(recipient)
-      |> from(Mailer.from_address())
-      |> subject(subject)
-      |> text_body(body)
-
-    with {:ok, _metadata} <- Mailer.deliver(email) do
-      {:ok, email}
-    end
-  end
+  alias Trygg.Mailer.Emails
 
   @doc """
   Delivers a caregiver invitation to join a family. `family_label` names the
   children in it (see `Trygg.Families.Family.label/1`).
   """
   def deliver_caregiver_invite(invite, family_label, invited_by, url) do
-    deliver(invite.email, "You're invited to help track #{family_label} on Trygg", """
-
-    ==============================
-
-    Hi,
-
-    #{invited_by.email} invited you to help track #{family_label} on Trygg
-    as a #{invite.role}.
-
-    Accept the invitation by visiting the URL below. You'll be asked to
-    log in or create an account with this email address first.
-
-    #{url}
-
-    This invite expires on #{Calendar.strftime(invite.expires_at, "%Y-%m-%d")}.
-
-    If you weren't expecting this, you can ignore this email.
-
-    ==============================
-    """)
+    Mailer.deliver_content(
+      invite.email,
+      Emails.caregiver_invite(%{
+        invite: invite,
+        family_label: family_label,
+        invited_by: invited_by,
+        url: url
+      })
+    )
   end
 
   @doc """
@@ -50,32 +25,14 @@ defmodule Trygg.Families.FamilyNotifier do
   is a `Trygg.Growth.CheckReminder` map.
   """
   def deliver_weight_check_reminder(recipient, child, status, url) do
-    history =
-      if status.last_measured_on do
-        "The last weight for #{child.name} was logged on " <>
-          "#{Calendar.strftime(status.last_measured_on, "%Y-%m-%d")}, #{status.days_since} days ago."
-      else
-        "No weight has been logged for #{child.name} yet."
-      end
-
-    deliver(recipient, "Time to check #{child.name}'s weight", """
-
-    ==============================
-
-    Hi,
-
-    #{history}
-
-    The CDC's well-child schedule suggests a weight check about every
-    #{status.interval_days} days at #{child.name}'s age. Next time you have a
-    chance, add the latest weight here:
-
-    #{url}
-
-    This is a routine reminder, not medical advice — talk to your pediatrician
-    if you have any concerns.
-
-    ==============================
-    """)
+    Mailer.deliver_content(
+      recipient,
+      Emails.weight_reminder(%{
+        child: child,
+        status: status,
+        url: url,
+        preferences_url: TryggWeb.Endpoint.url() <> "/preferences"
+      })
+    )
   end
 end

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 240" width="600" height="240">
+<title>A letter with a code</title>
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#120e3d"/><stop offset="0.55" stop-color="#271d6b"/>
+  <stop offset="0.88" stop-color="#4a2f86"/><stop offset="1" stop-color="#7a4486"/>
+</linearGradient>
+<radialGradient id="horizon" cx="0.5" cy="1" r="0.6">
+  <stop offset="0" stop-color="#ff9d5c" stop-opacity="0.5"/><stop offset="1" stop-color="#ff9d5c" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="bowl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb468"/><stop offset="1" stop-color="#e5702a"/></linearGradient>
+<linearGradient id="hood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc884"/><stop offset="1" stop-color="#ee8738"/></linearGradient>
+<linearGradient id="cloudfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cdc0f2"/></linearGradient>
+<linearGradient id="scalebody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6e6"/><stop offset="1" stop-color="#ffd9a8"/></linearGradient>
+<radialGradient id="herohalo"><stop offset="0" stop-color="#9a86ff" stop-opacity="0.42"/><stop offset="1" stop-color="#9a86ff" stop-opacity="0"/></radialGradient>
+<radialGradient id="moonglow"><stop offset="0" stop-color="#ffe9a8" stop-opacity="0.55"/><stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/></radialGradient>
+<symbol id="sparkle" viewBox="-5 -5 10 10" overflow="visible"><path d="M0,-5 L1.3,-1.3 L5,0 L1.3,1.3 L0,5 L-1.3,1.3 L-5,0 L-1.3,-1.3Z"/></symbol>
+<path id="heart" d="M0,5 C-9,-1 -7,-9 -2.2,-8.6 C-0.8,-8.4 0,-7.4 0,-6.6 C0,-7.4 0.8,-8.4 2.2,-8.6 C7,-9 9,-1 0,5Z"/>
+<mask id="moonmask"><rect width="100" height="100" fill="#fff"/><circle cx="60" cy="42" r="17" fill="#000"/></mask>
+</defs>
+<rect width="600" height="240" fill="url(#sky)"/>
+<rect width="600" height="240" fill="url(#horizon)"/>
+<g>
+  <circle cx="141.6" cy="143.8" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="508.5" y="51.9" width="8" height="8" fill="#ffffff" opacity="0.9"/>
+  <circle cx="54.1" cy="30.2" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="195.7" cy="4.4" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="566.6" cy="66.6" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="108.2" cy="40.8" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="479.0" cy="103.0" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="246.8" y="12.1" width="6" height="6" fill="#fff3c4" opacity="0.9"/>
+  <circle cx="20.7" cy="77.2" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="158.3" y="47.5" width="8" height="8" fill="#ffffff" opacity="0.9"/>
+  <circle cx="533.1" cy="113.6" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="69.8" y="82.9" width="10" height="10" fill="#ffe29a" opacity="0.9"/>
+  <circle cx="445.6" cy="0.0" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="581.2" y="118.3" width="12" height="12" fill="#ffffff" opacity="0.9"/>
+  <circle cx="128.9" cy="98.5" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="496.7" y="7.699999999999999" width="6" height="6" fill="#fff3c4" opacity="0.9"/>
+  <circle cx="41.3" cy="134.9" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="553.8" cy="21.3" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="95.4" cy="145.6" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="466.3" cy="57.7" r="1.3" fill="#fff" opacity="0.85"/>
+  <circle cx="7.9" cy="32.0" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="146.5" y="3.3" width="6" height="6" fill="#fff3c4" opacity="0.9"/>
+  <circle cx="520.4" cy="68.4" r="1.3" fill="#fff" opacity="0.85"/>
+  <use href="#sparkle" x="58.0" y="38.7" width="8" height="8" fill="#ffffff" opacity="0.9"/>
+  <circle cx="432.8" cy="104.8" r="1.3" fill="#fff" opacity="0.85"/>
+</g>
+<!-- moon -->
+<svg x="478" y="14" width="84" height="84" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="url(#moonglow)"/>
+  <circle cx="50" cy="50" r="20" fill="#ffe08a" mask="url(#moonmask)"/>
+</svg>
+<!-- faint clouds -->
+<g fill="#fff" opacity="0.1"><ellipse cx="86" cy="150" rx="40" ry="11"/><circle cx="70" cy="142" r="11"/><circle cx="96" cy="138" r="14"/></g>
+<g fill="#fff" opacity="0.08"><ellipse cx="522" cy="176" rx="36" ry="10"/><circle cx="508" cy="169" r="10"/><circle cx="532" cy="165" r="13"/></g>
+<!-- hero -->
+<g transform="translate(205 22) scale(1.25) translate(-88 -28)">
+
+<circle cx="160" cy="106" r="78" fill="url(#herohalo)"/>
+<path d="M90,66 Q112,38 142,64" fill="none" stroke="#ffd9a0" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 7"/>
+<g transform="translate(160 100)">
+  <path d="M-42,-14 L0,-42 L42,-14Z" fill="#ffd9a8"/>
+  <rect x="-28" y="-38" width="56" height="48" rx="5" fill="#fffdf8"/>
+  <g fill="#f59a4a">
+    <circle cx="-17.5" cy="-22" r="3.1"/><circle cx="-10.5" cy="-22" r="3.1"/><circle cx="-3.5" cy="-22" r="3.1"/>
+    <circle cx="3.5" cy="-22" r="3.1"/><circle cx="10.5" cy="-22" r="3.1"/><circle cx="17.5" cy="-22" r="3.1"/>
+  </g>
+  <rect x="-20" y="-8" width="40" height="3" rx="1.5" fill="#e9dcc8"/>
+  <rect x="-14" y="-1" width="28" height="3" rx="1.5" fill="#e9dcc8"/>
+  <path d="M-42,-14 L0,12 L42,-14 L42,38 Q42,46 34,46 H-34 Q-42,46 -42,38Z" fill="#fff1dc"/>
+  <path d="M-42,-14 L0,12 L42,-14" fill="none" stroke="#f0d3a8" stroke-width="2" stroke-linejoin="round"/>
+  <g transform="translate(0 20)"><use href="#heart" fill="#ff7fa3"/></g>
+</g>
+<use href="#sparkle" x="104" y="44" width="12" height="12" fill="#fff3c4"/>
+<use href="#sparkle" x="212" y="70" width="10" height="10" fill="#ffffff"/>
+<use href="#sparkle" x="214" y="128" width="8" height="8" fill="#ffe29a"/>
+<g transform="translate(160 96)" fill="#ff7fa3">
+  <use href="#heart" x="-34" y="-22" opacity="0.95"/><use href="#heart" x="4" y="-34" opacity="0.95"/><use href="#heart" x="38" y="-20" opacity="0.95"/>
+</g>
+</g>
+<!-- hills -->
+<path d="M0,214 C100,196 190,208 300,202 C410,196 500,210 600,200 L600,240 L0,240Z" fill="#231b5e"/>
+<path d="M0,230 C120,218 220,226 320,222 C430,218 520,226 600,222 L600,240 L0,240Z" fill="#150f3f"/>
+</svg>
