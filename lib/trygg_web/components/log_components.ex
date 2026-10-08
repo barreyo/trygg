@@ -91,6 +91,62 @@ defmodule TryggWeb.LogComponents do
     """
   end
 
+  @doc """
+  The big, friendly "at a glance" card on the Home screen: a bubble with the
+  category's emoji, a small label, a big value, a supporting line, and a pill
+  for anything worth calling out, with today's running total underneath.
+
+  This is Home's own card; `since_card/1` stays the compact stat card used on
+  Vitals, Reports and the printed PDF. Same content model (label, value, sub,
+  status, today, tone) so the two stay easy to swap, but roomy and playful:
+  generous padding, large type, a tinted gradient and a soft "toy" edge in the
+  category colour. Cards stack full width, since big text doesn't fit three
+  across a phone. The look lives in the `.glance-*` rules in app.css.
+  """
+  attr :emoji, :string, required: true, doc: "emoji glyph shown in the bubble"
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+  attr :sub, :string, default: nil, doc: "neutral supporting line, e.g. \"Next ≈ 14:10\""
+  attr :status, :string, default: nil, doc: "call-out pill, e.g. \"40m later than usual\""
+  attr :today, :string, default: nil, doc: "running total for the day"
+  attr :tone, :string, default: "base", values: ~w(base warning success)
+
+  attr :category, :string,
+    default: nil,
+    values: [nil, "feed", "diaper", "sleep"],
+    doc: "picks the card's resting tint; :tone overrides it when there's something to call out"
+
+  attr :snooze, :boolean, default: false, doc: "drift a little Zzz off the bubble (asleep)"
+  attr :index, :integer, default: 0, doc: "position in the stack, for the staggered entrance"
+
+  def glance_card(assigns) do
+    ~H"""
+    <div
+      class={["glance-card glance-pop", @category && "glance-#{@category}"]}
+      data-tone={@tone}
+      style={"--d: #{@index * 80}ms"}
+    >
+      <div class="flex items-center gap-4">
+        <span class="glance-bubble" style={"--bob-delay: #{@index * 700}ms"} aria-hidden="true">
+          {@emoji}
+          <span :if={@snooze} class="snooze glance-snooze"><i>z</i><i>z</i><i>z</i></span>
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm font-bold uppercase tracking-wider opacity-70">{@label}</div>
+          <div class="text-3xl font-extrabold leading-tight tabular-nums break-words">
+            {@value}
+          </div>
+          <div :if={@sub} class="mt-0.5 text-base leading-snug opacity-80 break-words">{@sub}</div>
+        </div>
+      </div>
+      <div :if={@status || @today} class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span :if={@status} class="glance-pill">{@status}</span>
+        <span :if={@today} class="text-sm leading-snug opacity-70 tabular-nums">{@today}</span>
+      </div>
+    </div>
+    """
+  end
+
   defp category_bg("feed"), do: "bg-info/10"
   defp category_bg("diaper"), do: "tint-diaper"
   defp category_bg("sleep"), do: "bg-primary/10"
@@ -109,18 +165,20 @@ defmodule TryggWeb.LogComponents do
 
   def timer_banner(assigns) do
     ~H"""
-    <div class="rounded-box bg-primary text-primary-content shadow-lg overflow-hidden">
-      <div class="p-4 flex items-center gap-3">
-        <.icon name={entry_icon(@entry.type)} class="size-7 shrink-0" />
+    <div class="glance-pop rounded-[1.75rem] bg-primary text-primary-content shadow-lg overflow-hidden">
+      <div class="p-5 flex items-center gap-4">
+        <span class="glance-bubble glance-bubble-solid" aria-hidden="true">
+          <.icon name={entry_icon(@entry.type)} class="size-8" />
+        </span>
         <div class="flex-1 min-w-0">
-          <div class="text-sm opacity-80">
+          <div class="text-base font-semibold opacity-90">
             {running_label(@entry)}<span :if={@since_label}> · since {@since_label}</span>
           </div>
           <div
             id={"timer-#{@entry.id}"}
             phx-hook="Timer"
             data-since={DateTime.to_unix(@entry.started_at)}
-            class="text-2xl font-bold tabular-nums"
+            class="text-4xl font-extrabold leading-tight tabular-nums"
           >
             0s
           </div>
