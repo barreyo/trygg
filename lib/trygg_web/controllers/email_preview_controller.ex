@@ -28,7 +28,7 @@ defmodule TryggWeb.EmailPreviewController do
           ~s(<a href="/dev/emails/#{name}?format=text">plain text</a></li>)
       end
 
-    html(conn, """
+    send_html(conn, """
     <!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Email previews</title>
@@ -47,9 +47,18 @@ defmodule TryggWeb.EmailPreviewController do
       content ->
         case params["format"] do
           "text" -> text(conn, content.text)
-          _ -> html(conn, Mailer.build("you@example.com", content).html_body || content.text)
+          _ -> send_html(conn, Mailer.build("you@example.com", content).html_body || content.text)
         end
     end
+  end
+
+  # Both pages are built from this module's static samples, never from request
+  # input, so plain `send_resp` is fine here.
+  # sobelow_skip ["XSS.SendResp"]
+  defp send_html(conn, body) do
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(200, body)
   end
 
   defp sample("login-code"),
