@@ -191,7 +191,7 @@ defmodule TryggWeb.SkeletonComponents do
       <div class="md:col-start-1 min-w-0">
         <section class="rounded-box border border-base-300 bg-base-200/40 p-2">
           <div class="grid grid-cols-2 gap-2">
-            <.stat_card_skeleton :for={_ <- 1..2} class="h-24" />
+            <.stat_card_skeleton :for={_ <- 1..2} class="h-[4.75rem]" />
           </div>
         </section>
 
@@ -200,17 +200,19 @@ defmodule TryggWeb.SkeletonComponents do
             <.bone class="h-4 w-24 rounded" />
             <.bone class="h-3 w-20 rounded" />
           </div>
-          <div class="p-3 space-y-2">
-            <.bone class="h-6 w-2/5 rounded" />
-            <.bone class="h-3 w-4/5 rounded" />
+          <div class="p-3 space-y-3">
+            <.bone class="h-7 w-2/5 rounded" />
+            <.bone class="h-4 w-full rounded" />
+            <.bone class="h-4 w-4/5 rounded" />
+            <.bone class="h-4 w-3/5 rounded" />
           </div>
         </section>
 
-        <.bone :if={@can_write} class="mt-4 h-12 w-full rounded-field" />
+        <.bone :if={@can_write} class="mt-4 h-[3.3rem] w-full rounded-field" />
       </div>
 
       <section class="mt-6 md:mt-0 md:col-start-2 md:row-span-2 md:row-start-1 min-w-0 rounded-box border border-base-300 overflow-hidden">
-        <div class="bg-base-200/40 px-3 pt-3 pb-3 space-y-3">
+        <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
           <div class="flex items-start justify-between gap-2">
             <div class="space-y-1.5">
               <.bone class="h-4 w-16 rounded" />
@@ -221,12 +223,12 @@ defmodule TryggWeb.SkeletonComponents do
               <.bone class="size-11 rounded-field" />
             </div>
           </div>
-          <.bone class="h-9 w-full rounded-field" />
+          <.bone class="h-11 w-full rounded-field" />
         </div>
         <div class="divide-y divide-base-300">
           <div :for={_ <- 1..2} class="p-3 space-y-2">
             <.bone class="h-4 w-20 rounded" />
-            <.bone class="h-44 w-full rounded-box" />
+            <.bone class="h-[13.5rem] w-full rounded-box" />
           </div>
         </div>
       </section>
