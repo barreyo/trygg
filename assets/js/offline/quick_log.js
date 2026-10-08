@@ -100,14 +100,16 @@ function fmtElapsed(ms) {
 const STYLE = `
 .tql { max-width: 26rem; margin: 0 auto; padding: 1.25rem; }
 .tql h1 { font-size: 1.15rem; margin: 0 0 .25rem; }
-.tql .tql-sub { opacity: .65; margin: 0 0 1.1rem; font-size: .9rem; }
+.tql .tql-sub { opacity: .75; margin: 0 0 1.1rem; font-size: .9rem; }
 .tql section { border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   border-radius: .9rem; padding: .9rem; margin-bottom: .8rem; }
 .tql h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
-  opacity: .6; margin: 0 0 .6rem; }
-.tql button { font: inherit; cursor: pointer; border-radius: .7rem;
+  opacity: .7; margin: 0 0 .6rem; }
+.tql button { font: inherit; cursor: pointer; border-radius: .7rem; min-height: 2.75rem;
   border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  background: transparent; color: inherit; padding: .6rem .8rem; }
+  background: transparent; color: inherit; padding: .6rem .8rem;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.tql button:active { opacity: .6; }
 .tql button.primary { background: color-mix(in srgb, currentColor 12%, transparent); font-weight: 600; }
 .tql .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
 .tql .stepper { display: flex; align-items: center; gap: .6rem; justify-content: center; margin-bottom: .6rem; }
@@ -119,18 +121,18 @@ const STYLE = `
 .tql label { display: block; font-size: .8rem; opacity: .7; margin: .5rem 0 .2rem; }
 .tql .full { width: 100%; margin-top: .5rem; }
 .tql details { margin-top: .6rem; }
-.tql summary { cursor: pointer; font-size: .85rem; opacity: .7; }
+.tql summary { cursor: pointer; font-size: .85rem; opacity: .75; padding: .5rem 0; }
 .tql .elapsed { font-size: 1.6rem; font-variant-numeric: tabular-nums; margin: .1rem 0 .5rem; }
 .tql .list { list-style: none; padding: 0; margin: 0; }
 .tql .list li { display: flex; justify-content: space-between; align-items: center; gap: .5rem;
   padding: .45rem 0; font-size: .9rem;
   border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
 .tql .list li:first-child { border-top: 0; }
-.tql .list .when { opacity: .6; font-size: .8rem; white-space: nowrap; }
-.tql .list .rejected { color: #c0392b; }
-.tql .list .del { flex: 0 0 auto; padding: .15rem .45rem; margin-left: .5rem; }
-.tql .empty { opacity: .55; font-size: .85rem; }
-.tql .toast { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%);
+.tql .list .when { opacity: .7; font-size: .8rem; white-space: nowrap; }
+.tql .list .rejected { color: light-dark(#b3261e, #ff8a7a); opacity: 1; }
+.tql .list .del { flex: 0 0 auto; min-width: 2.75rem; padding: .15rem .45rem; margin-left: .5rem; }
+.tql .empty { opacity: .7; font-size: .85rem; }
+.tql .toast { position: fixed; left: 50%; bottom: max(1.2rem, env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: color-mix(in srgb, currentColor 88%, transparent); color: Canvas; padding: .55rem 1rem;
   border-radius: 999px; font-size: .85rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .tql .toast.show { opacity: 1; }
