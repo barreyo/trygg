@@ -6,10 +6,16 @@ defmodule TryggWeb.UserLive.RegistrationTest do
 
   describe "Registration page" do
     test "renders registration page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/register")
+      {:ok, lv, html} = live(conn, ~p"/users/register")
 
       assert html =~ "Register"
       assert html =~ "Log in"
+
+      # Same night sky as the login page, and no app top bar over it.
+      assert has_element?(lv, "#login-sky")
+      assert has_element?(lv, "#login-scene-night[phx-hook='LoginScene']")
+      assert has_element?(lv, "#register-login-link[href='/users/log-in']")
+      refute has_element?(lv, "header.sticky")
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -70,13 +76,13 @@ defmodule TryggWeb.UserLive.RegistrationTest do
     test "redirects to login page when the Log in button is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
-      {:ok, _login_live, login_html} =
+      {:ok, login_live, _login_html} =
         lv
         |> element("main a", "Log in")
         |> render_click()
         |> follow_redirect(conn, ~p"/users/log-in")
 
-      assert login_html =~ "Log in"
+      assert has_element?(login_live, "#login_form_magic")
     end
   end
 end

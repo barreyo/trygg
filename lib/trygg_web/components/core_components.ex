@@ -94,6 +94,11 @@ defmodule TryggWeb.CoreComponents do
     * `select-none` — a long-press or drag doesn't select the label.
     * a gentle press-down (`active:scale`) so a tap feels registered on touch.
 
+  The playful look (chunky size, round corners, the colored "toy" edge that
+  squishes flat when pressed, springy motion) is not set here: it comes from
+  the shape tokens in the daisyUI themes and the "Playful controls" block in
+  `assets/css/app.css`, so every button and input in the app picks it up.
+
   ## Attributes
 
     * `variant` - `nil` (neutral surface), `"primary"`, `"soft"`, `"neutral"`,
