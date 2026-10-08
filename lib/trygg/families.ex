@@ -230,6 +230,22 @@ defmodule Trygg.Families do
     end
   end
 
+  @doc """
+  Sets which trackers the child's Home screen shows (`Child.tracked_types/0`).
+  Unlike `update_child/3` this only needs the `:caregiver` role, so anyone who
+  logs for the child can shape what everyone sees. Touches nothing else.
+  """
+  def update_tracked_types(%Scope{} = scope, %Child{} = child, types) do
+    role = authorize!(scope, child, :caregiver)
+
+    with {:ok, updated} <- child |> Child.changeset(%{tracked_types: types}) |> Repo.update() do
+      updated = %{updated | role: role}
+      broadcast(child.id, {:child_updated, updated})
+      broadcast_children_changed(updated.family_id)
+      {:ok, updated}
+    end
+  end
+
   # Keep `birth_date` and `expected_birth_date` mutually exclusive so
   # `expecting?/1` stays a clean function of `birth_date` alone.
   defp reconcile_practice_mode(child, attrs, true = _was_expecting?) do

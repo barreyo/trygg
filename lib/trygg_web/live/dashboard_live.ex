@@ -277,6 +277,11 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, sheet: :earlier, sheet_form: nil)}
   end
 
+  def handle_event("open_sheet", %{"kind" => "layout"}, socket) do
+    types = Enum.map(socket.assigns.current_child.tracked_types, &to_string/1)
+    {:noreply, assign(socket, sheet: :layout, sheet_form: layout_form(types))}
+  end
+
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
     last = socket.assigns.summary.last_feeding
 
@@ -354,6 +359,30 @@ defmodule TryggWeb.DashboardLive do
       )
 
     {:noreply, socket |> clear_photo_upload() |> assign(sheet: :diaper_past, sheet_form: form)}
+  end
+
+  def handle_event("save_layout", params, socket) do
+    types = get_in(params, ["layout", "tracked_types"]) |> List.wrap() |> Enum.reject(&(&1 == ""))
+    wanted = Enum.filter(Child.tracked_types(), &(to_string(&1) in types))
+
+    case Families.update_tracked_types(
+           socket.assigns.current_scope,
+           socket.assigns.current_child,
+           wanted
+         ) do
+      {:ok, child} ->
+        {:noreply,
+         socket
+         |> assign(:current_child, child)
+         |> assign(sheet: nil, sheet_form: nil)
+         |> refresh()}
+
+      {:error, _changeset} ->
+        {:noreply,
+         assign(socket,
+           sheet_form: layout_form(types, tracked_types: {"pick at least one thing to track", []})
+         )}
+    end
   end
 
   def handle_event("close_sheet", _params, socket) do
@@ -780,6 +809,11 @@ defmodule TryggWeb.DashboardLive do
   defp current_sheet_params(_socket), do: %{}
 
   # The sleep sheets submit as `sleep` params, everything else as `entry`.
+  defp layout_form(types, errors \\ []),
+    do: to_form(%{"tracked_types" => types}, as: :layout, errors: errors)
+
+  defp tracker_options, do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep"]
+
   defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
   defp sheet_form_as(_sheet), do: :entry
 
@@ -1088,6 +1122,19 @@ defmodule TryggWeb.DashboardLive do
                 <.icon name="hero-clock" class="size-4" /> Log from earlier
               </.button>
             </div>
+
+            <div :if={@can_write} class="mt-3 text-center">
+              <.button
+                id="customize-home"
+                type="button"
+                variant="ghost"
+                size="xs"
+                phx-click="open_sheet"
+                phx-value-kind="layout"
+              >
+                <.icon name="hero-adjustments-horizontal" class="size-4" /> Customize Home
+              </.button>
+            </div>
           </.loadable>
 
           <%!-- One-time nudge to turn on push notifications. Rendered hidden; the
@@ -1286,6 +1333,38 @@ defmodule TryggWeb.DashboardLive do
                 Cancel
               </.button>
             </div>
+          <% :layout -> %>
+            <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
+            <p class="text-sm opacity-60 mb-4">
+              Choose what to track. Everyone caring for this child sees the same Home screen.
+              Hidden entries stay in the full log and reports.
+            </p>
+            <.form for={@form} id="layout-form" phx-submit="save_layout" class="space-y-2">
+              <input type="hidden" name="layout[tracked_types][]" value="" />
+              <label
+                :for={{type, label} <- tracker_options()}
+                class="flex items-center gap-3 rounded-box bg-base-200/60 p-3"
+              >
+                <input
+                  type="checkbox"
+                  id={"layout-#{type}"}
+                  name="layout[tracked_types][]"
+                  value={type}
+                  checked={to_string(type) in List.wrap(@form.params["tracked_types"])}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="font-medium">{label}</span>
+              </label>
+              <p
+                :for={{msg, _opts} <- @form[:tracked_types].errors}
+                id="layout-error"
+                class="flex gap-2 items-center text-sm text-error"
+              >
+                <.icon name="hero-exclamation-circle" class="size-5" />
+                {msg}
+              </p>
+              <.sheet_buttons save="Save" />
+            </.form>
           <% :bottle -> %>
             <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
             <.form

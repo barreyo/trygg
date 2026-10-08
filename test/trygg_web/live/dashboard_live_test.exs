@@ -927,6 +927,53 @@ defmodule TryggWeb.DashboardLiveTest do
       refute has_element?(lv, "#home-alerts-no-wet-diaper")
     end
 
+    test "a caregiver can customize Home and the owner sees it live", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      member = user_fixture()
+      membership_fixture(child, member, :caregiver)
+
+      {:ok, owner_lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(owner_lv, "#glance-sleep")
+
+      member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
+      {:ok, lv, _html} = live_loaded(member_conn, ~p"/c/#{child}")
+
+      lv |> element("#customize-home") |> render_click()
+      assert has_element?(lv, "#layout-form #layout-sleep[checked]")
+
+      lv
+      |> form("#layout-form", layout: %{tracked_types: ["", "feeding", "diaper"]})
+      |> render_submit()
+
+      refute has_element?(lv, "#quick-sheet")
+      refute has_element?(lv, "#glance-sleep")
+      assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :diaper]
+
+      refute has_element?(owner_lv, "#glance-sleep")
+    end
+
+    test "customizing can't leave nothing tracked", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#customize-home") |> render_click()
+      lv |> form("#layout-form", layout: %{tracked_types: [""]}) |> render_submit()
+
+      assert has_element?(lv, "#layout-error")
+      assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :diaper, :sleep]
+    end
+
+    test "viewers can't customize Home" do
+      %{child: child, member: member} = shared_child_fixture(:viewer)
+      conn = log_in_user(build_conn(), member)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, "#customize-home")
+    end
+
     test "the layout changes live when an owner edits it elsewhere", %{
       conn: conn,
       scope: scope,
