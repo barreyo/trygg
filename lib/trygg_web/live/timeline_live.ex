@@ -35,7 +35,9 @@ defmodule TryggWeb.TimelineLive do
       title="Log"
       back={~p"/c/#{@current_child}"}
     >
-      <div class="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+      <%!-- Padded on every side so the scroller doesn't clip the chips' toy edge
+           and focus ring; the negative margins give the room back. --%>
+      <div class="-mx-4 -mt-1 flex gap-2 overflow-x-auto px-4 pb-2 pt-1">
         <.button
           :for={f <- filters()}
           type="button"

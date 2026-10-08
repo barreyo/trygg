@@ -259,7 +259,19 @@ defmodule TryggWeb.LogComponents do
 
   def entry_row(assigns) do
     ~H"""
-    <div class={["py-3", @on_click && "cursor-pointer"]} phx-click={@on_click} {@rest}>
+    <div
+      class={[
+        "py-3",
+        @on_click &&
+          "cursor-pointer outline-offset-[-2px] transition-colors active:bg-base-200/70 focus-visible:outline-2 focus-visible:outline-primary"
+      ]}
+      phx-click={@on_click}
+      phx-keydown={@on_click}
+      phx-key="Enter"
+      role={@on_click && "button"}
+      tabindex={@on_click && "0"}
+      {@rest}
+    >
       <div class="flex items-center gap-3">
         <div class="size-9 rounded-full grid place-items-center shrink-0 bg-base-200">
           <span
