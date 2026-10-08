@@ -254,7 +254,7 @@ defmodule TryggWeb.LoginComponents do
       height="9"
       fill="#fff3c4"
       class="login-twinkle"
-      style="--d: 0.3s; --s: 1"
+      style="--d: 0.3s"
     />
     <use
       href="#login-sparkle"
@@ -264,7 +264,7 @@ defmodule TryggWeb.LoginComponents do
       height="7"
       fill="#ffffff"
       class="login-twinkle"
-      style="--d: 1.4s; --s: 1"
+      style="--d: 1.4s"
     />
 
     <%!-- The cloud the cradle rests on --%>
@@ -446,7 +446,7 @@ defmodule TryggWeb.LoginComponents do
       height="12"
       fill="#fff3c4"
       class="login-twinkle"
-      style="--d: 0.2s; --s: 1"
+      style="--d: 0.2s"
     />
     <use
       href="#login-sparkle"
@@ -456,7 +456,7 @@ defmodule TryggWeb.LoginComponents do
       height="10"
       fill="#ffffff"
       class="login-twinkle"
-      style="--d: 1.1s; --s: 1"
+      style="--d: 1.1s"
     />
     <use
       href="#login-sparkle"
@@ -466,7 +466,7 @@ defmodule TryggWeb.LoginComponents do
       height="8"
       fill="#ffe29a"
       class="login-twinkle"
-      style="--d: 1.9s; --s: 1"
+      style="--d: 1.9s"
     />
 
     <.pop_hearts y="96" />

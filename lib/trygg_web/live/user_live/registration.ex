@@ -6,53 +6,80 @@ defmodule TryggWeb.UserLive.Registration do
   alias Trygg.RateLimit
   alias TryggWeb.RequestIp
 
+  import TryggWeb.LoginComponents, only: [login_sky: 1, login_hero: 1]
+
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm">
-        <div class="text-center">
-          <.header>
-            Register for an account
-            <:subtitle>
-              Already registered?
-              <.link navigate={~p"/users/log-in"} class="font-semibold text-brand hover:underline">
-                Log in
-              </.link>
-              to your account now.
-            </:subtitle>
-          </.header>
+    <Layouts.app flash={@flash} current_scope={@current_scope} immersive>
+      <div id="register-stage" class="login-stage relative isolate mx-auto max-w-sm space-y-5">
+        <.login_sky />
+
+        <p class="login-rise text-center text-xs font-semibold uppercase tracking-[0.35em] text-white/80">
+          Trygg
+        </p>
+
+        <.login_hero variant={:night} />
+
+        <div class="login-rise text-center" style="--d: 0.15s">
+          <h1 class="text-2xl font-bold text-white drop-shadow">Register for an account</h1>
+          <p class="mt-2 text-sm text-white/80 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]">
+            Already registered?
+            <.link
+              navigate={~p"/users/log-in"}
+              id="register-login-link"
+              class="font-semibold text-amber-200 hover:underline"
+            >
+              Log in
+            </.link>
+            to your account now.
+          </p>
         </div>
 
-        <.form for={@form} id="registration_form" phx-submit="save" phx-change="validate">
-          <.input
-            field={@form[:first_name]}
-            type="text"
-            label="First name"
-            autocomplete="given-name"
-            required
-            phx-mounted={JS.focus()}
-          />
-          <.input
-            field={@form[:last_name]}
-            type="text"
-            label="Last name"
-            autocomplete="family-name"
-            required
-          />
-          <.input
-            field={@form[:email]}
-            type="email"
-            label="Email"
-            autocomplete="username"
-            spellcheck="false"
-            required
-          />
+        <div
+          class="login-rise rounded-3xl bg-base-100/95 p-4 shadow-lg shadow-black/30 backdrop-blur-md"
+          style="--d: 0.25s"
+        >
+          <.form for={@form} id="registration_form" phx-submit="save" phx-change="validate">
+            <.input
+              field={@form[:first_name]}
+              type="text"
+              label="First name"
+              autocomplete="given-name"
+              required
+            />
+            <.input
+              field={@form[:last_name]}
+              type="text"
+              label="Last name"
+              autocomplete="family-name"
+              required
+            />
+            <.input
+              field={@form[:email]}
+              type="email"
+              label="Email"
+              autocomplete="username"
+              spellcheck="false"
+              required
+            />
 
-          <.button variant="primary" phx-disable-with="Creating account..." class="w-full">
-            Create an account
-          </.button>
-        </.form>
+            <.button
+              variant="primary"
+              phx-disable-with="Creating account..."
+              class="login-cta mt-2 w-full"
+            >
+              Create an account <span class="login-cta-arrow" aria-hidden="true">→</span>
+            </.button>
+          </.form>
+        </div>
+
+        <p
+          class="login-rise text-center text-sm text-white/75 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]"
+          style="--d: 0.35s"
+        >
+          No password to remember. We'll email you a code to get in.
+        </p>
       </div>
     </Layouts.app>
     """

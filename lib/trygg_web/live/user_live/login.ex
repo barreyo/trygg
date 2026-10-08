@@ -21,7 +21,7 @@ defmodule TryggWeb.UserLive.Login do
         id="login-resume"
         phx-hook="LoginResume"
         data-sent-to={@sent_to}
-        class="relative isolate mx-auto max-w-sm space-y-5"
+        class="login-stage relative isolate mx-auto max-w-sm space-y-5"
       >
         <.login_sky :if={@immersive} />
 

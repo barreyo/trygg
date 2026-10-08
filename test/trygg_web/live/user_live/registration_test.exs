@@ -6,10 +6,16 @@ defmodule TryggWeb.UserLive.RegistrationTest do
 
   describe "Registration page" do
     test "renders registration page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/register")
+      {:ok, lv, html} = live(conn, ~p"/users/register")
 
       assert html =~ "Register"
       assert html =~ "Log in"
+
+      # Same night sky as the login page, and no app top bar over it.
+      assert has_element?(lv, "#login-sky")
+      assert has_element?(lv, "#login-scene-night[phx-hook='LoginScene']")
+      assert has_element?(lv, "#register-login-link[href='/users/log-in']")
+      refute has_element?(lv, "header.sticky")
     end
 
     test "redirects if already logged in", %{conn: conn} do
