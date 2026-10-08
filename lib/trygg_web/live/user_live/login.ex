@@ -21,8 +21,8 @@ defmodule TryggWeb.UserLive.Login do
             <.header>
               <p>Check your email</p>
               <:subtitle>
-                Tap the link in the email we sent to <span class="font-medium">{@sent_to}</span>, or enter the {@code_digits}-digit
-                code from it here.
+                If <span class="font-medium">{@sent_to}</span>
+                has a Trygg account, we've just emailed it a link and a {@code_digits}-digit code. Tap the link, or enter the code here.
               </:subtitle>
             </.header>
           </div>
@@ -72,22 +72,63 @@ defmodule TryggWeb.UserLive.Login do
               Send a new one
             </button>
           </p>
+
+          <div
+            :if={!@current_scope}
+            id="login-no-account-hint"
+            class="rounded-box border border-warning/40 bg-warning/10 p-4 text-sm"
+          >
+            <p class="font-semibold">Nothing arrived?</p>
+            <p class="mt-1 opacity-80">
+              We only send login emails to accounts that already exist. If you haven't registered yet, create your account first — that email has your code.
+            </p>
+            <.button
+              navigate={~p"/users/register"}
+              id="login-no-account-register"
+              variant="outline"
+              size="sm"
+              class="mt-3 w-full"
+            >
+              Create an account
+            </.button>
+          </div>
         <% else %>
           <div class="text-center">
             <.header>
-              <p>Log in</p>
+              <p>{if @current_scope, do: "Log in", else: "Welcome to Trygg"}</p>
               <:subtitle>
                 <%= if @current_scope do %>
                   You need to reauthenticate to perform sensitive actions on your account.
                 <% else %>
-                  We'll email you a login link — no password to remember. Don't have an account? <.link
-                    navigate={~p"/users/register"}
-                    class="font-semibold text-brand hover:underline"
-                    phx-no-format
-                  >Sign up</.link> first.
+                  New here? Create your account first. After that, logging in is just your email — no password.
                 <% end %>
               </:subtitle>
             </.header>
+          </div>
+
+          <div
+            :if={!@current_scope}
+            id="login-new-here"
+            class="rounded-box border border-base-300 bg-base-200/50 p-4 space-y-3"
+          >
+            <div>
+              <p class="font-semibold">1. New here?</p>
+              <p class="text-sm opacity-70">
+                Create an account to get started. Takes a few seconds.
+              </p>
+            </div>
+            <.button
+              navigate={~p"/users/register"}
+              id="login-register-link"
+              variant="primary"
+              class="w-full"
+            >
+              Create an account <span aria-hidden="true">→</span>
+            </.button>
+          </div>
+
+          <div :if={!@current_scope} class="divider text-xs uppercase opacity-60">
+            Already registered?
           </div>
 
           <div :if={local_mail_adapter?()} class="alert alert-info">
@@ -110,13 +151,13 @@ defmodule TryggWeb.UserLive.Login do
               readonly={!!@current_scope}
               field={@form[:email]}
               type="email"
-              label="Email"
+              label={if @current_scope, do: "Email", else: "Email of your existing account"}
               autocomplete="username"
               spellcheck="false"
               required
-              phx-mounted={JS.focus()}
+              phx-mounted={@current_scope && JS.focus()}
             />
-            <.button variant="primary" class="w-full">
+            <.button variant={if @current_scope, do: "primary", else: "outline"} class="w-full">
               Email me a login link <span aria-hidden="true">→</span>
             </.button>
           </.form>

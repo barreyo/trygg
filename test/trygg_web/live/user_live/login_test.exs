@@ -8,10 +8,20 @@ defmodule TryggWeb.UserLive.LoginTest do
     test "renders login page", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
-      assert html =~ "Log in"
-      assert html =~ "Sign up"
       assert html =~ "Email me a login link"
       refute has_element?(lv, "#app-menu")
+    end
+
+    test "puts account creation ahead of the login form", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
+
+      assert has_element?(lv, "#login-new-here #login-register-link[href='/users/register']")
+      assert has_element?(lv, "#login_form_magic")
+
+      # The register card comes before the login form in the page.
+      {register_at, _} = :binary.match(html, ~s(id="login-new-here"))
+      {form_at, _} = :binary.match(html, ~s(id="login_form_magic"))
+      assert register_at < form_at
     end
   end
 
@@ -47,6 +57,7 @@ defmodule TryggWeb.UserLive.LoginTest do
         |> follow_redirect(conn, ~p"/users/log-in")
 
       assert html =~ user.email
+      assert has_element?(lv, "#login-no-account-hint")
       assert has_element?(lv, "#login_form_code")
       assert has_element?(lv, "#login_form_code input[name='user[email]'][value='#{user.email}']")
       refute has_element?(lv, "#login_form_magic")
@@ -134,7 +145,7 @@ defmodule TryggWeb.UserLive.LoginTest do
 
       {:ok, _login_live, login_html} =
         lv
-        |> element("main a", "Sign up")
+        |> element("#login-register-link")
         |> render_click()
         |> follow_redirect(conn, ~p"/users/register")
 
@@ -149,10 +160,11 @@ defmodule TryggWeb.UserLive.LoginTest do
     end
 
     test "shows login page with email filled in", %{conn: conn, user: user} do
-      {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
       assert html =~ "You need to reauthenticate"
       refute html =~ "Register"
+      refute has_element?(lv, "#login-new-here")
       assert html =~ "Email me a login link"
 
       assert html =~
