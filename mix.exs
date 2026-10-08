@@ -64,6 +64,9 @@ defmodule Trygg.MixProject do
        compile: false,
        depth: 1},
       {:swoosh, "~> 1.16"},
+      # MJML → responsive, client-safe email HTML. Precompiled Rust NIF (mrml),
+      # so no Node toolchain is needed at build or run time.
+      {:mjml, "~> 6.0"},
       {:oban, "~> 2.19"},
       # Oban Web dashboard (queues, job history, failure rate) — mounted at
       # /oban, dev-open and prod-gated behind HTTP Basic Auth (see router).
