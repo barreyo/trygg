@@ -259,7 +259,7 @@ defmodule TryggWeb.CoreComponents do
     <div class="fieldset mb-2">
       <label>
         <input type="hidden" name={@name} value="false" disabled={@rest[:disabled]} />
-        <span class="label">
+        <span class="label min-h-11 gap-3">
           <input
             type="checkbox"
             id={@id}
@@ -530,7 +530,7 @@ defmodule TryggWeb.CoreComponents do
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} />
+    <span class={[@name, @class]} aria-hidden="true" />
     """
   end
 

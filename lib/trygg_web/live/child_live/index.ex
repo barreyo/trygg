@@ -188,7 +188,7 @@ defmodule TryggWeb.ChildLive.Index do
           <%!-- Always submitted, so unticking everything still sends an (empty)
                list for the changeset to reject. --%>
           <input type="hidden" name="child[tracked_types][]" value="" />
-          <label :for={{type, label} <- tracker_options()} class="label gap-2 py-1">
+          <label :for={{type, label} <- tracker_options()} class="label min-h-11 gap-3">
             <input
               type="checkbox"
               id={"tracked-#{type}"}

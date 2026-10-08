@@ -32,9 +32,11 @@ defmodule TryggWeb.CaregiverLive do
               {String.first(m.user.email)}
             </div>
             <div class="flex-1 min-w-0">
-              <div class="truncate">
-                {m.user.email}
-                <span :if={m.user_id == @current_scope.user.id} class="opacity-50">(you)</span>
+              <div class="flex min-w-0 items-baseline gap-1">
+                <span class="truncate">{m.user.email}</span>
+                <span :if={m.user_id == @current_scope.user.id} class="shrink-0 opacity-60">
+                  (you)
+                </span>
               </div>
               <div class="text-xs opacity-60">{m.role}</div>
             </div>
@@ -86,11 +88,13 @@ defmodule TryggWeb.CaregiverLive do
               field={@form[:email]}
               type="email"
               placeholder="their@email.com"
+              aria-label="Their email address"
               autocomplete="off"
             />
             <.input
               field={@form[:role]}
               type="select"
+              aria-label="What they can do"
               options={[{"Caregiver — can log", :caregiver}, {"Viewer — read only", :viewer}]}
             />
             <.button variant="primary" phx-disable-with="Sending…" class="w-full">
@@ -169,12 +173,19 @@ defmodule TryggWeb.CaregiverLive do
           <.input
             field={@token_form[:name]}
             placeholder="What will use it? e.g. Home Assistant"
+            aria-label="Token name"
             autocomplete="off"
           />
-          <.input field={@token_form[:role]} type="select" options={token_role_options(@role)} />
+          <.input
+            field={@token_form[:role]}
+            type="select"
+            aria-label="Token access"
+            options={token_role_options(@role)}
+          />
           <.input
             field={@token_form[:expires_in_days]}
             type="select"
+            aria-label="Token expiry"
             options={[
               {"Never expires", ""}
               | Enum.map(ApiTokens.expiry_choices(), &{"Expires in #{&1} days", &1})
