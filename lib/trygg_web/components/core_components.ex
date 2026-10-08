@@ -351,6 +351,50 @@ defmodule TryggWeb.CoreComponents do
   end
 
   @doc """
+  The shell every bottom sheet shares: a dimmed backdrop and a panel that rises
+  from the bottom edge on phones and centres as a card from `sm` up. The panel
+  scrolls on its own when the keyboard or a tall form leaves too little room,
+  and keeps the home-indicator inset clear at the bottom.
+
+  `close` is the event pushed by the backdrop and the Escape key. Set
+  `modal_back` to also close on the browser Back gesture (the `ModalBack`
+  hook).
+
+  ## Examples
+
+      <.sheet_frame id="growth-sheet" close="close_sheet" label="Log height and weight">
+        <h3>…</h3>
+        <.form>…</.form>
+      </.sheet_frame>
+  """
+  attr :id, :string, required: true
+  attr :close, :string, required: true, doc: "event pushed by the backdrop and the Escape key"
+  attr :label, :string, required: true, doc: "accessible name of the dialog"
+  attr :modal_back, :boolean, default: false, doc: "also close on the browser Back gesture"
+  slot :inner_block, required: true
+
+  def sheet_frame(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={@label}
+      phx-window-keydown={@close}
+      phx-key="escape"
+      phx-hook={@modal_back && "ModalBack"}
+      data-close-event={@modal_back && @close}
+    >
+      <div class="absolute inset-0 bg-black/60" phx-click={@close}></div>
+      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain">
+        {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a header with title.
   """
   slot :inner_block, required: true

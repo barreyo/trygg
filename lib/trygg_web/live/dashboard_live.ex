@@ -817,6 +817,15 @@ defmodule TryggWeb.DashboardLive do
   defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
   defp sheet_form_as(_sheet), do: :entry
 
+  # Accessible name of each sheet — the same words as its on-screen heading.
+  defp sheet_label(:earlier), do: "Log from earlier"
+  defp sheet_label(:layout), do: "Customize Home"
+  defp sheet_label(:bottle), do: "Log a bottle"
+  defp sheet_label(:sleep_stop), do: "How did they sleep?"
+  defp sheet_label(:sleep_start), do: "When did they fall asleep?"
+  defp sheet_label(:sleep_past), do: "Add a sleep from earlier"
+  defp sheet_label(:diaper_past), do: "Add a diaper from earlier"
+
   defp not_future(dt) do
     if DateTime.compare(dt, now()) == :gt, do: {:error, :future}, else: :ok
   end
@@ -1289,262 +1298,256 @@ defmodule TryggWeb.DashboardLive do
     assigns = assign(assigns, :unit, Units.unit_label(:volume, assigns.unit_system))
 
     ~H"""
-    <div
-      id="quick-sheet"
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      phx-window-keydown="close_sheet"
-      phx-key="escape"
-      phx-hook="ModalBack"
-      data-close-event="close_sheet"
-    >
-      <div class="absolute inset-0 bg-black/60" phx-click="close_sheet"></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
-        <%= case @kind do %>
-          <% :earlier -> %>
-            <h3 class="font-semibold text-lg mb-1">Log from earlier</h3>
-            <p class="text-sm opacity-60 mb-4">What do you want to add?</p>
-            <div class="space-y-2">
-              <.button
-                :if={:sleep in @tracked_types}
-                type="button"
-                variant="primary"
-                size="lg"
-                phx-click="open_sheet"
-                phx-value-kind="sleep_past"
-                class="w-full h-16 justify-start gap-3 text-base"
-              >
-                <.icon name="hero-moon" class="size-6" /> Sleep
-              </.button>
-              <.button
-                :if={:feeding in @tracked_types}
-                type="button"
-                variant="info"
-                size="lg"
-                phx-click="open_sheet"
-                phx-value-kind="bottle"
-                class="w-full h-16 justify-start gap-3 text-base"
-              >
-                <.icon name="hero-beaker" class="size-6" /> Bottle
-              </.button>
-              <.button
-                :if={:diaper in @tracked_types}
-                type="button"
-                variant="accent"
-                size="lg"
-                phx-click="open_sheet"
-                phx-value-kind="diaper_past"
-                class="w-full h-16 justify-start gap-3 text-base"
-              >
-                <span class="text-2xl leading-none" aria-hidden="true">🧷</span> Diaper
-              </.button>
-            </div>
-            <div class="pt-4">
-              <.button type="button" variant="ghost" class="w-full" phx-click="close_sheet">
-                Cancel
-              </.button>
-            </div>
-          <% :layout -> %>
-            <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
-            <p class="text-sm opacity-60 mb-4">
-              Choose what to track. Everyone caring for this child sees the same Home screen.
-              Hidden entries stay in the full log and reports.
-            </p>
-            <.form for={@form} id="layout-form" phx-submit="save_layout" class="space-y-2">
-              <input type="hidden" name="layout[tracked_types][]" value="" />
-              <label
-                :for={{type, label} <- tracker_options()}
-                class="flex items-center gap-3 rounded-box bg-base-200/60 p-3"
-              >
-                <input
-                  type="checkbox"
-                  id={"layout-#{type}"}
-                  name="layout[tracked_types][]"
-                  value={type}
-                  checked={to_string(type) in List.wrap(@form.params["tracked_types"])}
-                  class="checkbox checkbox-sm"
-                />
-                <span class="font-medium">{label}</span>
-              </label>
-              <p
-                :for={{msg, _opts} <- @form[:tracked_types].errors}
-                id="layout-error"
-                class="flex gap-2 items-center text-sm text-error"
-              >
-                <.icon name="hero-exclamation-circle" class="size-5" />
-                {msg}
-              </p>
-              <.sheet_buttons save="Save" />
-            </.form>
-          <% :bottle -> %>
-            <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
-            <.form
-              for={@form}
-              id="bottle-form"
-              phx-change="sheet_change"
-              phx-submit="save_sheet"
-              class="space-y-4"
+    <.sheet_frame id="quick-sheet" close="close_sheet" label={sheet_label(@kind)} modal_back>
+      <%= case @kind do %>
+        <% :earlier -> %>
+          <h3 class="font-semibold text-lg mb-1">Log from earlier</h3>
+          <p class="text-sm opacity-60 mb-4">What do you want to add?</p>
+          <div class="space-y-2">
+            <.button
+              :if={:sleep in @tracked_types}
+              type="button"
+              variant="primary"
+              size="lg"
+              phx-click="open_sheet"
+              phx-value-kind="sleep_past"
+              class="w-full h-16 justify-start gap-3 text-base"
             >
-              <div>
-                <div class="flex items-center justify-center gap-4">
-                  <.button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="btn-circle"
-                    phx-click="bump_amount"
-                    phx-value-by={-fine_step(@unit_system)}
-                    aria-label={"Decrease by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
-                  >
-                    <.icon name="hero-minus" class="size-4" />
-                  </.button>
-
-                  <div class="flex items-baseline gap-1">
-                    <input
-                      type="number"
-                      inputmode="decimal"
-                      step="any"
-                      min="0"
-                      name="entry[amount]"
-                      id="bottle-amount"
-                      value={@form.params["amount"]}
-                      class="text-3xl font-bold text-center tabular-nums w-20 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span class="text-base font-normal opacity-60">{@unit}</span>
-                  </div>
-
-                  <.button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="btn-circle"
-                    phx-click="bump_amount"
-                    phx-value-by={fine_step(@unit_system)}
-                    aria-label={"Increase by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
-                  >
-                    <.icon name="hero-plus" class="size-4" />
-                  </.button>
-                </div>
-
-                <div class="flex gap-2 justify-center mt-2 flex-wrap">
-                  <.button
-                    :for={step <- preset_steps(@unit_system)}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    phx-click="bump_amount"
-                    phx-value-by={step}
-                  >
-                    +{step}
-                  </.button>
-                  <.button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    id="bottle-reset"
-                    phx-click="reset_amount"
-                  >
-                    Reset
-                  </.button>
-                </div>
-              </div>
-
-              <select name="entry[bottle_contents]" class="select select-bordered w-full">
-                <option
-                  :for={c <- Entry.bottle_contents()}
-                  value={c}
-                  selected={c == @form.params["bottle_contents"]}
-                >
-                  {contents_option_label(c)}
-                </option>
-              </select>
-
-              <.vitamin_d_field
-                :if={@vitamin_d_prompt?}
-                checked={@form.params["vitamin_d"] == "true"}
-              />
-
-              <.time_field form={@form} field={:at} label="When" />
-
+              <.icon name="hero-moon" class="size-6" /> Sleep
+            </.button>
+            <.button
+              :if={:feeding in @tracked_types}
+              type="button"
+              variant="info"
+              size="lg"
+              phx-click="open_sheet"
+              phx-value-kind="bottle"
+              class="w-full h-16 justify-start gap-3 text-base"
+            >
+              <.icon name="hero-beaker" class="size-6" /> Bottle
+            </.button>
+            <.button
+              :if={:diaper in @tracked_types}
+              type="button"
+              variant="accent"
+              size="lg"
+              phx-click="open_sheet"
+              phx-value-kind="diaper_past"
+              class="w-full h-16 justify-start gap-3 text-base"
+            >
+              <span class="text-2xl leading-none" aria-hidden="true">🧷</span> Diaper
+            </.button>
+          </div>
+          <div class="pt-4">
+            <.button type="button" variant="ghost" class="w-full" phx-click="close_sheet">
+              Cancel
+            </.button>
+          </div>
+        <% :layout -> %>
+          <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
+          <p class="text-sm opacity-60 mb-4">
+            Choose what to track. Everyone caring for this child sees the same Home screen.
+            Hidden entries stay in the full log and reports.
+          </p>
+          <.form for={@form} id="layout-form" phx-submit="save_layout" class="space-y-2">
+            <input type="hidden" name="layout[tracked_types][]" value="" />
+            <label
+              :for={{type, label} <- tracker_options()}
+              class="flex items-center gap-3 rounded-box bg-base-200/60 p-3"
+            >
               <input
-                type="text"
-                name="entry[note]"
-                value={@form.params["note"]}
-                placeholder="Note (optional)"
-                class="input input-bordered w-full"
+                type="checkbox"
+                id={"layout-#{type}"}
+                name="layout[tracked_types][]"
+                value={type}
+                checked={to_string(type) in List.wrap(@form.params["tracked_types"])}
+                class="checkbox checkbox-sm"
               />
+              <span class="font-medium">{label}</span>
+            </label>
+            <p
+              :for={{msg, _opts} <- @form[:tracked_types].errors}
+              id="layout-error"
+              class="flex gap-2 items-center text-sm text-error"
+            >
+              <.icon name="hero-exclamation-circle" class="size-5" />
+              {msg}
+            </p>
+            <.sheet_buttons save="Save" />
+          </.form>
+        <% :bottle -> %>
+          <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
+          <.form
+            for={@form}
+            id="bottle-form"
+            phx-change="sheet_change"
+            phx-submit="save_sheet"
+            class="space-y-4"
+          >
+            <div>
+              <div class="flex items-center justify-center gap-4">
+                <.button
+                  type="button"
+                  variant="outline"
+                  class="btn-circle"
+                  phx-click="bump_amount"
+                  phx-value-by={-fine_step(@unit_system)}
+                  aria-label={"Decrease by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
+                >
+                  <.icon name="hero-minus" class="size-4" />
+                </.button>
 
-              <.photo_field upload={@photo_upload} />
+                <div class="flex items-baseline gap-1">
+                  <input
+                    type="number"
+                    inputmode="decimal"
+                    step="any"
+                    min="0"
+                    name="entry[amount]"
+                    id="bottle-amount"
+                    value={@form.params["amount"]}
+                    aria-label={"Amount in #{@unit}"}
+                    class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span class="text-base font-normal opacity-60">{@unit}</span>
+                </div>
 
-              <.sheet_buttons save="Save" uploading?={photo_uploading?(@photo_upload)} />
-            </.form>
-          <% :sleep_stop -> %>
-            <h3 class="font-semibold text-lg mb-3">How did they sleep?</h3>
-            <.form
-              for={@form}
-              id="sleep-form"
-              phx-change="sheet_change"
-              phx-submit="save_sleep"
-              class="space-y-4"
-            >
-              <.input field={@form[:ended_at]} type="datetime-local" label="Woke up at" />
-              <.note_field form={@form} />
-              <.photo_field upload={@photo_upload} />
-              <.sheet_buttons save="Save sleep" uploading?={photo_uploading?(@photo_upload)} />
-            </.form>
-          <% :sleep_start -> %>
-            <h3 class="font-semibold text-lg mb-3">When did they fall asleep?</h3>
-            <.form for={@form} id="sleep-form" phx-submit="save_sleep" class="space-y-4">
-              <.input field={@form[:started_at]} type="datetime-local" label="Fell asleep at" />
-              <.sheet_buttons save="Save" />
-            </.form>
-          <% :sleep_past -> %>
-            <h3 class="font-semibold text-lg mb-3">Add a sleep from earlier</h3>
-            <.form
-              for={@form}
-              id="sleep-form"
-              phx-change="sheet_change"
-              phx-submit="save_sleep"
-              class="space-y-4"
-            >
-              <.time_field form={@form} field={:started_at} label="Fell asleep" />
-              <.time_field form={@form} field={:ended_at} label="Woke up" />
-              <.note_field form={@form} />
-              <.photo_field upload={@photo_upload} />
-              <.sheet_buttons save="Add sleep" uploading?={photo_uploading?(@photo_upload)} />
-            </.form>
-          <% :diaper_past -> %>
-            <h3 class="font-semibold text-lg mb-3">Add a diaper from earlier</h3>
-            <.form
-              for={@form}
-              id="diaper-form"
-              phx-change="sheet_change"
-              phx-submit="save_diaper"
-              class="space-y-4"
-            >
-              <div class="join w-full">
-                <input
-                  :for={{emoji, value, label} <- diaper_choices()}
-                  type="radio"
-                  name="entry[kind]"
-                  value={value}
-                  aria-label={"#{emoji} #{label}"}
-                  checked={value == @form.params["kind"]}
-                  class="join-item btn flex-1"
-                />
+                <.button
+                  type="button"
+                  variant="outline"
+                  class="btn-circle"
+                  phx-click="bump_amount"
+                  phx-value-by={fine_step(@unit_system)}
+                  aria-label={"Increase by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
+                >
+                  <.icon name="hero-plus" class="size-4" />
+                </.button>
               </div>
-              <.time_field form={@form} field={:started_at} label="When" />
-              <.input
-                field={@form[:note]}
-                type="text"
-                label="Note"
-                placeholder="Anything to remember? (optional)"
+
+              <div class="flex gap-2 justify-center mt-2 flex-wrap">
+                <.button
+                  :for={step <- preset_steps(@unit_system)}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  phx-click="bump_amount"
+                  phx-value-by={step}
+                >
+                  +{step}
+                </.button>
+                <.button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  id="bottle-reset"
+                  phx-click="reset_amount"
+                >
+                  Reset
+                </.button>
+              </div>
+            </div>
+
+            <select
+              name="entry[bottle_contents]"
+              aria-label="What was in the bottle"
+              class="select w-full"
+            >
+              <option
+                :for={c <- Entry.bottle_contents()}
+                value={c}
+                selected={c == @form.params["bottle_contents"]}
+              >
+                {contents_option_label(c)}
+              </option>
+            </select>
+
+            <.vitamin_d_field
+              :if={@vitamin_d_prompt?}
+              checked={@form.params["vitamin_d"] == "true"}
+            />
+
+            <.time_field form={@form} field={:at} label="When" />
+
+            <input
+              type="text"
+              name="entry[note]"
+              value={@form.params["note"]}
+              placeholder="Note (optional)"
+              aria-label="Note"
+              class="input w-full"
+            />
+
+            <.photo_field upload={@photo_upload} />
+
+            <.sheet_buttons save="Save" uploading?={photo_uploading?(@photo_upload)} />
+          </.form>
+        <% :sleep_stop -> %>
+          <h3 class="font-semibold text-lg mb-3">How did they sleep?</h3>
+          <.form
+            for={@form}
+            id="sleep-form"
+            phx-change="sheet_change"
+            phx-submit="save_sleep"
+            class="space-y-4"
+          >
+            <.input field={@form[:ended_at]} type="datetime-local" label="Woke up at" />
+            <.note_field form={@form} />
+            <.photo_field upload={@photo_upload} />
+            <.sheet_buttons save="Save sleep" uploading?={photo_uploading?(@photo_upload)} />
+          </.form>
+        <% :sleep_start -> %>
+          <h3 class="font-semibold text-lg mb-3">When did they fall asleep?</h3>
+          <.form for={@form} id="sleep-form" phx-submit="save_sleep" class="space-y-4">
+            <.input field={@form[:started_at]} type="datetime-local" label="Fell asleep at" />
+            <.sheet_buttons save="Save" />
+          </.form>
+        <% :sleep_past -> %>
+          <h3 class="font-semibold text-lg mb-3">Add a sleep from earlier</h3>
+          <.form
+            for={@form}
+            id="sleep-form"
+            phx-change="sheet_change"
+            phx-submit="save_sleep"
+            class="space-y-4"
+          >
+            <.time_field form={@form} field={:started_at} label="Fell asleep" />
+            <.time_field form={@form} field={:ended_at} label="Woke up" />
+            <.note_field form={@form} />
+            <.photo_field upload={@photo_upload} />
+            <.sheet_buttons save="Add sleep" uploading?={photo_uploading?(@photo_upload)} />
+          </.form>
+        <% :diaper_past -> %>
+          <h3 class="font-semibold text-lg mb-3">Add a diaper from earlier</h3>
+          <.form
+            for={@form}
+            id="diaper-form"
+            phx-change="sheet_change"
+            phx-submit="save_diaper"
+            class="space-y-4"
+          >
+            <div class="join w-full">
+              <input
+                :for={{emoji, value, label} <- diaper_choices()}
+                type="radio"
+                name="entry[kind]"
+                value={value}
+                aria-label={"#{emoji} #{label}"}
+                checked={value == @form.params["kind"]}
+                class="join-item btn flex-1"
               />
-              <.photo_field upload={@photo_upload} />
-              <.sheet_buttons save="Add diaper" uploading?={photo_uploading?(@photo_upload)} />
-            </.form>
-        <% end %>
-      </div>
-    </div>
+            </div>
+            <.time_field form={@form} field={:started_at} label="When" />
+            <.input
+              field={@form[:note]}
+              type="text"
+              label="Note"
+              placeholder="Anything to remember? (optional)"
+            />
+            <.photo_field upload={@photo_upload} />
+            <.sheet_buttons save="Add diaper" uploading?={photo_uploading?(@photo_upload)} />
+          </.form>
+      <% end %>
+    </.sheet_frame>
     """
   end
 
@@ -1558,7 +1561,7 @@ defmodule TryggWeb.DashboardLive do
           :for={n <- note_suggestions()}
           type="button"
           variant="outline"
-          size="xs"
+          size="sm"
           phx-click="set_note"
           phx-value-text={n}
         >
@@ -1590,7 +1593,7 @@ defmodule TryggWeb.DashboardLive do
           :for={{label, mins} <- time_offsets()}
           type="button"
           variant="outline"
-          size="xs"
+          size="sm"
           phx-click="nudge_time"
           phx-value-field={@field}
           phx-value-by={mins}

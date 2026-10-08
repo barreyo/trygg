@@ -291,13 +291,6 @@ html { overscroll-behavior-y: none; }
   .rhythm-pulse { animation: none; }
 }
 
-/* Bottom-sheet dialogs: slide up from the bottom on small screens */
-dialog.sheet { margin: 0 auto auto; }
-dialog.sheet::backdrop { background: rgb(0 0 0 / 0.6); }
-@media (min-width: 30rem) {
-  dialog.sheet { margin: auto; }
-}
-
 /*
  * Loading states — see `TryggWeb.Loading` / `TryggWeb.SkeletonComponents`.
  * A skeleton waits a beat before fading in, so a quick load goes straight to

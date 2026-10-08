@@ -456,63 +456,53 @@ defmodule TryggWeb.VitalsLive do
       )
 
     ~H"""
-    <div
+    <.sheet_frame
       id="growth-sheet"
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      phx-window-keydown="close_sheet"
-      phx-key="escape"
+      close="close_sheet"
+      label={if @editing, do: "Edit measurement", else: "Log height and weight"}
     >
-      <div class="absolute inset-0 bg-black/60" phx-click="close_sheet"></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
-        <h3 class="font-semibold text-lg mb-3">
-          {if @editing, do: "Edit measurement", else: "Log height and weight"}
-        </h3>
-        <.form for={@form} id="growth-form" phx-submit="save" class="space-y-3">
-          <.input
-            field={@form[:weight]}
-            type="number"
-            step="any"
-            min="0"
-            label={"Weight (#{@weight_unit})"}
-          />
-          <.input
-            field={@form[:height]}
-            type="number"
-            step="any"
-            min="0"
-            label={"Height (#{@height_unit})"}
-          />
-          <.input field={@form[:measured_on]} type="date" label="Date" />
-          <.input field={@form[:note]} type="text" label="Note" placeholder="Optional" />
+      <h3 class="font-semibold text-lg mb-3">
+        {if @editing, do: "Edit measurement", else: "Log height and weight"}
+      </h3>
+      <.form for={@form} id="growth-form" phx-submit="save" class="space-y-3">
+        <.input
+          field={@form[:weight]}
+          type="number"
+          step="any"
+          min="0"
+          label={"Weight (#{@weight_unit})"}
+        />
+        <.input
+          field={@form[:height]}
+          type="number"
+          step="any"
+          min="0"
+          label={"Height (#{@height_unit})"}
+        />
+        <.input field={@form[:measured_on]} type="date" label="Date" />
+        <.input field={@form[:note]} type="text" label="Note" placeholder="Optional" />
 
-          <div class="flex gap-2 pt-2">
-            <.button type="submit" variant="primary" size="lg" class="flex-1 min-h-12 text-base">
-              Save
-            </.button>
-            <.button
-              type="button"
-              variant="ghost"
-              size="lg"
-              class="min-h-12"
-              phx-click="close_sheet"
-            >
-              Cancel
-            </.button>
-          </div>
-          <.button
-            :if={@editing}
-            id="delete-measurement"
-            type="button"
-            variant="outline"
-            phx-click="delete"
-            data-confirm="Delete this measurement?"
-            class="btn-error w-full mt-2 min-h-11"
-          >
-            Delete
+        <div class="flex gap-2 pt-2">
+          <.button type="submit" variant="primary" class="flex-1">
+            Save
           </.button>
-        </.form>
-      </div>
-    </div>
+          <.button type="button" variant="ghost" phx-click="close_sheet">
+            Cancel
+          </.button>
+        </div>
+        <.button
+          :if={@editing}
+          id="delete-measurement"
+          type="button"
+          variant="outline"
+          phx-click="delete"
+          data-confirm="Delete this measurement?"
+          class="btn-error w-full mt-2 min-h-11"
+        >
+          Delete
+        </.button>
+      </.form>
+    </.sheet_frame>
     """
   end
 

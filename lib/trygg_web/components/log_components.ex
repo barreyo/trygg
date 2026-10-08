@@ -5,7 +5,7 @@ defmodule TryggWeb.LogComponents do
   use Phoenix.Component
 
   import Phoenix.LiveView, only: [consume_uploaded_entries: 3, cancel_upload: 3]
-  import TryggWeb.CoreComponents, only: [icon: 1, button: 1, input: 1]
+  import TryggWeb.CoreComponents, only: [icon: 1, button: 1, input: 1, sheet_frame: 1]
 
   alias Trygg.Accounts.Scope
   alias Trygg.Accounts.User
@@ -724,71 +724,66 @@ defmodule TryggWeb.LogComponents do
 
   def edit_modal(assigns) do
     ~H"""
-    <div
+    <.sheet_frame
       id="edit-entry-modal"
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      phx-window-keydown="cancel_edit"
-      phx-key="escape"
-      phx-hook="ModalBack"
-      data-close-event="cancel_edit"
+      close="cancel_edit"
+      label={"Edit this #{entry_noun(@entry)}"}
+      modal_back
     >
-      <div class="absolute inset-0 bg-black/60" phx-click="cancel_edit"></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
-        <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
+      <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
 
-        <.form
-          for={@form}
-          id="edit-entry-form"
-          phx-change="validate_edit"
-          phx-submit="save_edit"
-          class="space-y-3"
+      <.form
+        for={@form}
+        id="edit-entry-form"
+        phx-change="validate_edit"
+        phx-submit="save_edit"
+        class="space-y-3"
+      >
+        <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
+        <.input
+          :if={@entry.type == :sleep}
+          field={@form[:ended_at]}
+          type="datetime-local"
+          label="Ended"
+        />
+        <.input
+          :if={has_amount?(@entry)}
+          field={@form[:amount]}
+          type="number"
+          step="any"
+          label="Amount (ml)"
+        />
+        <.vitamin_d_field
+          :if={@vitamin_d?}
+          id="edit-vitamin-d"
+          checked={@form.params["vitamin_d"] == "true"}
+        />
+        <.input field={@form[:note]} type="text" label="Note" />
+
+        <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
+
+        <div class="flex gap-2 pt-1">
+          <.save_button
+            label="Save"
+            saving_label="Saving…"
+            uploading?={photo_uploading?(@upload)}
+            class="flex-1"
+          />
+          <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
+        </div>
+        <.button
+          id="edit-entry-delete"
+          type="button"
+          variant="outline"
+          size="sm"
+          phx-click="delete_entry"
+          data-confirm="Delete this entry?"
+          class="btn-error w-full mt-2"
         >
-          <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
-          <.input
-            :if={@entry.type == :sleep}
-            field={@form[:ended_at]}
-            type="datetime-local"
-            label="Ended"
-          />
-          <.input
-            :if={has_amount?(@entry)}
-            field={@form[:amount]}
-            type="number"
-            step="any"
-            label="Amount (ml)"
-          />
-          <.vitamin_d_field
-            :if={@vitamin_d?}
-            id="edit-vitamin-d"
-            checked={@form.params["vitamin_d"] == "true"}
-          />
-          <.input field={@form[:note]} type="text" label="Note" />
-
-          <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
-
-          <div class="flex gap-2 pt-1">
-            <.save_button
-              label="Save"
-              saving_label="Saving…"
-              uploading?={photo_uploading?(@upload)}
-              class="flex-1"
-            />
-            <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
-          </div>
-          <.button
-            id="edit-entry-delete"
-            type="button"
-            variant="outline"
-            size="sm"
-            phx-click="delete_entry"
-            data-confirm="Delete this entry?"
-            class="btn-error w-full mt-2"
-          >
-            Delete
-          </.button>
-        </.form>
-      </div>
-    </div>
+          Delete
+        </.button>
+      </.form>
+    </.sheet_frame>
     """
   end
 

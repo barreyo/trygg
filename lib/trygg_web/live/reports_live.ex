@@ -898,32 +898,24 @@ defmodule TryggWeb.ReportsLive do
 
   defp sheet(assigns) do
     ~H"""
-    <div
-      id="day-night-sheet"
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      phx-window-keydown="close_sheet"
-      phx-key="escape"
-    >
-      <div class="absolute inset-0 bg-black/60" phx-click="close_sheet"></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
-        <h3 class="font-semibold text-lg mb-3">Day and night</h3>
-        <p class="text-sm opacity-60 mb-3">
-          Used to split day vs night sleep and to shade the calendar.
-        </p>
-        <.form for={@form} id="day-night-form" phx-submit="save_schedule" class="space-y-3">
-          <.input field={@form[:day_start]} type="time" label="Day starts" />
-          <.input field={@form[:night_start]} type="time" label="Night starts" />
-          <div class="flex gap-2 pt-2">
-            <.button type="submit" variant="primary" size="lg" class="flex-1 min-h-12 text-base">
-              Save
-            </.button>
-            <.button type="button" variant="ghost" size="lg" class="min-h-12" phx-click="close_sheet">
-              Cancel
-            </.button>
-          </div>
-        </.form>
-      </div>
-    </div>
+    <.sheet_frame id="day-night-sheet" close="close_sheet" label="Day and night">
+      <h3 class="font-semibold text-lg mb-3">Day and night</h3>
+      <p class="text-sm opacity-60 mb-3">
+        Used to split day vs night sleep and to shade the calendar.
+      </p>
+      <.form for={@form} id="day-night-form" phx-submit="save_schedule" class="space-y-3">
+        <.input field={@form[:day_start]} type="time" label="Day starts" />
+        <.input field={@form[:night_start]} type="time" label="Night starts" />
+        <div class="flex gap-2 pt-2">
+          <.button type="submit" variant="primary" class="flex-1">
+            Save
+          </.button>
+          <.button type="button" variant="ghost" phx-click="close_sheet">
+            Cancel
+          </.button>
+        </div>
+      </.form>
+    </.sheet_frame>
     """
   end
 
