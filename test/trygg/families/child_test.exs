@@ -14,6 +14,31 @@ defmodule Trygg.Families.ChildTest do
     Ecto.Changeset.traverse_errors(cs, fn {msg, _opts} -> msg end)
   end
 
+  describe "tracked_types" do
+    test "default to everything" do
+      assert %Child{}.tracked_types == [:feeding, :diaper, :sleep]
+      assert Child.tracks?(%Child{}, :sleep)
+    end
+
+    test "can be trimmed, ignoring blanks and duplicates" do
+      cs = Child.changeset(%Child{}, base_attrs(%{tracked_types: ["", "feeding", "feeding"]}))
+
+      assert cs.valid?
+      assert Ecto.Changeset.get_field(cs, :tracked_types) == [:feeding]
+    end
+
+    test "can't be emptied" do
+      cs = Child.changeset(%Child{}, base_attrs(%{tracked_types: [""]}))
+
+      refute cs.valid?
+      assert errors_on_cs(cs).tracked_types == ["pick at least one thing to track"]
+    end
+
+    test "reject unknown trackers" do
+      refute Child.changeset(%Child{}, base_attrs(%{tracked_types: ["teeth"]})).valid?
+    end
+  end
+
   describe "age/2" do
     test "nil when there is no birth date" do
       assert Child.age(%Child{birth_date: nil}, ~D[2026-09-01]) == nil

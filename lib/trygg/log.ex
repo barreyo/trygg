@@ -31,7 +31,7 @@ defmodule Trygg.Log do
   @doc """
   Lists a child's entries, newest first.
 
-  Options: `:type` (atom), `:since` (`DateTime`), `:until` (`DateTime`),
+  Options: `:type` (atom), `:types` (list of atoms), `:since` (`DateTime`), `:until` (`DateTime`),
   `:limit` (integer).
   """
   def list_entries(%Scope{} = scope, %Child{} = child, opts \\ []) do
@@ -40,6 +40,7 @@ defmodule Trygg.Log do
     Entry
     |> where(child_id: ^child.id)
     |> filter_type(opts[:type])
+    |> filter_types(opts[:types])
     |> filter_since(opts[:since])
     |> filter_until(opts[:until])
     |> order_by(desc: :started_at, desc: :id)
@@ -638,6 +639,9 @@ defmodule Trygg.Log do
 
   defp filter_type(query, nil), do: query
   defp filter_type(query, type), do: where(query, [e], e.type == ^type)
+
+  defp filter_types(query, nil), do: query
+  defp filter_types(query, types), do: where(query, [e], e.type in ^types)
 
   defp filter_since(query, nil), do: query
   defp filter_since(query, since), do: where(query, [e], e.started_at >= ^since)

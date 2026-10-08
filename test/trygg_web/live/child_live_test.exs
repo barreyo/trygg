@@ -87,6 +87,36 @@ defmodule TryggWeb.ChildLiveTest do
     assert has_element?(lv, "#child_gestation_extra_days option[selected][value='4']")
   end
 
+  test "what Home tracks is saved on the child", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    assert child.tracked_types == [:feeding, :diaper, :sleep]
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+    assert has_element?(lv, "#tracked-feeding[checked]")
+
+    {:error, {:live_redirect, _}} =
+      lv
+      |> form("#child-form", child: %{tracked_types: ["", "feeding"]})
+      |> render_submit()
+
+    assert Families.get_child!(scope, child.id).tracked_types == [:feeding]
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+    assert has_element?(lv, "#tracked-feeding[checked]")
+    refute has_element?(lv, "#tracked-diaper[checked]")
+    refute has_element?(lv, "#tracked-sleep[checked]")
+  end
+
+  test "at least one tracker must stay on", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+
+    html = lv |> form("#child-form", child: %{tracked_types: [""]}) |> render_submit()
+
+    assert html =~ "pick at least one thing to track"
+    assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :diaper, :sleep]
+  end
+
   test "the vitamin D reminder can be turned on and off", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
     refute child.vitamin_d_reminder

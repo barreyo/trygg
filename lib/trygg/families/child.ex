@@ -3,6 +3,9 @@ defmodule Trygg.Families.Child do
   import Ecto.Changeset
 
   @sexes [:female, :male, :unspecified]
+  # What the Home screen can track — the same atoms as `Trygg.Log.Entry` types.
+  # A child tracks all of them unless a caregiver trims the list down.
+  @tracked_types [:feeding, :diaper, :sleep]
   # New children default to the San Francisco Bay Area; the IANA zone handles
   # PST/PDT automatically.
   @default_timezone "America/Los_Angeles"
@@ -39,6 +42,10 @@ defmodule Trygg.Families.Child do
     field :vitamin_d_reminder, :boolean, default: false
     field :vitamin_d_reminded_on, :date
 
+    # Which trackers show on Home (glance cards, log buttons, recent list).
+    # Shared by every caregiver; at least one must stay on.
+    field :tracked_types, {:array, Ecto.Enum}, values: @tracked_types, default: @tracked_types
+
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
 
@@ -64,12 +71,14 @@ defmodule Trygg.Families.Child do
       :day_start,
       :night_start,
       :vitamin_d_reminder,
+      :tracked_types,
       :gestation_weeks,
       :gestation_extra_days
     ])
     |> update_change(:name, &String.trim/1)
     |> validate_required([:name, :timezone, :day_start, :night_start])
     |> validate_length(:name, min: 1, max: 80)
+    |> validate_tracked_types()
     |> validate_timezone()
     |> validate_birth_date()
     |> validate_expected_birth_date()
@@ -104,6 +113,16 @@ defmodule Trygg.Families.Child do
           extra = get_field(changeset, :gestation_extra_days) || 0
           put_change(changeset, :gestational_age_days, weeks * 7 + extra)
       end
+    else
+      changeset
+    end
+  end
+
+  defp validate_tracked_types(changeset) do
+    changeset = update_change(changeset, :tracked_types, &Enum.uniq/1)
+
+    if get_field(changeset, :tracked_types) == [] do
+      add_error(changeset, :tracked_types, "pick at least one thing to track")
     else
       changeset
     end
@@ -450,6 +469,10 @@ defmodule Trygg.Families.Child do
     DateTime.shift_zone!(dt, "Etc/UTC")
   end
 
+  @doc "Whether the Home screen tracks entries of `type` (`:feeding`, `:diaper`, `:sleep`) for the child."
+  def tracks?(%__MODULE__{tracked_types: types}, type), do: type in types
+
+  def tracked_types, do: @tracked_types
   def sexes, do: @sexes
   def gestation_weeks, do: @gestation_weeks
   def default_timezone, do: @default_timezone

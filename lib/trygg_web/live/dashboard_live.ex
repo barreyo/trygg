@@ -5,6 +5,7 @@ defmodule TryggWeb.DashboardLive do
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
+  alias Trygg.Reports.Alerts
   alias Trygg.Units
   alias TryggWeb.Loading
 
@@ -97,7 +98,7 @@ defmodule TryggWeb.DashboardLive do
     {:noreply,
      socket
      |> assign(:current_child, %{child | role: socket.assigns.role})
-     |> refresh_summary()}
+     |> refresh()}
   end
 
   def handle_info({:child_born, child}, socket) do
@@ -276,6 +277,11 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, sheet: :earlier, sheet_form: nil)}
   end
 
+  def handle_event("open_sheet", %{"kind" => "layout"}, socket) do
+    types = Enum.map(socket.assigns.current_child.tracked_types, &to_string/1)
+    {:noreply, assign(socket, sheet: :layout, sheet_form: layout_form(types))}
+  end
+
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
     last = socket.assigns.summary.last_feeding
 
@@ -353,6 +359,30 @@ defmodule TryggWeb.DashboardLive do
       )
 
     {:noreply, socket |> clear_photo_upload() |> assign(sheet: :diaper_past, sheet_form: form)}
+  end
+
+  def handle_event("save_layout", params, socket) do
+    types = get_in(params, ["layout", "tracked_types"]) |> List.wrap() |> Enum.reject(&(&1 == ""))
+    wanted = Enum.filter(Child.tracked_types(), &(to_string(&1) in types))
+
+    case Families.update_tracked_types(
+           socket.assigns.current_scope,
+           socket.assigns.current_child,
+           wanted
+         ) do
+      {:ok, child} ->
+        {:noreply,
+         socket
+         |> assign(:current_child, child)
+         |> assign(sheet: nil, sheet_form: nil)
+         |> refresh()}
+
+      {:error, _changeset} ->
+        {:noreply,
+         assign(socket,
+           sheet_form: layout_form(types, tracked_types: {"pick at least one thing to track", []})
+         )}
+    end
   end
 
   def handle_event("close_sheet", _params, socket) do
@@ -605,7 +635,7 @@ defmodule TryggWeb.DashboardLive do
   defp fetch_home(scope, child) do
     %{
       status: fetch_status(scope, child),
-      entries: Log.recent_entries(scope, child, @recent_limit)
+      entries: recent_tracked(scope, child, @recent_limit)
     }
   end
 
@@ -723,7 +753,7 @@ defmodule TryggWeb.DashboardLive do
           end),
         recent:
           scope
-          |> Log.recent_entries(child, 8)
+          |> recent_tracked(child, 8)
           |> Enum.map(fn e ->
             %{
               type: e.type,
@@ -756,8 +786,13 @@ defmodule TryggWeb.DashboardLive do
   defp refresh_entries(socket) do
     scope = socket.assigns.current_scope
     child = socket.assigns.current_child
-    apply_entries(socket, Log.recent_entries(scope, child, @recent_limit))
+    apply_entries(socket, recent_tracked(scope, child, @recent_limit))
   end
+
+  # Recent activity limited to what this child's Home tracks, so a hidden
+  # tracker's old entries don't linger in the list.
+  defp recent_tracked(scope, child, limit),
+    do: Log.list_entries(scope, child, limit: limit, types: child.tracked_types)
 
   defp apply_entries(socket, entries) do
     socket
@@ -774,6 +809,11 @@ defmodule TryggWeb.DashboardLive do
   defp current_sheet_params(_socket), do: %{}
 
   # The sleep sheets submit as `sleep` params, everything else as `entry`.
+  defp layout_form(types, errors \\ []),
+    do: to_form(%{"tracked_types" => types}, as: :layout, errors: errors)
+
+  defp tracker_options, do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep"]
+
   defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
   defp sheet_form_as(_sheet), do: :entry
 
@@ -847,6 +887,7 @@ defmodule TryggWeb.DashboardLive do
         data-unit-system={@unit_system}
         data-can-write={to_string(@can_write)}
         data-tz={@current_child.timezone}
+        data-tracked-types={Enum.join(@current_child.tracked_types, ",")}
       />
 
       <%!-- Pull-to-refresh: a standalone PWA has no native pull-to-refresh, so
@@ -927,7 +968,12 @@ defmodule TryggWeb.DashboardLive do
                 <.alerts_list
                   id="home-alerts"
                   alerts={
-                    visible_alerts(@outlook.alerts, @dismissed_notices, &(&1.severity != :info))
+                    visible_alerts(
+                      @outlook.alerts,
+                      @dismissed_notices,
+                      @current_child,
+                      &(&1.severity != :info)
+                    )
                   }
                   on_dismiss="dismiss_notice"
                   links={
@@ -940,7 +986,12 @@ defmodule TryggWeb.DashboardLive do
                 <.alerts_note
                   id="home-info-alerts"
                   alerts={
-                    visible_alerts(@outlook.alerts, @dismissed_notices, &(&1.severity == :info))
+                    visible_alerts(
+                      @outlook.alerts,
+                      @dismissed_notices,
+                      @current_child,
+                      &(&1.severity == :info)
+                    )
                   }
                   navigate={~p"/c/#{@current_child}/reports?view=trends"}
                   on_dismiss="dismiss_notice"
@@ -981,8 +1032,8 @@ defmodule TryggWeb.DashboardLive do
 
             <%!-- At a glance --%>
             <section class="bg-base-200/40 rounded-box p-2 space-y-2">
-              <div id="glance-cards" class="grid grid-cols-3 gap-2">
-                <div id="glance-feed">
+              <div id="glance-cards" class={["grid gap-2", glance_cols(@current_child)]}>
+                <div :if={Child.tracks?(@current_child, :feeding)} id="glance-feed">
                   <.since_card
                     icon="hero-beaker"
                     label="Feeding"
@@ -994,7 +1045,7 @@ defmodule TryggWeb.DashboardLive do
                     today={feed_today(@summary.today, @unit_system)}
                   />
                 </div>
-                <div id="glance-diaper">
+                <div :if={Child.tracks?(@current_child, :diaper)} id="glance-diaper">
                   <.since_card
                     emoji={last_diaper_emoji(@summary.last_diaper)}
                     label="Diaper"
@@ -1006,7 +1057,7 @@ defmodule TryggWeb.DashboardLive do
                     today={diaper_today(@summary.today)}
                   />
                 </div>
-                <div id="glance-sleep">
+                <div :if={Child.tracks?(@current_child, :sleep)} id="glance-sleep">
                   <.since_card
                     icon={sleep_icon(@summary)}
                     label={sleep_label(@summary)}
@@ -1024,7 +1075,8 @@ defmodule TryggWeb.DashboardLive do
             <%!-- Log something --%>
             <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
               <.button
-                :if={!sleeping?(@summary)}
+                :if={Child.tracks?(@current_child, :sleep) and !sleeping?(@summary)}
+                id="log-sleep"
                 variant="primary"
                 size="lg"
                 phx-click="start_sleep"
@@ -1034,6 +1086,8 @@ defmodule TryggWeb.DashboardLive do
               </.button>
 
               <.button
+                :if={Child.tracks?(@current_child, :feeding)}
+                id="log-bottle"
                 type="button"
                 variant="info"
                 size="lg"
@@ -1044,7 +1098,7 @@ defmodule TryggWeb.DashboardLive do
                 <.icon name="hero-beaker" class="size-5" /> Log a bottle
               </.button>
 
-              <div>
+              <div :if={Child.tracks?(@current_child, :diaper)} id="log-diaper">
                 <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
                 <div class="grid grid-cols-3 gap-2">
                   <.action_btn
@@ -1066,6 +1120,19 @@ defmodule TryggWeb.DashboardLive do
                 class="w-full"
               >
                 <.icon name="hero-clock" class="size-4" /> Log from earlier
+              </.button>
+            </div>
+
+            <div :if={@can_write} class="mt-3 text-center">
+              <.button
+                id="customize-home"
+                type="button"
+                variant="ghost"
+                size="xs"
+                phx-click="open_sheet"
+                phx-value-kind="layout"
+              >
+                <.icon name="hero-adjustments-horizontal" class="size-4" /> Customize Home
               </.button>
             </div>
           </.loadable>
@@ -1158,6 +1225,7 @@ defmodule TryggWeb.DashboardLive do
         unit_system={@unit_system}
         photo_upload={@uploads.photo}
         vitamin_d_prompt?={vitamin_d_prompt?(@current_child, @summary)}
+        tracked_types={@current_child.tracked_types}
       />
 
       <.edit_modal
@@ -1205,6 +1273,7 @@ defmodule TryggWeb.DashboardLive do
   attr :unit_system, :atom, required: true
   attr :photo_upload, :any, required: true
   attr :vitamin_d_prompt?, :boolean, default: false
+  attr :tracked_types, :list, default: [:feeding, :diaper, :sleep]
 
   defp sheet(assigns) do
     assigns = assign(assigns, :unit, Units.unit_label(:volume, assigns.unit_system))
@@ -1226,6 +1295,7 @@ defmodule TryggWeb.DashboardLive do
             <p class="text-sm opacity-60 mb-4">What do you want to add?</p>
             <div class="space-y-2">
               <.button
+                :if={:sleep in @tracked_types}
                 type="button"
                 variant="primary"
                 size="lg"
@@ -1236,6 +1306,7 @@ defmodule TryggWeb.DashboardLive do
                 <.icon name="hero-moon" class="size-6" /> Sleep
               </.button>
               <.button
+                :if={:feeding in @tracked_types}
                 type="button"
                 variant="info"
                 size="lg"
@@ -1246,6 +1317,7 @@ defmodule TryggWeb.DashboardLive do
                 <.icon name="hero-beaker" class="size-6" /> Bottle
               </.button>
               <.button
+                :if={:diaper in @tracked_types}
                 type="button"
                 variant="accent"
                 size="lg"
@@ -1261,6 +1333,38 @@ defmodule TryggWeb.DashboardLive do
                 Cancel
               </.button>
             </div>
+          <% :layout -> %>
+            <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
+            <p class="text-sm opacity-60 mb-4">
+              Choose what to track. Everyone caring for this child sees the same Home screen.
+              Hidden entries stay in the full log and reports.
+            </p>
+            <.form for={@form} id="layout-form" phx-submit="save_layout" class="space-y-2">
+              <input type="hidden" name="layout[tracked_types][]" value="" />
+              <label
+                :for={{type, label} <- tracker_options()}
+                class="flex items-center gap-3 rounded-box bg-base-200/60 p-3"
+              >
+                <input
+                  type="checkbox"
+                  id={"layout-#{type}"}
+                  name="layout[tracked_types][]"
+                  value={type}
+                  checked={to_string(type) in List.wrap(@form.params["tracked_types"])}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="font-medium">{label}</span>
+              </label>
+              <p
+                :for={{msg, _opts} <- @form[:tracked_types].errors}
+                id="layout-error"
+                class="flex gap-2 items-center text-sm text-error"
+              >
+                <.icon name="hero-exclamation-circle" class="size-5" />
+                {msg}
+              </p>
+              <.sheet_buttons save="Save" />
+            </.form>
           <% :bottle -> %>
             <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
             <.form
@@ -1726,8 +1830,26 @@ defmodule TryggWeb.DashboardLive do
     if f == Float.round(f), do: trunc(f), else: Float.round(f, 1)
   end
 
-  defp visible_alerts(alerts, dismissed, filter) do
-    Enum.filter(alerts, &(filter.(&1) and to_string(&1.id) not in dismissed))
+  defp visible_alerts(alerts, dismissed, child, filter) do
+    Enum.filter(alerts, fn alert ->
+      filter.(alert) and to_string(alert.id) not in dismissed and tracked_alert?(alert, child)
+    end)
+  end
+
+  defp tracked_alert?(alert, child) do
+    case Alerts.tracker(alert) do
+      nil -> true
+      type -> Child.tracks?(child, type)
+    end
+  end
+
+  # One glance card per tracked type, sharing the row evenly.
+  defp glance_cols(child) do
+    case length(child.tracked_types) do
+      1 -> "grid-cols-1"
+      2 -> "grid-cols-2"
+      _ -> "grid-cols-3"
+    end
   end
 
   # Copy for the home weight-check banner. `never_measured?` means we're

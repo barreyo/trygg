@@ -56,6 +56,32 @@ defmodule Trygg.FamiliesTest do
     end
   end
 
+  describe "update_tracked_types/3" do
+    test "caregivers may change the layout, but only that" do
+      %{member_scope: member, child: child} = shared_child_fixture(:caregiver)
+
+      assert {:ok, updated} = Families.update_tracked_types(member, child, [:feeding])
+      assert updated.tracked_types == [:feeding]
+      assert updated.name == child.name
+      assert updated.role == :caregiver
+    end
+
+    test "viewers may not" do
+      %{member_scope: member, child: child} = shared_child_fixture(:viewer)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Families.update_tracked_types(member, child, [:feeding])
+      end
+    end
+
+    test "something must stay tracked" do
+      scope = user_scope_fixture()
+      child = child_fixture(scope)
+
+      assert {:error, %Ecto.Changeset{}} = Families.update_tracked_types(scope, child, [])
+    end
+  end
+
   describe "update_child/3 and delete_child/2" do
     test "only owners may update" do
       %{owner_scope: owner, member_scope: member, child: child} = shared_child_fixture(:caregiver)

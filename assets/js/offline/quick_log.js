@@ -257,9 +257,16 @@ export function renderPanel(root, opts = {}) {
       el("p", {class: "tql-sub", text: "Saved on this device — syncs when you're back online."})
     )
 
-    sleepBox = el("section", {})
-    forms.append(bottleSection(), diaperSection(), sleepBox)
-    renderSleep(sleepBox)
+    // Only the trackers this child's Home shows. Contexts mirrored before the
+    // layout was configurable have no list and offer everything.
+    const tracked = ctx.trackedTypes || ["feeding", "diaper", "sleep"]
+    sleepBox = tracked.includes("sleep") ? el("section", {}) : null
+    if (tracked.includes("feeding")) forms.append(bottleSection())
+    if (tracked.includes("diaper")) forms.append(diaperSection())
+    if (sleepBox) {
+      forms.append(sleepBox)
+      renderSleep(sleepBox)
+    }
   }
 
   function bottleSection() {
