@@ -269,8 +269,10 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.6); }
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.trygg-skeleton { animation: trygg-fade-in 300ms ease-out 150ms both; }
-.trygg-reveal { animation: trygg-fade-in 200ms ease-out both; }
+/* `backwards`, not `both`: the end state is just the element's own style, and
+   a held `opacity: 1` would beat later rules such as `.loading-dim`'s dimming. */
+.trygg-skeleton { animation: trygg-fade-in 300ms ease-out 150ms backwards; }
+.trygg-reveal { animation: trygg-fade-in 200ms ease-out backwards; }
 
 /*
  * A region being refined in place (the Log filter, the Reports view tabs)
@@ -497,12 +499,13 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
  * (`.login-hero`) in the page flow. Every rule here only *adds* motion to a
  * page that already looks right standing still, so the reduced-motion block
  * at the end can simply switch the animations off. Entrance animations use
- * `both` fill and run once when the element is inserted; LiveView patches
- * later never replay them.
+ * `backwards` fill (the end state is the element's own style, so nothing is
+ * held that could override a later hover/`translate`) and run once when the
+ * element is inserted; LiveView patches later never replay them.
  */
 .login-sky {
   background: linear-gradient(to bottom, #120e3d 0%, #271d6b 55%, #4a2f86 88%, #7a4486 100%);
-  animation: login-fade-in 900ms ease-out both;
+  animation: login-fade-in 900ms ease-out backwards;
 }
 .login-horizon {
   background: radial-gradient(ellipse 90% 38% at 50% 100%, rgb(255 157 92 / 0.42), transparent 70%);
@@ -514,13 +517,25 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   from { opacity: 0; transform: scale(0.9) translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
-.login-scene-in { animation: login-scene-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) 150ms both; }
+.login-scene-in { animation: login-scene-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) 150ms backwards; }
 
 @keyframes login-rise {
   from { opacity: 0; transform: translateY(18px); }
   to   { opacity: 1; transform: none; }
 }
-.login-rise { animation: login-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0s); }
+.login-rise { animation: login-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; animation-delay: var(--d, 0s); }
+
+/* A soft dark vignette behind the white copy that sits on the sky, so a star
+   or heart drifting behind a word doesn't eat it. No visible edge. */
+.login-copy { position: relative; }
+.login-copy::before {
+  content: "";
+  position: absolute;
+  inset: -0.75rem;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(18 14 61 / 0.62), rgb(18 14 61 / 0.3) 60%, transparent);
+}
 
 /* Stars: a sparkle shape (clip-path) or a plain dot, twinkling out of phase */
 .login-star {
