@@ -600,9 +600,12 @@ defmodule TryggWeb.DashboardLiveTest do
       membership_fixture(child, other, :caregiver)
       conn_b = log_in_user(Phoenix.ConnTest.build_conn(), other)
 
-      {:ok, _lv_b, html_b} = live_loaded(conn_b, ~p"/c/#{child}")
+      {:ok, lv_b, html_b} = live_loaded(conn_b, ~p"/c/#{child}")
       assert html_b =~ "Asleep"
       assert html_b =~ ~s(phx-hook="Timer")
+
+      # while asleep the sleep card gets its drifting Zzz and the success tone
+      assert has_element?(lv_b, "#glance-sleep .glance-card[data-tone='success'] .glance-snooze")
 
       # and it's the same server-side timer, not a new one
       assert [%{type: :sleep, ended_at: nil}] = Log.running_timers(scope, child)
@@ -1096,6 +1099,12 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#glance-diaper", "none today")
       assert has_element?(lv, "#glance-sleep")
       refute has_element?(lv, "#home-alerts")
+
+      # The big friendly Home cards, one per category, in their resting tone.
+      assert has_element?(lv, "#glance-feed .glance-card.glance-feed[data-tone='base']")
+      assert has_element?(lv, "#glance-diaper .glance-card.glance-diaper[data-tone='base']")
+      assert has_element?(lv, "#glance-sleep .glance-card.glance-sleep[data-tone='base']")
+      refute has_element?(lv, "#glance-sleep .glance-snooze")
     end
 
     test "today's totals show inside the glance cards, not a separate row", %{

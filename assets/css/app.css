@@ -352,8 +352,8 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   }
 
   .input, .select, .textarea {
-    --input-color: color-mix(in oklab, var(--color-base-content) 16%, transparent);
-    background-color: color-mix(in oklab, var(--color-base-content) 3%, var(--color-base-100));
+    --input-color: color-mix(in oklab, var(--color-base-content) var(--input-edge, 16%), transparent);
+    background-color: color-mix(in oklab, var(--color-base-content) var(--input-fill, 3%), var(--color-base-100));
     font-size: 1rem;
     font-weight: 500;
     box-shadow: 0 2px 0 0 color-mix(in oklab, var(--color-base-content) 8%, transparent) inset;
@@ -394,8 +394,100 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   .label { font-size: 0.9rem; font-weight: 600; }
 }
 
+/*
+ * How strong an input's outline and fill are, as a share of the text color.
+ * On true black the light-theme values nearly vanish (a faint grey line on a
+ * black card), so dark gets a noticeably brighter edge and a lifted fill.
+ * Set as plain variables rather than in the daisyUI theme blocks, which drop
+ * keys they don't recognize. Both selectors are needed: an explicit dark
+ * theme, and "system" (no data-theme) while the OS is dark.
+ */
+:root { --input-edge: 16%; --input-fill: 3%; }
+:root[data-theme="dark"] { --input-edge: 36%; --input-fill: 9%; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --input-edge: 36%; --input-fill: 9%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn, .input, .select, .textarea { transition-duration: 0.01ms; }
+}
+
+/*
+ * Home "glance" cards — see `TryggWeb.LogComponents.glance_card/1`.
+ *
+ * Big, friendly cards: each carries one tint (`--tint`, set per category or
+ * per tone) that colors its gradient, border, "toy" edge, emoji bubble and
+ * status pill, so a card reads by color alone and everything stays in sync.
+ * Colors are mixed from theme tokens, so both themes work from one rule.
+ */
+.glance-card {
+  --tint: var(--color-base-300);
+  border-radius: 1.75rem;
+  padding: 1.25rem;
+  border: 2px solid color-mix(in oklab, var(--tint) 45%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--tint) 24%, var(--color-base-100)),
+    color-mix(in oklab, var(--tint) 8%, var(--color-base-100))
+  );
+  box-shadow: 0 5px 0 0 color-mix(in oklab, var(--tint) 32%, transparent);
+}
+.glance-feed { --tint: var(--color-info); }
+.glance-diaper { --tint: var(--color-diaper-pee); }
+.glance-sleep { --tint: var(--color-primary); }
+.glance-card[data-tone="warning"] { --tint: var(--color-warning); }
+.glance-card[data-tone="success"] { --tint: var(--color-success); }
+
+.glance-bubble {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 9999px;
+  font-size: 2rem;
+  line-height: 1;
+  background: color-mix(in oklab, var(--tint, var(--color-primary)) 38%, var(--color-base-100));
+  border: 2px solid color-mix(in oklab, var(--tint, var(--color-primary)) 55%, transparent);
+  box-shadow: 0 3px 0 0 color-mix(in oklab, var(--tint, var(--color-primary)) 40%, transparent);
+  animation: glance-bob 4.5s ease-in-out infinite alternate;
+  animation-delay: var(--bob-delay, 0ms);
+}
+/* On the solid-colored running-timer card the bubble is a translucent disc */
+.glance-bubble-solid {
+  background: color-mix(in oklab, var(--color-primary-content) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary-content) 30%, transparent);
+  box-shadow: none;
+}
+.glance-snooze { position: absolute; top: -0.35rem; right: -0.5rem; font-size: 1.1rem; }
+
+.glance-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  background: color-mix(in oklab, var(--tint) 24%, transparent);
+  color: color-mix(in oklab, var(--tint) 55%, var(--color-base-content));
+}
+
+@keyframes glance-bob {
+  from { transform: translateY(0) rotate(-3deg); }
+  to   { transform: translateY(-3px) rotate(3deg); }
+}
+
+/* Cards bounce in once, one after another (`--d` is each card's delay) */
+@keyframes glance-pop {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.glance-pop { animation: glance-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both; animation-delay: var(--d, 0ms); }
+
+@media (prefers-reduced-motion: reduce) {
+  .glance-pop, .glance-bubble { animation: none; }
 }
 
 /*
