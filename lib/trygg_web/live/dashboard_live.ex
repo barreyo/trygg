@@ -1002,12 +1002,12 @@ defmodule TryggWeb.DashboardLive do
               <div
                 :if={@weight_reminder && "weight-check" not in @dismissed_notices}
                 id="weight-check-reminder"
-                class="mb-4 flex items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3"
+                class="glance-pop mb-4 flex items-start gap-3 rounded-[1.5rem] border-2 border-warning/40 bg-warning/10 p-4"
               >
                 <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
                 <div class="min-w-0 flex-1">
-                  <p class="text-sm font-semibold leading-tight">Time for a weight check</p>
-                  <p class="text-xs opacity-70 mt-0.5 leading-snug">
+                  <p class="text-base font-bold leading-tight">Time for a weight check</p>
+                  <p class="text-sm opacity-80 mt-0.5 leading-snug">
                     {weight_reminder_detail(@weight_reminder)}
                   </p>
                   <.link
@@ -1030,50 +1030,60 @@ defmodule TryggWeb.DashboardLive do
               </div>
             </div>
 
-            <%!-- At a glance --%>
-            <section class="bg-base-200/40 rounded-box p-2 space-y-2">
-              <div id="glance-cards" class={["grid gap-2", glance_cols(@current_child)]}>
-                <div :if={Child.tracks?(@current_child, :feeding)} id="glance-feed">
-                  <.since_card
-                    icon="hero-beaker"
-                    label="Feeding"
-                    category="feed"
-                    tone={feed_tone(@outlook)}
-                    value={feed_value(@summary.last_feeding, @outlook)}
-                    sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
-                    status={feed_status(@summary.last_feeding, @outlook)}
-                    today={feed_today(@summary.today, @unit_system)}
-                  />
-                </div>
-                <div :if={Child.tracks?(@current_child, :diaper)} id="glance-diaper">
-                  <.since_card
-                    emoji={last_diaper_emoji(@summary.last_diaper)}
-                    label="Diaper"
-                    category="diaper"
-                    tone={diaper_tone(@outlook)}
-                    value={relative_time(time_of(@summary.last_diaper))}
-                    sub={diaper_sub(@summary.last_diaper)}
-                    status={diaper_status(@outlook)}
-                    today={diaper_today(@summary.today)}
-                  />
-                </div>
-                <div :if={Child.tracks?(@current_child, :sleep)} id="glance-sleep">
-                  <.since_card
-                    icon={sleep_icon(@summary)}
-                    label={sleep_label(@summary)}
-                    category="sleep"
-                    tone={sleep_tone(@summary, @outlook)}
-                    value={sleep_value(@summary, @outlook)}
-                    sub={sleep_sub(@summary, @outlook, @current_child)}
-                    status={sleep_status(@summary, @outlook)}
-                    today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
-                  />
-                </div>
+            <%!-- At a glance: big, friendly cards stacked full width --%>
+            <section id="glance-cards" class="space-y-4">
+              <div :if={Child.tracks?(@current_child, :feeding)} id="glance-feed">
+                <.glance_card
+                  index={0}
+                  emoji="🍼"
+                  label="Feeding"
+                  category="feed"
+                  tone={feed_tone(@outlook)}
+                  value={feed_value(@summary.last_feeding, @outlook)}
+                  sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+                  status={feed_status(@summary.last_feeding, @outlook)}
+                  today={feed_today(@summary.today, @unit_system)}
+                />
+              </div>
+              <div :if={Child.tracks?(@current_child, :diaper)} id="glance-diaper">
+                <.glance_card
+                  index={1}
+                  emoji={last_diaper_emoji(@summary.last_diaper)}
+                  label="Diaper"
+                  category="diaper"
+                  tone={diaper_tone(@outlook)}
+                  value={relative_time(time_of(@summary.last_diaper))}
+                  sub={diaper_sub(@summary.last_diaper)}
+                  status={diaper_status(@outlook)}
+                  today={diaper_today(@summary.today)}
+                />
+              </div>
+              <div :if={Child.tracks?(@current_child, :sleep)} id="glance-sleep">
+                <.glance_card
+                  index={2}
+                  emoji={sleep_emoji(@summary)}
+                  snooze={sleeping?(@summary)}
+                  label={sleep_label(@summary)}
+                  category="sleep"
+                  tone={sleep_tone(@summary, @outlook)}
+                  value={sleep_value(@summary, @outlook)}
+                  sub={sleep_sub(@summary, @outlook, @current_child)}
+                  status={sleep_status(@summary, @outlook)}
+                  today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
+                />
               </div>
             </section>
 
             <%!-- Log something --%>
-            <div :if={@can_write} class="mt-6 rounded-box bg-base-200/40 p-3 space-y-3">
+            <div
+              :if={@can_write}
+              class="glance-pop mt-6 space-y-4 rounded-[1.75rem] border-2 border-base-300 bg-base-200/60 p-5"
+              style="--d: 240ms"
+            >
+              <h2 class="flex items-center gap-2 text-lg font-extrabold">
+                <.icon name="hero-sparkles" class="size-5 text-primary" /> Log something
+              </h2>
+
               <.button
                 :if={Child.tracks?(@current_child, :sleep) and !sleeping?(@summary)}
                 id="log-sleep"
@@ -1099,8 +1109,8 @@ defmodule TryggWeb.DashboardLive do
               </.button>
 
               <div :if={Child.tracks?(@current_child, :diaper)} id="log-diaper">
-                <div class="text-xs font-medium opacity-70 mb-1.5">Diaper</div>
-                <div class="grid grid-cols-3 gap-2">
+                <div class="mb-2 text-sm font-bold uppercase tracking-wider opacity-70">Diaper</div>
+                <div class="grid grid-cols-3 gap-3">
                   <.action_btn
                     :for={{emoji, value, label} <- diaper_choices()}
                     kind={"diaper_#{value}"}
@@ -1149,7 +1159,7 @@ defmodule TryggWeb.DashboardLive do
             phx-update="ignore"
             hidden
             data-vapid-key={@vapid_public_key}
-            class="mt-6 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+            class="mt-6 flex items-start gap-3 rounded-[1.5rem] border-2 border-base-300 bg-base-200 p-4 text-base"
           >
             <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
             <div class="flex-1 min-w-0 space-y-2">
@@ -1253,10 +1263,10 @@ defmodule TryggWeb.DashboardLive do
       type="button"
       phx-click="quick"
       phx-value-kind={@kind}
-      class={["h-auto py-3 flex-col gap-1", @color_class]}
+      class={["h-auto flex-col gap-1.5 px-1 py-4", @color_class]}
     >
-      <span class="text-3xl leading-none" aria-hidden="true">{@emoji}</span>
-      <span class="text-xs font-semibold">{@label}</span>
+      <span class="whitespace-nowrap text-[2rem] leading-none" aria-hidden="true">{@emoji}</span>
+      <span class="text-sm font-bold">{@label}</span>
     </.button>
     """
   end
@@ -1748,7 +1758,7 @@ defmodule TryggWeb.DashboardLive do
   defp woke_at(%{last_sleep: %Entry{started_at: at}}), do: at
   defp woke_at(_), do: nil
 
-  defp sleep_icon(summary), do: if(sleeping?(summary), do: "hero-moon", else: "hero-sun")
+  defp sleep_emoji(summary), do: if(sleeping?(summary), do: "😴", else: "☀️")
 
   defp sleep_label(summary) do
     cond do
@@ -1840,15 +1850,6 @@ defmodule TryggWeb.DashboardLive do
     case Alerts.tracker(alert) do
       nil -> true
       type -> Child.tracks?(child, type)
-    end
-  end
-
-  # One glance card per tracked type, sharing the row evenly.
-  defp glance_cols(child) do
-    case length(child.tracked_types) do
-      1 -> "grid-cols-1"
-      2 -> "grid-cols-2"
-      _ -> "grid-cols-3"
     end
   end
 
