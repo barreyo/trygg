@@ -696,8 +696,13 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   60%  { transform: translateY(0) scale(1.04, 0.95); }
   100% { transform: translateY(0) scale(1, 1); }
 }
-.login-stage:has(.login-cta:hover, .login-cta:focus-visible) .login-hop {
+.login-stage:has(.login-cta:focus-visible) .login-hop {
   animation: login-hop 520ms ease-out;
+}
+@media (hover: hover) {
+  .login-stage:has(.login-cta:hover) .login-hop {
+    animation: login-hop 520ms ease-out;
+  }
 }
 
 @keyframes login-z {
@@ -768,19 +773,24 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   100% { background-position: 220% 0; }
 }
 .login-cta-arrow { display: inline-block; transition: transform 200ms ease; }
-.login-cta:hover .login-cta-arrow,
 .login-cta:focus-visible .login-cta-arrow { transform: translateX(4px); }
+@media (hover: hover) {
+  .login-cta:hover .login-cta-arrow { transform: translateX(4px); }
+}
 
 /* Lift via the individual `translate` property, so it composes with (rather
    than fights) the rise animation's `transform` */
 .login-new-card { transition: translate 200ms ease; }
-.login-new-card:hover { translate: 0 -2px; }
+@media (hover: hover) {
+  .login-new-card:hover { translate: 0 -2px; }
+}
 
 /* While a field has focus the sky holds still: nothing twinkles behind the
    thing being typed, and the phone's GPU gets a rest. (`:has()` is progressive;
    without it the sky just keeps going.) */
 .login-stage:has(input:focus) .login-sky *,
-.login-stage:has(input:focus) .login-hero * {
+.login-stage:has(input:focus) .login-hero *,
+.login-stage:has(input:focus) .login-cta::after {
   animation-play-state: paused;
 }
 
