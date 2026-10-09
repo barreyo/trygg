@@ -934,39 +934,6 @@ defmodule TryggWeb.DashboardLive do
           />
           --%>
 
-            <%!-- Running sleep timer — Stop and start-time fixes live inside this card --%>
-            <div :for={entry <- @summary.running} class="mb-6">
-              <.timer_banner
-                entry={entry}
-                can_write={@can_write}
-                on_stop="request_stop"
-                since_label={Child.local_clock(@current_child, entry.started_at)}
-              >
-                <:controls :if={@can_write}>
-                  <span class="mr-0.5 text-xs opacity-90">Started earlier?</span>
-                  <.button
-                    :for={m <- nudge_minutes()}
-                    type="button"
-                    size="xs"
-                    phx-click="nudge_start"
-                    phx-value-by={m}
-                    class={timer_control_class()}
-                  >
-                    {m}m
-                  </.button>
-                  <.button
-                    type="button"
-                    size="xs"
-                    phx-click="open_sheet"
-                    phx-value-kind="sleep_start"
-                    class={timer_control_class()}
-                  >
-                    <.icon name="hero-pencil-square" class="size-3.5" /> Edit
-                  </.button>
-                </:controls>
-              </.timer_banner>
-            </div>
-
             <%!-- Health alerts — the first thing a caregiver should see after the
                header/active timer, so this sits above everything else, including
                the glance cards. Only warnings and notices get the full card;
@@ -1041,7 +1008,10 @@ defmodule TryggWeb.DashboardLive do
               </div>
             </div>
 
-            <%!-- At a glance: big, friendly cards stacked full width --%>
+            <%!-- At a glance: big, friendly cards stacked full width. Each card
+               carries the buttons that log the next one of its kind, so the
+               answer ("when was the last diaper?") and the action sit together
+               and nothing important is a scroll away on a phone. --%>
             <section id="glance-cards" class="space-y-4">
               <div :if={Child.tracks?(@current_child, :feeding)} id="glance-feed">
                 <.glance_card
@@ -1054,7 +1024,20 @@ defmodule TryggWeb.DashboardLive do
                   sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
                   status={feed_status(@summary.last_feeding, @outlook)}
                   today={feed_today(@summary.today, @unit_system)}
-                />
+                >
+                  <:actions :if={@can_write}>
+                    <.button
+                      id="log-bottle"
+                      type="button"
+                      variant="info"
+                      phx-click="open_sheet"
+                      phx-value-kind="bottle"
+                      class="w-full"
+                    >
+                      <.icon name="hero-beaker" class="size-5" /> Log a bottle
+                    </.button>
+                  </:actions>
+                </.glance_card>
               </div>
               <div :if={Child.tracks?(@current_child, :diaper)} id="glance-diaper">
                 <.glance_card
@@ -1067,11 +1050,24 @@ defmodule TryggWeb.DashboardLive do
                   sub={diaper_sub(@summary.last_diaper)}
                   status={diaper_status(@outlook)}
                   today={diaper_today(@summary.today)}
-                />
+                >
+                  <:actions :if={@can_write}>
+                    <div id="log-diaper" class="grid grid-cols-3 gap-2">
+                      <.action_btn
+                        :for={{emoji, value, label} <- diaper_choices()}
+                        kind={"diaper_#{value}"}
+                        label={label}
+                        emoji={emoji}
+                        color_class={diaper_color_class(value)}
+                      />
+                    </div>
+                  </:actions>
+                </.glance_card>
               </div>
               <div :if={Child.tracks?(@current_child, :sleep)} id="glance-sleep">
                 <.glance_card
                   index={2}
+                  timer={running_sleep_entry(@summary)}
                   emoji={sleep_emoji(@summary)}
                   snooze={sleeping?(@summary)}
                   label={sleep_label(@summary)}
@@ -1081,79 +1077,77 @@ defmodule TryggWeb.DashboardLive do
                   sub={sleep_sub(@summary, @outlook, @current_child)}
                   status={sleep_status(@summary, @outlook)}
                   today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
-                />
+                >
+                  <:actions :if={@can_write}>
+                    <%= if sleeping?(@summary) do %>
+                      <.button
+                        id="stop-sleep"
+                        type="button"
+                        variant="primary"
+                        phx-click="request_stop"
+                        phx-value-id={running_sleep_entry(@summary).id}
+                        class="w-full"
+                      >
+                        <.icon name="hero-stop" class="size-5" /> Stop
+                      </.button>
+                      <%!-- Fix a start time that was logged late --%>
+                      <div id="sleep-nudges" class="mt-3">
+                        <div class="mb-1.5 text-xs opacity-80">Started earlier?</div>
+                        <div class="grid grid-cols-4 gap-2">
+                          <.button
+                            :for={m <- nudge_minutes()}
+                            type="button"
+                            size="xs"
+                            phx-click="nudge_start"
+                            phx-value-by={m}
+                          >
+                            {m}m
+                          </.button>
+                          <.button
+                            type="button"
+                            size="xs"
+                            phx-click="open_sheet"
+                            phx-value-kind="sleep_start"
+                          >
+                            <.icon name="hero-pencil-square" class="size-3.5" /> Edit
+                          </.button>
+                        </div>
+                      </div>
+                    <% else %>
+                      <.button
+                        id="log-sleep"
+                        variant="primary"
+                        phx-click="start_sleep"
+                        class="w-full"
+                      >
+                        <.icon name="hero-moon" class="size-5" /> Start sleep
+                      </.button>
+                    <% end %>
+                  </:actions>
+                </.glance_card>
               </div>
             </section>
 
-            <%!-- Log something --%>
-            <div
-              :if={@can_write}
-              class="glance-pop mt-6 space-y-4 rounded-[var(--radius-card)] border-2 border-base-300 bg-base-200/60 p-5"
-              style="--d: 240ms"
-            >
-              <h2 class="flex items-center gap-2 text-lg font-extrabold">
-                <.icon name="hero-sparkles" class="size-5 text-primary" /> Log something
-              </h2>
-
-              <.button
-                :if={Child.tracks?(@current_child, :sleep) and !sleeping?(@summary)}
-                id="log-sleep"
-                variant="primary"
-                size="lg"
-                phx-click="start_sleep"
-                class="w-full text-base"
-              >
-                <.icon name="hero-moon" class="size-5" /> Start sleep
-              </.button>
-
-              <.button
-                :if={Child.tracks?(@current_child, :feeding)}
-                id="log-bottle"
-                type="button"
-                variant="info"
-                size="lg"
-                phx-click="open_sheet"
-                phx-value-kind="bottle"
-                class="w-full text-base"
-              >
-                <.icon name="hero-beaker" class="size-5" /> Log a bottle
-              </.button>
-
-              <div :if={Child.tracks?(@current_child, :diaper)} id="log-diaper">
-                <div class="mb-2 text-sm font-bold uppercase tracking-wider opacity-70">Diaper</div>
-                <div class="grid grid-cols-3 gap-3">
-                  <.action_btn
-                    :for={{emoji, value, label} <- diaper_choices()}
-                    kind={"diaper_#{value}"}
-                    label={label}
-                    emoji={emoji}
-                    color_class={diaper_color_class(value)}
-                  />
-                </div>
-              </div>
-
+            <%!-- The odd ones out — rare enough to stay small --%>
+            <div :if={@can_write} class="mt-3 flex items-center justify-center gap-1">
               <.button
                 type="button"
                 variant="ghost"
                 size="sm"
                 phx-click="open_sheet"
                 phx-value-kind="earlier"
-                class="w-full"
               >
                 <.icon name="hero-clock" class="size-4" /> Log from earlier
               </.button>
-            </div>
-
-            <div :if={@can_write} class="mt-3 text-center">
               <.button
                 id="customize-home"
                 type="button"
                 variant="ghost"
-                size="xs"
+                size="sm"
                 phx-click="open_sheet"
                 phx-value-kind="layout"
               >
-                <.icon name="hero-adjustments-horizontal" class="size-4" /> Customize Home
+                <.icon name="hero-adjustments-horizontal" class="size-4" /> Customize
               </.button>
             </div>
           </.loadable>
@@ -1276,9 +1270,9 @@ defmodule TryggWeb.DashboardLive do
       type="button"
       phx-click="quick"
       phx-value-kind={@kind}
-      class={["h-auto flex-col gap-1.5 px-1 py-4", @color_class]}
+      class={["h-auto flex-col gap-0 px-1 py-2", @color_class]}
     >
-      <span class="whitespace-nowrap text-[2rem] leading-none" aria-hidden="true">{@emoji}</span>
+      <span class="whitespace-nowrap text-xl leading-tight" aria-hidden="true">{@emoji}</span>
       <span class="text-sm font-bold">{@label}</span>
     </.button>
     """

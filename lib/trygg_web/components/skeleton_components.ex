@@ -138,10 +138,11 @@ defmodule TryggWeb.SkeletonComponents do
 
   @doc "A big Home glance card, shaped like `TryggWeb.LogComponents.glance_card/1`."
   attr :class, :any, default: nil
+  attr :action, :boolean, default: false, doc: "include the row of log buttons"
 
   def glance_card_skeleton(assigns) do
     ~H"""
-    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-5", @class]}>
+    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-4", @class]}>
       <div class="flex items-center gap-4">
         <.bone class="size-16 shrink-0 rounded-full" />
         <div class="min-w-0 flex-1">
@@ -150,35 +151,23 @@ defmodule TryggWeb.SkeletonComponents do
           <.bone class="my-[3px] h-4 w-4/5 rounded" />
         </div>
       </div>
-      <div class="mt-4 flex items-center gap-3">
+      <div class="mt-3 flex items-center gap-3">
         <.bone class="h-7 w-32 rounded-full" />
         <.bone class="h-3.5 w-24 rounded" />
       </div>
+      <.bone :if={@action} class="mt-3 h-12 w-full rounded-field" />
     </div>
     """
   end
 
-  @doc "Home: the at-a-glance cards and the quick-log buttons."
+  @doc "Home: the at-a-glance cards, each with its log buttons."
   attr :can_write, :boolean, default: true
 
   def home_status_skeleton(assigns) do
     ~H"""
     <section class="space-y-4">
-      <.glance_card_skeleton :for={_ <- 1..3} />
+      <.glance_card_skeleton :for={_ <- 1..3} action={@can_write} />
     </section>
-
-    <div :if={@can_write} class="mt-6 space-y-4 rounded-[var(--radius-card)] bg-base-200/60 p-5">
-      <.bone class="h-7 w-40 rounded" />
-      <.bone class="h-[3.3rem] w-full rounded-field" />
-      <.bone class="h-[3.3rem] w-full rounded-field" />
-      <div>
-        <.bone class="mb-2 h-5 w-14 rounded" />
-        <div class="grid grid-cols-3 gap-3">
-          <.bone :for={_ <- 1..3} class="h-[5.875rem] rounded-field" />
-        </div>
-      </div>
-      <.bone class="mx-auto h-10 w-44 rounded-field" />
-    </div>
     """
   end
 

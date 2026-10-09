@@ -119,6 +119,13 @@ defmodule TryggWeb.LogComponents do
   attr :snooze, :boolean, default: false, doc: "drift a little Zzz off the bubble (asleep)"
   attr :index, :integer, default: 0, doc: "position in the stack, for the staggered entrance"
 
+  attr :timer, :any,
+    default: nil,
+    doc: "a running timer entry; the value then ticks live in the browser (see the Timer hook)"
+
+  slot :actions,
+    doc: "buttons that log the next one of these, so the answer and the action share a card"
+
   def glance_card(assigns) do
     ~H"""
     <div
@@ -133,16 +140,22 @@ defmodule TryggWeb.LogComponents do
         </span>
         <div class="min-w-0 flex-1">
           <div class="text-sm font-bold uppercase tracking-wider opacity-70">{@label}</div>
-          <div class="text-3xl font-extrabold leading-tight tabular-nums break-words">
+          <div
+            id={@timer && "timer-#{@timer.id}"}
+            phx-hook={@timer && "Timer"}
+            data-since={@timer && DateTime.to_unix(@timer.started_at)}
+            class="text-3xl font-extrabold leading-tight tabular-nums break-words"
+          >
             {@value}
           </div>
           <div :if={@sub} class="mt-0.5 text-base leading-snug opacity-80 break-words">{@sub}</div>
         </div>
       </div>
-      <div :if={@status || @today} class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div :if={@status || @today} class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <span :if={@status} class="glance-pill">{@status}</span>
         <span :if={@today} class="text-sm leading-snug opacity-70 tabular-nums">{@today}</span>
       </div>
+      <div :if={@actions != []} class="mt-3">{render_slot(@actions)}</div>
     </div>
     """
   end
@@ -151,64 +164,6 @@ defmodule TryggWeb.LogComponents do
   defp category_bg("diaper"), do: "tint-diaper"
   defp category_bg("sleep"), do: "bg-primary/10"
   defp category_bg(_), do: "bg-base-200"
-
-  @doc """
-  The running-timer card: a live-ticking duration, a Stop button, and an
-  optional `:controls` slot (rendered inside the same card, on a slightly darker
-  sub-bar) for actions that adjust *this* timer.
-  """
-  attr :entry, Entry, required: true
-  attr :can_write, :boolean, default: true
-  attr :on_stop, :string, default: "stop_timer", doc: "phx-click event for the Stop button"
-  attr :since_label, :string, default: nil, doc: "absolute start time, e.g. \"14:32\""
-  slot :controls, doc: "controls that act on this timer; shown on a subtle sub-bar"
-
-  def timer_banner(assigns) do
-    ~H"""
-    <div class="glance-pop timer-banner rounded-[var(--radius-card)] text-primary-content shadow-lg overflow-hidden">
-      <div class="flex items-center gap-3 p-4 min-[24rem]:gap-4 min-[24rem]:p-5">
-        <span class="glance-bubble glance-bubble-solid" aria-hidden="true">
-          <.icon name={entry_icon(@entry.type)} class="size-8" />
-        </span>
-        <div class="flex-1 min-w-0">
-          <div class="text-base font-semibold opacity-90">
-            {running_label(@entry)}<span :if={@since_label}> · since {@since_label}</span>
-          </div>
-          <div
-            id={"timer-#{@entry.id}"}
-            phx-hook="Timer"
-            data-since={DateTime.to_unix(@entry.started_at)}
-            class="whitespace-nowrap text-3xl font-extrabold leading-tight tabular-nums min-[24rem]:text-4xl"
-          >
-            0s
-          </div>
-        </div>
-        <.button
-          :if={@can_write}
-          type="button"
-          phx-click={@on_stop}
-          phx-value-id={@entry.id}
-          class="shrink-0 bg-primary-content text-(color:--banner-bg) border-0 hover:bg-primary-content hover:brightness-95"
-        >
-          Stop
-        </.button>
-      </div>
-
-      <div
-        :if={@controls != []}
-        class="flex flex-wrap items-center gap-2 px-4 py-3 bg-black/15"
-      >
-        {render_slot(@controls)}
-      </div>
-    </div>
-    """
-  end
-
-  @doc "Extra classes that style a `<.button>` to sit on the primary-colored timer card."
-  def timer_control_class do
-    "bg-primary-content/15 text-primary-content border-primary-content/25 " <>
-      "hover:bg-primary-content/30 hover:border-primary-content/40"
-  end
 
   @doc "Marks a feed that included the day's vitamin D drop."
   def vitamin_d_badge(assigns) do
@@ -467,9 +422,6 @@ defmodule TryggWeb.LogComponents do
       secs -> format_duration(secs)
     end
   end
-
-  defp running_label(%Entry{type: :sleep}), do: "Asleep"
-  defp running_label(_), do: "Timer running"
 
   defp contents_label("formula"), do: "formula"
   defp contents_label("expressed"), do: "expressed milk"

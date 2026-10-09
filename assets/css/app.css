@@ -150,9 +150,6 @@
   --ink-success: color-mix(in oklab, var(--color-success) 68%, black);
   --ink-warning: color-mix(in oklab, var(--color-warning) 74%, black);
   --ink-error: color-mix(in oklab, var(--color-error) 88%, black);
-  /* The running-timer card is a big primary surface with white text on it:
-     the light theme's bright orange is only ~2.7:1 there, so it is deepened. */
-  --banner-bg: color-mix(in oklab, var(--color-primary) 76%, black);
   --radius-card: 1.75rem;
 }
 :root[data-theme="dark"] {
@@ -161,7 +158,6 @@
   --ink-success: var(--color-success);
   --ink-warning: var(--color-warning);
   --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
-  --banner-bg: var(--color-primary);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
@@ -170,10 +166,8 @@
     --ink-success: var(--color-success);
     --ink-warning: var(--color-warning);
     --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
-    --banner-bg: var(--color-primary);
-  }
+    }
 }
-.timer-banner { background-color: var(--banner-bg); }
 @layer utilities {
   /* `bg-primary-content` marks a button that sits *on* a primary surface */
   .text-primary:not(.bg-primary-content) { color: var(--ink-primary); }
@@ -484,7 +478,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 .glance-card {
   --tint: var(--color-base-300);
   border-radius: var(--radius-card);
-  padding: 1.25rem;
+  padding: 1rem;
   border: 2px solid color-mix(in oklab, var(--tint) 45%, transparent);
   background: linear-gradient(
     135deg,
