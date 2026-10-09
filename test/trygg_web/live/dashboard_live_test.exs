@@ -1192,8 +1192,11 @@ defmodule TryggWeb.DashboardLiveTest do
 
       lv |> element("#home-alerts-no-wet-diaper-dismiss") |> render_click()
 
+      # Only this alert is dismissed. Other time-of-day dependent alerts (e.g.
+      # "low wet diapers today" shortly after midnight) may legitimately remain,
+      # so don't assert the whole alerts box is gone.
       refute has_element?(lv, "#home-alerts-no-wet-diaper")
-      refute has_element?(lv, "#home-alerts")
+      refute has_element?(lv, "#home-alerts-no-wet-diaper-dismiss")
     end
 
     test "a known age gives a next-nap estimate from the age prior", %{
