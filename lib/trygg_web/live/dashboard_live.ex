@@ -280,7 +280,21 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("open_sheet", %{"kind" => "layout"}, socket) do
     types = Enum.map(socket.assigns.current_child.tracked_types, &to_string/1)
-    {:noreply, assign(socket, sheet: :layout, sheet_form: layout_form(types))}
+
+    {:noreply,
+     assign(socket, sheet: :layout, sheet_form: layout_form(layout_order(types), types))}
+  end
+
+  # Ticking a tracker keeps the form in step with the page, so the move
+  # buttons (which carry no form data) act on what's currently shown.
+  def handle_event("layout_change", %{"layout" => params}, socket) do
+    order = layout_order(List.wrap(params["order"]))
+    {:noreply, assign(socket, :sheet_form, layout_form(order, checked_types(params)))}
+  end
+
+  def handle_event("move_layout", %{"type" => type, "dir" => dir}, socket) do
+    %{"order" => order, "tracked_types" => checked} = socket.assigns.sheet_form.params
+    {:noreply, assign(socket, :sheet_form, layout_form(move_type(order, type, dir), checked))}
   end
 
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
@@ -362,9 +376,17 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, socket |> clear_photo_upload() |> assign(sheet: :diaper_past, sheet_form: form)}
   end
 
-  def handle_event("save_layout", params, socket) do
-    types = get_in(params, ["layout", "tracked_types"]) |> List.wrap() |> Enum.reject(&(&1 == ""))
-    wanted = Enum.filter(Child.tracked_types(), &(to_string(&1) in types))
+  def handle_event("save_layout", %{"layout" => params}, socket) do
+    order = layout_order(List.wrap(params["order"]))
+    checked = checked_types(params)
+
+    # The submitted order is the new Home order; unticked trackers drop out of it
+    wanted =
+      for name <- order,
+          name in checked,
+          type <- Child.tracked_types(),
+          to_string(type) == name,
+          do: type
 
     case Families.update_tracked_types(
            socket.assigns.current_scope,
@@ -381,7 +403,8 @@ defmodule TryggWeb.DashboardLive do
       {:error, _changeset} ->
         {:noreply,
          assign(socket,
-           sheet_form: layout_form(types, tracked_types: {"pick at least one thing to track", []})
+           sheet_form:
+             layout_form(order, checked, tracked_types: {"pick at least one thing to track", []})
          )}
     end
   end
@@ -810,10 +833,38 @@ defmodule TryggWeb.DashboardLive do
   defp current_sheet_params(_socket), do: %{}
 
   # The sleep sheets submit as `sleep` params, everything else as `entry`.
-  defp layout_form(types, errors \\ []),
-    do: to_form(%{"tracked_types" => types}, as: :layout, errors: errors)
+  # `order` is every tracker in display order, `checked` the ones switched on.
+  defp layout_form(order, checked, errors \\ []),
+    do: to_form(%{"order" => order, "tracked_types" => checked}, as: :layout, errors: errors)
+
+  # Valid, unique tracker names in the given order, with any missing ones
+  # appended so every tracker always has a row.
+  defp layout_order(names) do
+    all = Enum.map(Child.tracked_types(), &to_string/1)
+    Enum.uniq(Enum.filter(names, &(&1 in all)) ++ all)
+  end
+
+  defp checked_types(params),
+    do: params["tracked_types"] |> List.wrap() |> Enum.reject(&(&1 == ""))
+
+  defp move_type(order, type, dir) do
+    case Enum.find_index(order, &(&1 == type)) do
+      nil -> order
+      i -> swap(order, i, if(dir == "up", do: i - 1, else: i + 1))
+    end
+  end
+
+  defp swap(order, i, j) when i < 0 or j < 0 or j >= length(order), do: order
+
+  defp swap(order, i, j) do
+    order |> List.replace_at(i, Enum.at(order, j)) |> List.replace_at(j, Enum.at(order, i))
+  end
 
   defp tracker_options, do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep"]
+
+  defp tracker_label(name),
+    do:
+      Enum.find_value(tracker_options(), fn {type, label} -> to_string(type) == name && label end)
 
   defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
   defp sheet_form_as(_sheet), do: :entry
@@ -1014,119 +1065,16 @@ defmodule TryggWeb.DashboardLive do
                answer ("when was the last diaper?") and the action sit together
                and nothing important is a scroll away on a phone. --%>
             <section id="glance-cards" class="space-y-4">
-              <div :if={Child.tracks?(@current_child, :feeding)} id="glance-feed">
-                <.glance_card
-                  index={0}
-                  emoji="🍼"
-                  label="Feeding"
-                  category="feed"
-                  tone={feed_tone(@outlook)}
-                  value={feed_value(@summary.last_feeding, @outlook)}
-                  sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
-                  status={feed_status(@summary.last_feeding, @outlook)}
-                  today={feed_today(@summary.today, @unit_system)}
-                >
-                  <:actions :if={@can_write}>
-                    <.button
-                      id="log-bottle"
-                      type="button"
-                      variant="info"
-                      phx-click="open_sheet"
-                      phx-value-kind="bottle"
-                      class="w-full"
-                    >
-                      <.icon name="hero-beaker" class="size-5" /> Log a bottle
-                    </.button>
-                  </:actions>
-                </.glance_card>
-              </div>
-              <div :if={Child.tracks?(@current_child, :diaper)} id="glance-diaper">
-                <.glance_card
-                  index={1}
-                  emoji={last_diaper_emoji(@summary.last_diaper)}
-                  label="Diaper"
-                  category="diaper"
-                  tone={diaper_tone(@outlook)}
-                  value={relative_time(time_of(@summary.last_diaper))}
-                  sub={diaper_sub(@summary.last_diaper)}
-                  status={diaper_status(@outlook)}
-                  today={diaper_today(@summary.today)}
-                >
-                  <:actions :if={@can_write}>
-                    <div id="log-diaper" class="grid grid-cols-3 gap-2">
-                      <.action_btn
-                        :for={{emoji, value, label} <- diaper_choices()}
-                        kind={"diaper_#{value}"}
-                        label={label}
-                        emoji={emoji}
-                        color_class={diaper_color_class(value)}
-                      />
-                    </div>
-                  </:actions>
-                </.glance_card>
-              </div>
-              <div :if={Child.tracks?(@current_child, :sleep)} id="glance-sleep">
-                <.glance_card
-                  index={2}
-                  timer={running_sleep_entry(@summary)}
-                  emoji={sleep_emoji(@summary)}
-                  snooze={sleeping?(@summary)}
-                  label={sleep_label(@summary)}
-                  category="sleep"
-                  tone={sleep_tone(@summary, @outlook)}
-                  value={sleep_value(@summary, @outlook)}
-                  sub={sleep_sub(@summary, @outlook, @current_child)}
-                  status={sleep_status(@summary, @outlook)}
-                  today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
-                >
-                  <:actions :if={@can_write}>
-                    <%= if sleeping?(@summary) do %>
-                      <.button
-                        id="stop-sleep"
-                        type="button"
-                        variant="primary"
-                        phx-click="request_stop"
-                        phx-value-id={running_sleep_entry(@summary).id}
-                        class="w-full"
-                      >
-                        <.icon name="hero-stop" class="size-5" /> Stop
-                      </.button>
-                      <%!-- Fix a start time that was logged late --%>
-                      <div id="sleep-nudges" class="mt-3">
-                        <div class="mb-1.5 text-xs opacity-80">Started earlier?</div>
-                        <div class="grid grid-cols-4 gap-2">
-                          <.button
-                            :for={m <- nudge_minutes()}
-                            type="button"
-                            size="xs"
-                            phx-click="nudge_start"
-                            phx-value-by={m}
-                          >
-                            {m}m
-                          </.button>
-                          <.button
-                            type="button"
-                            size="xs"
-                            phx-click="open_sheet"
-                            phx-value-kind="sleep_start"
-                          >
-                            <.icon name="hero-pencil-square" class="size-3.5" /> Edit
-                          </.button>
-                        </div>
-                      </div>
-                    <% else %>
-                      <.button
-                        id="log-sleep"
-                        variant="primary"
-                        phx-click="start_sleep"
-                        class="w-full"
-                      >
-                        <.icon name="hero-moon" class="size-5" /> Start sleep
-                      </.button>
-                    <% end %>
-                  </:actions>
-                </.glance_card>
-              </div>
+              <.glance
+                :for={{type, i} <- Enum.with_index(@current_child.tracked_types)}
+                type={type}
+                index={i}
+                summary={@summary}
+                outlook={@outlook}
+                current_child={@current_child}
+                unit_system={@unit_system}
+                can_write={@can_write}
+              />
             </section>
 
             <%!-- The odd ones out — rare enough to stay small --%>
@@ -1260,6 +1208,144 @@ defmodule TryggWeb.DashboardLive do
 
   ## Small render components ---------------------------------------------
 
+  attr :type, :atom, required: true
+  attr :index, :integer, required: true, doc: "position in the child's Home order"
+  attr :summary, :map, required: true
+  attr :outlook, :map, required: true
+  attr :current_child, :map, required: true
+  attr :unit_system, :atom, required: true
+  attr :can_write, :boolean, required: true
+
+  # One at-a-glance card with its log buttons. Home renders these in the order
+  # of the child's `tracked_types`, which is how caregivers arrange Home.
+  defp glance(%{type: :feeding} = assigns) do
+    ~H"""
+    <div id="glance-feed">
+      <.glance_card
+        index={@index}
+        emoji="🍼"
+        label="Feeding"
+        category="feed"
+        tone={feed_tone(@outlook)}
+        value={feed_value(@summary.last_feeding, @outlook)}
+        sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+        status={feed_status(@summary.last_feeding, @outlook)}
+        today={feed_today(@summary.today, @unit_system)}
+      >
+        <:actions :if={@can_write}>
+          <.button
+            id="log-bottle"
+            type="button"
+            variant="info"
+            phx-click="open_sheet"
+            phx-value-kind="bottle"
+            class="w-full"
+          >
+            <.icon name="hero-beaker" class="size-5" /> Log a bottle
+          </.button>
+        </:actions>
+      </.glance_card>
+    </div>
+    """
+  end
+
+  defp glance(%{type: :diaper} = assigns) do
+    ~H"""
+    <div id="glance-diaper">
+      <.glance_card
+        index={@index}
+        emoji={last_diaper_emoji(@summary.last_diaper)}
+        label="Diaper"
+        category="diaper"
+        tone={diaper_tone(@outlook)}
+        value={relative_time(time_of(@summary.last_diaper))}
+        sub={diaper_sub(@summary.last_diaper)}
+        status={diaper_status(@outlook)}
+        today={diaper_today(@summary.today)}
+      >
+        <:actions :if={@can_write}>
+          <div id="log-diaper" class="grid grid-cols-3 gap-2">
+            <.action_btn
+              :for={{emoji, value, label} <- diaper_choices()}
+              kind={"diaper_#{value}"}
+              label={label}
+              emoji={emoji}
+              color_class={diaper_color_class(value)}
+            />
+          </div>
+        </:actions>
+      </.glance_card>
+    </div>
+    """
+  end
+
+  defp glance(%{type: :sleep} = assigns) do
+    ~H"""
+    <div id="glance-sleep">
+      <.glance_card
+        index={@index}
+        timer={running_sleep_entry(@summary)}
+        emoji={sleep_emoji(@summary)}
+        snooze={sleeping?(@summary)}
+        label={sleep_label(@summary)}
+        category="sleep"
+        tone={sleep_tone(@summary, @outlook)}
+        value={sleep_value(@summary, @outlook)}
+        sub={sleep_sub(@summary, @outlook, @current_child)}
+        status={sleep_status(@summary, @outlook)}
+        today={"#{format_duration(@summary.today.sleep_seconds)} slept today"}
+      >
+        <:actions :if={@can_write}>
+          <%= if sleeping?(@summary) do %>
+            <.button
+              id="stop-sleep"
+              type="button"
+              variant="primary"
+              phx-click="request_stop"
+              phx-value-id={running_sleep_entry(@summary).id}
+              class="w-full"
+            >
+              <.icon name="hero-stop" class="size-5" /> Stop
+            </.button>
+            <%!-- Fix a start time that was logged late --%>
+            <div id="sleep-nudges" class="mt-3">
+              <div class="mb-1.5 text-xs opacity-80">Started earlier?</div>
+              <div class="grid grid-cols-4 gap-2">
+                <.button
+                  :for={m <- nudge_minutes()}
+                  type="button"
+                  size="xs"
+                  phx-click="nudge_start"
+                  phx-value-by={m}
+                >
+                  {m}m
+                </.button>
+                <.button
+                  type="button"
+                  size="xs"
+                  phx-click="open_sheet"
+                  phx-value-kind="sleep_start"
+                >
+                  <.icon name="hero-pencil-square" class="size-3.5" /> Edit
+                </.button>
+              </div>
+            </div>
+          <% else %>
+            <.button
+              id="log-sleep"
+              variant="primary"
+              phx-click="start_sleep"
+              class="w-full"
+            >
+              <.icon name="hero-moon" class="size-5" /> Start sleep
+            </.button>
+          <% end %>
+        </:actions>
+      </.glance_card>
+    </div>
+    """
+  end
+
   attr :kind, :string, required: true
   attr :label, :string, required: true
   attr :emoji, :string, required: true
@@ -1345,25 +1431,64 @@ defmodule TryggWeb.DashboardLive do
         <% :layout -> %>
           <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
           <p class="text-sm opacity-60 mb-4">
-            Choose what to track. Everyone caring for this child sees the same Home screen.
-            Hidden entries stay in the full log and reports.
+            Choose what to track and put it in the order you like. Everyone caring for this child
+            sees the same Home screen. Hidden entries stay in the full log and reports.
           </p>
-          <.form for={@form} id="layout-form" phx-submit="save_layout" class="space-y-2">
+          <.form
+            for={@form}
+            id="layout-form"
+            phx-change="layout_change"
+            phx-submit="save_layout"
+            class="space-y-2"
+          >
             <input type="hidden" name="layout[tracked_types][]" value="" />
-            <label
-              :for={{type, label} <- tracker_options()}
-              class="flex items-center gap-3 rounded-box bg-base-200/60 p-3"
+            <% order = List.wrap(@form.params["order"]) %>
+            <div
+              :for={{type, i} <- Enum.with_index(order)}
+              id={"layout-row-#{type}"}
+              class="flex items-center gap-1 rounded-box bg-base-200/60 pr-2"
             >
-              <input
-                type="checkbox"
-                id={"layout-#{type}"}
-                name="layout[tracked_types][]"
-                value={type}
-                checked={to_string(type) in List.wrap(@form.params["tracked_types"])}
-                class="checkbox checkbox-sm"
-              />
-              <span class="font-medium">{label}</span>
-            </label>
+              <input type="hidden" name="layout[order][]" value={type} />
+              <label class="flex min-h-12 flex-1 items-center gap-3 p-3">
+                <input
+                  type="checkbox"
+                  id={"layout-#{type}"}
+                  name="layout[tracked_types][]"
+                  value={type}
+                  checked={type in List.wrap(@form.params["tracked_types"])}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="font-medium">{tracker_label(type)}</span>
+              </label>
+              <.button
+                id={"layout-up-#{type}"}
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="btn-circle"
+                phx-click="move_layout"
+                phx-value-type={type}
+                phx-value-dir="up"
+                disabled={i == 0}
+                aria-label={"Move #{tracker_label(type)} up"}
+              >
+                <.icon name="hero-chevron-up" class="size-5" />
+              </.button>
+              <.button
+                id={"layout-down-#{type}"}
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="btn-circle"
+                phx-click="move_layout"
+                phx-value-type={type}
+                phx-value-dir="down"
+                disabled={i == length(order) - 1}
+                aria-label={"Move #{tracker_label(type)} down"}
+              >
+                <.icon name="hero-chevron-down" class="size-5" />
+              </.button>
+            </div>
             <p
               :for={{msg, _opts} <- @form[:tracked_types].errors}
               id="layout-error"
