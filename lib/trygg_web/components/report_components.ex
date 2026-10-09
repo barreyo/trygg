@@ -499,8 +499,7 @@ defmodule TryggWeb.ReportComponents do
           <span
             class={["mt-1.5 size-2.5 rounded-full shrink-0", severity_dot(alert.severity)]}
             aria-hidden="true"
-          >
-          </span>
+          ></span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-semibold leading-tight">{alert.title}</p>
             <p class="text-xs opacity-70 mt-0.5 leading-snug">{alert.detail}</p>

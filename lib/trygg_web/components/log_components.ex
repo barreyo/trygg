@@ -627,8 +627,7 @@ defmodule TryggWeb.LogComponents do
       <span class={[
         "loading loading-spinner loading-sm",
         !@uploading? && "hidden phx-submit-loading:inline-block"
-      ]}>
-      </span>
+      ]}></span>
       <span :if={@uploading?}>Waiting for photo…</span>
       <span :if={!@uploading?} class="phx-submit-loading:hidden">{@label}</span>
       <span :if={!@uploading?} class="hidden phx-submit-loading:inline">{@saving_label}</span>
@@ -684,8 +683,7 @@ defmodule TryggWeb.LogComponents do
             class="progress progress-primary h-1.5 w-full max-w-48"
             value={entry.progress}
             max="100"
-          >
-          </progress>
+          ></progress>
           <p class="text-xs opacity-70">Uploading photo… {entry.progress}%</p>
         </div>
 

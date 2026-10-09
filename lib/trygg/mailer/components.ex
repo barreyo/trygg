@@ -65,6 +65,8 @@ defmodule Trygg.Mailer.Components do
   attr :reason, :string, required: true, doc: "Why they're getting this, for the footer."
   slot :inner_block, required: true
 
+  # `@css` is a compile-time constant stylesheet, never user input.
+  # sobelow_skip ["XSS.Raw"]
   def layout(assigns) do
     assigns =
       assign(assigns,

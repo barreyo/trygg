@@ -107,8 +107,7 @@ defmodule TryggWeb.LoginComponents do
         :for={{x, y, size, delay, color, kind} <- @stars}
         class={["login-star", kind == :dot && "login-star-dot"]}
         style={"left: #{x}%; top: #{y}%; width: #{size}px; --d: #{delay}s; --c: #{color}"}
-      >
-      </span>
+      ></span>
 
       <%!-- A shooting star every now and then --%>
       <span class="login-shoot"></span>
