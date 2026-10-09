@@ -23,6 +23,11 @@ export function installOfflinePanel(liveSocket) {
       inset: "0",
       zIndex: "9999",
       overflowY: "auto",
+      overscrollBehavior: "contain",
+      boxSizing: "border-box",
+      // The standalone PWA draws under the status bar and home indicator.
+      padding:
+        "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)",
       background: "Canvas",
     })
     document.body.append(overlay)

@@ -141,13 +141,13 @@ defmodule TryggWeb.SkeletonComponents do
 
   def glance_card_skeleton(assigns) do
     ~H"""
-    <div class={["rounded-[1.75rem] bg-base-200/70 p-4", @class]}>
+    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-5", @class]}>
       <div class="flex items-center gap-4">
         <.bone class="size-16 shrink-0 rounded-full" />
-        <div class="min-w-0 flex-1 space-y-2">
-          <.bone class="h-3.5 w-1/4 rounded" />
-          <.bone class="h-8 w-3/5 rounded" />
-          <.bone class="h-4 w-4/5 rounded" />
+        <div class="min-w-0 flex-1">
+          <.bone class="my-[3px] h-3.5 w-1/4 rounded" />
+          <.bone class="my-[3px] h-[1.9rem] w-3/5 rounded" />
+          <.bone class="my-[3px] h-4 w-4/5 rounded" />
         </div>
       </div>
       <div class="mt-4 flex items-center gap-3">
@@ -167,17 +167,17 @@ defmodule TryggWeb.SkeletonComponents do
       <.glance_card_skeleton :for={_ <- 1..3} />
     </section>
 
-    <div :if={@can_write} class="mt-6 space-y-4 rounded-[1.75rem] bg-base-200/60 p-5">
-      <.bone class="h-6 w-40 rounded" />
-      <.bone class="h-14 w-full rounded-field" />
-      <.bone class="h-14 w-full rounded-field" />
+    <div :if={@can_write} class="mt-6 space-y-4 rounded-[var(--radius-card)] bg-base-200/60 p-5">
+      <.bone class="h-7 w-40 rounded" />
+      <.bone class="h-[3.3rem] w-full rounded-field" />
+      <.bone class="h-[3.3rem] w-full rounded-field" />
       <div>
-        <.bone class="h-3.5 w-14 rounded mb-2" />
+        <.bone class="mb-2 h-5 w-14 rounded" />
         <div class="grid grid-cols-3 gap-3">
-          <.bone :for={_ <- 1..3} class="h-[6.25rem] rounded-field" />
+          <.bone :for={_ <- 1..3} class="h-[5.875rem] rounded-field" />
         </div>
       </div>
-      <.bone class="h-9 w-44 mx-auto rounded-field" />
+      <.bone class="mx-auto h-10 w-44 rounded-field" />
     </div>
     """
   end
@@ -191,7 +191,7 @@ defmodule TryggWeb.SkeletonComponents do
       <div class="md:col-start-1 min-w-0">
         <section class="rounded-box border border-base-300 bg-base-200/40 p-2">
           <div class="grid grid-cols-2 gap-2">
-            <.stat_card_skeleton :for={_ <- 1..2} class="h-24" />
+            <.stat_card_skeleton :for={_ <- 1..2} class="h-[4.75rem]" />
           </div>
         </section>
 
@@ -200,17 +200,19 @@ defmodule TryggWeb.SkeletonComponents do
             <.bone class="h-4 w-24 rounded" />
             <.bone class="h-3 w-20 rounded" />
           </div>
-          <div class="p-3 space-y-2">
-            <.bone class="h-6 w-2/5 rounded" />
-            <.bone class="h-3 w-4/5 rounded" />
+          <div class="p-3 space-y-3">
+            <.bone class="h-7 w-2/5 rounded" />
+            <.bone class="h-4 w-full rounded" />
+            <.bone class="h-4 w-4/5 rounded" />
+            <.bone class="h-4 w-3/5 rounded" />
           </div>
         </section>
 
-        <.bone :if={@can_write} class="mt-4 h-12 w-full rounded-field" />
+        <.bone :if={@can_write} class="mt-4 h-[3.3rem] w-full rounded-field" />
       </div>
 
       <section class="mt-6 md:mt-0 md:col-start-2 md:row-span-2 md:row-start-1 min-w-0 rounded-box border border-base-300 overflow-hidden">
-        <div class="bg-base-200/40 px-3 pt-3 pb-3 space-y-3">
+        <div class="bg-base-200/40 px-3 pt-3 pb-2 space-y-2">
           <div class="flex items-start justify-between gap-2">
             <div class="space-y-1.5">
               <.bone class="h-4 w-16 rounded" />
@@ -221,12 +223,12 @@ defmodule TryggWeb.SkeletonComponents do
               <.bone class="size-11 rounded-field" />
             </div>
           </div>
-          <.bone class="h-9 w-full rounded-field" />
+          <.bone class="h-11 w-full rounded-field" />
         </div>
         <div class="divide-y divide-base-300">
           <div :for={_ <- 1..2} class="p-3 space-y-2">
             <.bone class="h-4 w-20 rounded" />
-            <.bone class="h-44 w-full rounded-box" />
+            <.bone class="h-[13.5rem] w-full rounded-box" />
           </div>
         </div>
       </section>

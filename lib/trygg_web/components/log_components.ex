@@ -5,7 +5,7 @@ defmodule TryggWeb.LogComponents do
   use Phoenix.Component
 
   import Phoenix.LiveView, only: [consume_uploaded_entries: 3, cancel_upload: 3]
-  import TryggWeb.CoreComponents, only: [icon: 1, button: 1, input: 1]
+  import TryggWeb.CoreComponents, only: [icon: 1, button: 1, input: 1, sheet_frame: 1]
 
   alias Trygg.Accounts.Scope
   alias Trygg.Accounts.User
@@ -65,14 +65,14 @@ defmodule TryggWeb.LogComponents do
           <div class="text-lg sm:text-xl font-semibold leading-tight tabular-nums break-words">
             {@value}
           </div>
-          <div :if={@sub} class="text-xs opacity-60 leading-snug break-words mt-0.5">{@sub}</div>
+          <div :if={@sub} class="text-xs opacity-70 leading-snug break-words mt-0.5">{@sub}</div>
         </div>
         <div :if={@badge} id={@badge_id} class="text-right shrink-0">
           <div class="text-lg font-semibold leading-tight tabular-nums">{@badge}</div>
           <div :if={@badge_label} class="text-xs opacity-60">{@badge_label}</div>
         </div>
       </div>
-      <div :if={@today} class="text-[11px] opacity-50 leading-snug break-words tabular-nums">
+      <div :if={@today} class="text-xs opacity-70 leading-snug break-words tabular-nums">
         {@today}
       </div>
       <div
@@ -165,8 +165,8 @@ defmodule TryggWeb.LogComponents do
 
   def timer_banner(assigns) do
     ~H"""
-    <div class="glance-pop rounded-[1.75rem] bg-primary text-primary-content shadow-lg overflow-hidden">
-      <div class="p-5 flex items-center gap-4">
+    <div class="glance-pop timer-banner rounded-[var(--radius-card)] text-primary-content shadow-lg overflow-hidden">
+      <div class="flex items-center gap-3 p-4 min-[24rem]:gap-4 min-[24rem]:p-5">
         <span class="glance-bubble glance-bubble-solid" aria-hidden="true">
           <.icon name={entry_icon(@entry.type)} class="size-8" />
         </span>
@@ -178,7 +178,7 @@ defmodule TryggWeb.LogComponents do
             id={"timer-#{@entry.id}"}
             phx-hook="Timer"
             data-since={DateTime.to_unix(@entry.started_at)}
-            class="text-4xl font-extrabold leading-tight tabular-nums"
+            class="whitespace-nowrap text-3xl font-extrabold leading-tight tabular-nums min-[24rem]:text-4xl"
           >
             0s
           </div>
@@ -188,7 +188,7 @@ defmodule TryggWeb.LogComponents do
           type="button"
           phx-click={@on_stop}
           phx-value-id={@entry.id}
-          class="bg-primary-content text-primary border-0 hover:bg-primary-content hover:brightness-95"
+          class="shrink-0 bg-primary-content text-(color:--banner-bg) border-0 hover:bg-primary-content hover:brightness-95"
         >
           Stop
         </.button>
@@ -259,7 +259,19 @@ defmodule TryggWeb.LogComponents do
 
   def entry_row(assigns) do
     ~H"""
-    <div class={["py-3", @on_click && "cursor-pointer"]} phx-click={@on_click} {@rest}>
+    <div
+      class={[
+        "py-3",
+        @on_click &&
+          "cursor-pointer outline-offset-[-2px] transition-colors active:bg-base-200/70 focus-visible:outline-2 focus-visible:outline-primary"
+      ]}
+      phx-click={@on_click}
+      phx-keydown={@on_click}
+      phx-key="Enter"
+      role={@on_click && "button"}
+      tabindex={@on_click && "0"}
+      {@rest}
+    >
       <div class="flex items-center gap-3">
         <div class="size-9 rounded-full grid place-items-center shrink-0 bg-base-200">
           <span
@@ -306,13 +318,13 @@ defmodule TryggWeb.LogComponents do
           </div>
           <div
             :if={Entry.logged_by_integration?(@entry)}
-            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-40 truncate max-w-24"
+            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-60 truncate max-w-24"
             title={"Logged by an integration: #{@entry.logged_via}"}
             data-logged-by="integration"
           >
             <.icon name="hero-bolt" class="size-3 shrink-0" /> Other
           </div>
-          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-40 truncate max-w-24">
+          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-60 truncate max-w-24">
             {User.capitalize_name(@entry.logged_by.first_name)}
           </div>
         </div>
@@ -647,7 +659,7 @@ defmodule TryggWeb.LogComponents do
   def photo_field(assigns) do
     ~H"""
     <div class="fieldset mb-2" phx-drop-target={@upload.ref}>
-      <span class="label mb-1">Photo <span class="opacity-50">(optional)</span></span>
+      <span class="label mb-1">Photo <span class="opacity-60">(optional)</span></span>
 
       <div :if={@current_src && @upload.entries == []} class="mb-2 space-y-1">
         <img
@@ -724,71 +736,66 @@ defmodule TryggWeb.LogComponents do
 
   def edit_modal(assigns) do
     ~H"""
-    <div
+    <.sheet_frame
       id="edit-entry-modal"
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      phx-window-keydown="cancel_edit"
-      phx-key="escape"
-      phx-hook="ModalBack"
-      data-close-event="cancel_edit"
+      close="cancel_edit"
+      label={"Edit this #{entry_noun(@entry)}"}
+      modal_back
     >
-      <div class="absolute inset-0 bg-black/60" phx-click="cancel_edit"></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border sm:rounded-box rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto">
-        <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
+      <h3 class="font-semibold text-lg mb-3">Edit this {entry_noun(@entry)}</h3>
 
-        <.form
-          for={@form}
-          id="edit-entry-form"
-          phx-change="validate_edit"
-          phx-submit="save_edit"
-          class="space-y-3"
+      <.form
+        for={@form}
+        id="edit-entry-form"
+        phx-change="validate_edit"
+        phx-submit="save_edit"
+        class="space-y-3"
+      >
+        <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
+        <.input
+          :if={@entry.type == :sleep}
+          field={@form[:ended_at]}
+          type="datetime-local"
+          label="Ended"
+        />
+        <.input
+          :if={has_amount?(@entry)}
+          field={@form[:amount]}
+          type="number"
+          step="any"
+          label="Amount (ml)"
+        />
+        <.vitamin_d_field
+          :if={@vitamin_d?}
+          id="edit-vitamin-d"
+          checked={@form.params["vitamin_d"] == "true"}
+        />
+        <.input field={@form[:note]} type="text" label="Note" />
+
+        <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
+
+        <div class="flex gap-2 pt-1">
+          <.save_button
+            label="Save"
+            saving_label="Saving…"
+            uploading?={photo_uploading?(@upload)}
+            class="flex-1"
+          />
+          <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
+        </div>
+        <.button
+          id="edit-entry-delete"
+          type="button"
+          variant="outline"
+          size="sm"
+          phx-click="delete_entry"
+          data-confirm="Delete this entry?"
+          class="btn-error w-full mt-2"
         >
-          <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
-          <.input
-            :if={@entry.type == :sleep}
-            field={@form[:ended_at]}
-            type="datetime-local"
-            label="Ended"
-          />
-          <.input
-            :if={has_amount?(@entry)}
-            field={@form[:amount]}
-            type="number"
-            step="any"
-            label="Amount (ml)"
-          />
-          <.vitamin_d_field
-            :if={@vitamin_d?}
-            id="edit-vitamin-d"
-            checked={@form.params["vitamin_d"] == "true"}
-          />
-          <.input field={@form[:note]} type="text" label="Note" />
-
-          <.photo_field upload={@upload} current_src={@photo_src} removable={@photo_src != nil} />
-
-          <div class="flex gap-2 pt-1">
-            <.save_button
-              label="Save"
-              saving_label="Saving…"
-              uploading?={photo_uploading?(@upload)}
-              class="flex-1"
-            />
-            <.button type="button" variant="ghost" phx-click="cancel_edit">Cancel</.button>
-          </div>
-          <.button
-            id="edit-entry-delete"
-            type="button"
-            variant="outline"
-            size="sm"
-            phx-click="delete_entry"
-            data-confirm="Delete this entry?"
-            class="btn-error w-full mt-2"
-          >
-            Delete
-          </.button>
-        </.form>
-      </div>
-    </div>
+          Delete
+        </.button>
+      </.form>
+    </.sheet_frame>
     """
   end
 

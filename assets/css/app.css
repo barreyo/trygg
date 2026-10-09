@@ -39,7 +39,7 @@
   --color-accent-content: oklch(96% 0.016 293.756);
   --color-neutral: oklch(37% 0.044 257.287);
   --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
+  --color-info: oklch(54% 0.15 241.966);
   --color-info-content: oklch(97% 0.013 236.62);
   --color-success: oklch(60% 0.118 184.704);
   --color-success-content: oklch(98% 0.014 180.72);
@@ -76,7 +76,7 @@
   --color-accent-content: oklch(100% 0 0);
   --color-neutral: oklch(44% 0.017 285.786);
   --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
+  --color-info: oklch(54% 0.2 259.815);
   --color-info-content: oklch(97% 0.014 254.604);
   --color-success: oklch(70% 0.14 182.503);
   --color-success-content: oklch(98% 0.014 180.72);
@@ -132,8 +132,55 @@
   --color-diaper-pee-content: oklch(28% 0.04 95);
   --color-diaper-poo: oklch(38% 0.07 50);
   --color-diaper-poo-content: oklch(96% 0.01 90);
-  --color-diaper-mixed: oklch(64% 0.19 35);
+  --color-diaper-mixed: oklch(56% 0.19 35);
   --color-diaper-mixed-content: oklch(98% 0.02 60);
+}
+
+/*
+ * Readable accent text. The theme's brand/status colors are tuned as *fills*
+ * (buttons, badges, tints): used as text they come out at ~2.2-3.6:1 on the
+ * page surface (orange on near-white, indigo on true black), under the 4.5:1
+ * small text needs. These "ink" variants are the same hues pulled darker on
+ * the light theme and lighter on the dark one, and `text-primary` & friends
+ * pick them up. The filled-button look is untouched.
+ */
+:root {
+  --ink-primary: color-mix(in oklab, var(--color-primary) 72%, black);
+  --ink-info: color-mix(in oklab, var(--color-info) 78%, black);
+  --ink-success: color-mix(in oklab, var(--color-success) 68%, black);
+  --ink-warning: color-mix(in oklab, var(--color-warning) 74%, black);
+  --ink-error: color-mix(in oklab, var(--color-error) 88%, black);
+  /* The running-timer card is a big primary surface with white text on it:
+     the light theme's bright orange is only ~2.7:1 there, so it is deepened. */
+  --banner-bg: color-mix(in oklab, var(--color-primary) 76%, black);
+  --radius-card: 1.75rem;
+}
+:root[data-theme="dark"] {
+  --ink-primary: color-mix(in oklab, var(--color-primary) 72%, white);
+  --ink-info: color-mix(in oklab, var(--color-info) 86%, white);
+  --ink-success: var(--color-success);
+  --ink-warning: var(--color-warning);
+  --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
+  --banner-bg: var(--color-primary);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --ink-primary: color-mix(in oklab, var(--color-primary) 72%, white);
+    --ink-info: color-mix(in oklab, var(--color-info) 86%, white);
+    --ink-success: var(--color-success);
+    --ink-warning: var(--color-warning);
+    --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
+    --banner-bg: var(--color-primary);
+  }
+}
+.timer-banner { background-color: var(--banner-bg); }
+@layer utilities {
+  /* `bg-primary-content` marks a button that sits *on* a primary surface */
+  .text-primary:not(.bg-primary-content) { color: var(--ink-primary); }
+  .text-info { color: var(--ink-info); }
+  .text-success { color: var(--ink-success); }
+  .text-warning { color: var(--ink-warning); }
+  .text-error { color: var(--ink-error); }
 }
 
 /* This file is for your main application CSS */
@@ -251,13 +298,6 @@ html { overscroll-behavior-y: none; }
   .rhythm-pulse { animation: none; }
 }
 
-/* Bottom-sheet dialogs: slide up from the bottom on small screens */
-dialog.sheet { margin: 0 auto auto; }
-dialog.sheet::backdrop { background: rgb(0 0 0 / 0.6); }
-@media (min-width: 30rem) {
-  dialog.sheet { margin: auto; }
-}
-
 /*
  * Loading states — see `TryggWeb.Loading` / `TryggWeb.SkeletonComponents`.
  * A skeleton waits a beat before fading in, so a quick load goes straight to
@@ -269,8 +309,10 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.6); }
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.trygg-skeleton { animation: trygg-fade-in 300ms ease-out 150ms both; }
-.trygg-reveal { animation: trygg-fade-in 200ms ease-out both; }
+/* `backwards`, not `both`: the end state is just the element's own style, and
+   a held `opacity: 1` would beat later rules such as `.loading-dim`'s dimming. */
+.trygg-skeleton { animation: trygg-fade-in 300ms ease-out 150ms backwards; }
+.trygg-reveal { animation: trygg-fade-in 200ms ease-out backwards; }
 
 /*
  * A region being refined in place (the Log filter, the Reports view tabs)
@@ -297,6 +339,25 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 @media (prefers-reduced-motion: reduce) {
   .trygg-skeleton, .trygg-reveal { animation: none; }
   #main-content, .loading-dim { transition: none; }
+}
+
+/*
+ * Touch floor for the compact button sizes. With the roomier `--size-field`
+ * token, daisyUI's `xs`/`sm` come out at ~26px / ~35px tall with 11px / 12px
+ * labels: fine for a mouse, too small for a thumb at 3 AM. These keep the
+ * "smaller than a normal button" hierarchy but stay comfortably tappable.
+ */
+@layer utilities {
+  .btn-xs {
+    --fontsize: 0.8125rem;
+    --btn-p: 0.75rem;
+    --size: 2.25rem;
+  }
+  .btn-sm {
+    --fontsize: 0.875rem;
+    --btn-p: 0.875rem;
+    --size: 2.5rem;
+  }
 }
 
 /*
@@ -364,7 +425,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   }
   .input { padding-inline: 1rem; }
   .textarea { padding: 0.75rem 1rem; }
-  .input::placeholder, .textarea::placeholder { opacity: 0.55; font-weight: 500; }
+  .input::placeholder, .textarea::placeholder { opacity: 0.62; font-weight: 500; }
 
   /* After the base rule above, so an error border isn't flattened back to grey */
   .input-error, .select-error, .textarea-error {
@@ -422,7 +483,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
  */
 .glance-card {
   --tint: var(--color-base-300);
-  border-radius: 1.75rem;
+  border-radius: var(--radius-card);
   padding: 1.25rem;
   border: 2px solid color-mix(in oklab, var(--tint) 45%, transparent);
   background: linear-gradient(
@@ -460,6 +521,10 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   border-color: color-mix(in oklab, var(--color-primary-content) 30%, transparent);
   box-shadow: none;
 }
+/* Small phones: a smaller bubble gives the big numbers room to stay on one line */
+@media (max-width: 24rem) {
+  .glance-bubble { width: 3rem; height: 3rem; font-size: 1.5rem; }
+}
 .glance-snooze { position: absolute; top: -0.35rem; right: -0.5rem; font-size: 1.1rem; }
 
 .glance-pill {
@@ -484,7 +549,14 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   from { opacity: 0; transform: translateY(16px) scale(0.96); }
   to   { opacity: 1; transform: none; }
 }
-.glance-pop { animation: glance-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both; animation-delay: var(--d, 0ms); }
+/* `backwards`: holds the from-state during the stagger delay, then lets go */
+.glance-pop { animation: glance-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; animation-delay: var(--d, 0ms); }
+
+/* The bobbing bubbles and Zzz rest while a sheet or modal covers the page */
+body:has(#quick-sheet, #edit-entry-modal) .glance-bubble,
+body:has(#quick-sheet, #edit-entry-modal) .snooze i {
+  animation-play-state: paused;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .glance-pop, .glance-bubble { animation: none; }
@@ -497,12 +569,13 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
  * (`.login-hero`) in the page flow. Every rule here only *adds* motion to a
  * page that already looks right standing still, so the reduced-motion block
  * at the end can simply switch the animations off. Entrance animations use
- * `both` fill and run once when the element is inserted; LiveView patches
- * later never replay them.
+ * `backwards` fill (the end state is the element's own style, so nothing is
+ * held that could override a later hover/`translate`) and run once when the
+ * element is inserted; LiveView patches later never replay them.
  */
 .login-sky {
   background: linear-gradient(to bottom, #120e3d 0%, #271d6b 55%, #4a2f86 88%, #7a4486 100%);
-  animation: login-fade-in 900ms ease-out both;
+  animation: login-fade-in 900ms ease-out backwards;
 }
 .login-horizon {
   background: radial-gradient(ellipse 90% 38% at 50% 100%, rgb(255 157 92 / 0.42), transparent 70%);
@@ -514,13 +587,25 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   from { opacity: 0; transform: scale(0.9) translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
-.login-scene-in { animation: login-scene-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) 150ms both; }
+.login-scene-in { animation: login-scene-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) 150ms backwards; }
 
 @keyframes login-rise {
   from { opacity: 0; transform: translateY(18px); }
   to   { opacity: 1; transform: none; }
 }
-.login-rise { animation: login-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0s); }
+.login-rise { animation: login-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; animation-delay: var(--d, 0s); }
+
+/* A soft dark vignette behind the white copy that sits on the sky, so a star
+   or heart drifting behind a word doesn't eat it. No visible edge. */
+.login-copy { position: relative; }
+.login-copy::before {
+  content: "";
+  position: absolute;
+  inset: -0.75rem;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(18 14 61 / 0.62), rgb(18 14 61 / 0.3) 60%, transparent);
+}
 
 /* Stars: a sparkle shape (clip-path) or a plain dot, twinkling out of phase */
 .login-star {
@@ -629,8 +714,13 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   60%  { transform: translateY(0) scale(1.04, 0.95); }
   100% { transform: translateY(0) scale(1, 1); }
 }
-.login-stage:has(.login-cta:hover, .login-cta:focus-visible) .login-hop {
+.login-stage:has(.login-cta:focus-visible) .login-hop {
   animation: login-hop 520ms ease-out;
+}
+@media (hover: hover) {
+  .login-stage:has(.login-cta:hover) .login-hop {
+    animation: login-hop 520ms ease-out;
+  }
 }
 
 @keyframes login-z {
@@ -678,30 +768,49 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 }
 .login-beat { animation: login-beat 2.4s ease-in-out infinite; }
 
-/* "Create an account" call to action: a glint sweeps across now and then */
-.login-cta { position: relative; overflow: hidden; isolation: isolate; }
+/* "Create an account" call to action: a glint sweeps across now and then.
+   The glint is a gradient that slides by `background-position` inside the
+   button's own box, so the button needs no `overflow: hidden` (which would
+   clip its toy edge and focus ring). */
+.login-cta { position: relative; isolation: isolate; }
 .login-cta::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%);
-  transform: translateX(-120%);
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%) no-repeat;
+  background-size: 60% 100%;
+  background-position: -120% 0;
   animation: login-glint 5.5s ease-in-out 1.6s infinite;
 }
 @keyframes login-glint {
-  0%   { transform: translateX(-120%); }
-  22%  { transform: translateX(120%); }
-  100% { transform: translateX(120%); }
+  0%   { background-position: -120% 0; }
+  22%  { background-position: 220% 0; }
+  100% { background-position: 220% 0; }
 }
 .login-cta-arrow { display: inline-block; transition: transform 200ms ease; }
-.login-cta:hover .login-cta-arrow,
 .login-cta:focus-visible .login-cta-arrow { transform: translateX(4px); }
+@media (hover: hover) {
+  .login-cta:hover .login-cta-arrow { transform: translateX(4px); }
+}
 
-/* Lift via the individual `translate` property so the rise animation's
-   held end-state (`transform: none`) can't override it */
+/* Lift via the individual `translate` property, so it composes with (rather
+   than fights) the rise animation's `transform` */
 .login-new-card { transition: translate 200ms ease; }
-.login-new-card:hover { translate: 0 -2px; }
+@media (hover: hover) {
+  .login-new-card:hover { translate: 0 -2px; }
+}
+
+/* While a field has focus the sky holds still: nothing twinkles behind the
+   thing being typed, and the phone's GPU gets a rest. (`:has()` is progressive;
+   without it the sky just keeps going.) */
+.login-stage:has(input:focus) .login-sky *,
+.login-stage:has(input:focus) .login-hero *,
+.login-stage:has(input:focus) .login-cta::after {
+  animation-play-state: paused;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .login-sky, .login-scene-in, .login-rise, .login-star, .login-twinkle, .login-shoot,

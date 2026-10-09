@@ -56,11 +56,11 @@ defmodule TryggWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="toast toast-top toast-end z-50 top-[max(0.5rem,env(safe-area-inset-top))]"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
+        "alert w-[min(20rem,calc(100vw-1rem))] sm:w-96 text-wrap",
         @kind == :info && "alert-info",
         @kind == :error && "alert-error"
       ]}>
@@ -71,8 +71,12 @@ defmodule TryggWeb.CoreComponents do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="group -m-1.5 self-start cursor-pointer p-1.5"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark" class="size-5 opacity-70 group-hover:opacity-100" />
         </button>
       </div>
     </div>
@@ -92,12 +96,15 @@ defmodule TryggWeb.CoreComponents do
     * transparent tap highlight — no grey/blue flash on tap on mobile Safari /
       Chrome; we show our own `:active` feedback instead.
     * `select-none` — a long-press or drag doesn't select the label.
-    * a gentle press-down (`active:scale`) so a tap feels registered on touch.
+    * a press-down so a tap feels registered on touch.
 
   The playful look (chunky size, round corners, the colored "toy" edge that
-  squishes flat when pressed, springy motion) is not set here: it comes from
-  the shape tokens in the daisyUI themes and the "Playful controls" block in
-  `assets/css/app.css`, so every button and input in the app picks it up.
+  squishes flat when pressed, springy motion) and that press-down are not set
+  here: they come from the shape tokens in the daisyUI themes and the
+  "Playful controls" block in `assets/css/app.css`, so every button and input
+  in the app picks them up. Don't add `active:scale-*` or `transition-*`
+  utilities on top of it: they stack with the `translate` press and replace
+  the springy transition.
 
   ## Attributes
 
@@ -138,8 +145,7 @@ defmodule TryggWeb.CoreComponents do
   slot :inner_block, required: true
 
   @button_base "btn touch-manipulation select-none cursor-pointer " <>
-                 "[-webkit-tap-highlight-color:transparent] " <>
-                 "transition-transform active:scale-[.97] disabled:active:scale-100"
+                 "[-webkit-tap-highlight-color:transparent]"
 
   @button_variants %{
     nil => nil,
@@ -253,7 +259,7 @@ defmodule TryggWeb.CoreComponents do
     <div class="fieldset mb-2">
       <label>
         <input type="hidden" name={@name} value="false" disabled={@rest[:disabled]} />
-        <span class="label">
+        <span class="label min-h-11 gap-3">
           <input
             type="checkbox"
             id={@id}
@@ -341,6 +347,50 @@ defmodule TryggWeb.CoreComponents do
       <.icon name="hero-exclamation-circle" class="size-5" />
       {render_slot(@inner_block)}
     </p>
+    """
+  end
+
+  @doc """
+  The shell every bottom sheet shares: a dimmed backdrop and a panel that rises
+  from the bottom edge on phones and centres as a card from `sm` up. The panel
+  scrolls on its own when the keyboard or a tall form leaves too little room,
+  and keeps the home-indicator inset clear at the bottom.
+
+  `close` is the event pushed by the backdrop and the Escape key. Set
+  `modal_back` to also close on the browser Back gesture (the `ModalBack`
+  hook).
+
+  ## Examples
+
+      <.sheet_frame id="growth-sheet" close="close_sheet" label="Log height and weight">
+        <h3>…</h3>
+        <.form>…</.form>
+      </.sheet_frame>
+  """
+  attr :id, :string, required: true
+  attr :close, :string, required: true, doc: "event pushed by the backdrop and the Escape key"
+  attr :label, :string, required: true, doc: "accessible name of the dialog"
+  attr :modal_back, :boolean, default: false, doc: "also close on the browser Back gesture"
+  slot :inner_block, required: true
+
+  def sheet_frame(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={@label}
+      phx-window-keydown={@close}
+      phx-key="escape"
+      phx-hook={@modal_back && "ModalBack"}
+      data-close-event={@modal_back && @close}
+    >
+      <div class="absolute inset-0 bg-black/60" phx-click={@close}></div>
+      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain">
+        {render_slot(@inner_block)}
+      </div>
+    </div>
     """
   end
 
@@ -480,7 +530,7 @@ defmodule TryggWeb.CoreComponents do
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} />
+    <span class={[@name, @class]} aria-hidden="true" />
     """
   end
 
