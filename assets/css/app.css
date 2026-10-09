@@ -651,6 +651,9 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   grid-area: 1 / 1;
   align-self: end;
   margin-bottom: max(18vh, 6rem);
+  max-width: calc(100vw - 2rem);
+  text-align: center;
+  text-wrap: balance;
   padding: 0.4rem 1.2rem;
   border-radius: 9999px;
   font-size: 1.6rem;

@@ -16,13 +16,51 @@ const PLAY_MS_REDUCED = 1000
 const LEAVE_MS = 260
 const LOCK_MS = 1500
 
+// Each scene has a pool of captions; one is picked at random per splash, never
+// the same one twice in a row. Keep them short: they sit on one or two lines.
 const SCENES = {
-  diaper_pee: {caption: "Splish!", hero: "💧", rain: ["💧", 16]},
-  diaper_poo: {caption: "Poo-gress!", hero: "💩", burst: ["✨", 12]},
-  diaper_mixed: {caption: "Double whammy!", hero: "💩", rain: ["💧", 10], burst: ["✨", 8]},
-  bottle: {caption: "Yum!", hero: "🍼", milk: true, rise: ["🫧", 12]},
-  sleep_start: {caption: "Sweet dreams", hero: "🌙", twinkle: ["⭐", 14], rise: ["💤", 5]},
-  sleep_stop: {caption: "Good morning!", hero: "☀️", rays: true, drift: ["☁️", 3]},
+  diaper_pee: {
+    captions: [
+      "Splish!", "Tiny fountain!", "Gone with the flow", "Pee-kaboo!", "Wet one, logged",
+      "Drip drop, done", "Puddle patrol!", "Niagara Falls!", "A little leaky!", "Number one!",
+    ],
+    hero: "💧", rain: ["💧", 16],
+  },
+  diaper_poo: {
+    captions: [
+      "Poo-gress!", "Mission accomplished", "Brown alert!", "Deliverance!", "Top secret cargo",
+      "Special delivery!", "That's a big one", "Stinker logged!", "Nice work, champ", "Number two!",
+    ],
+    hero: "💩", burst: ["✨", 12],
+  },
+  diaper_mixed: {
+    captions: [
+      "Double whammy!", "The full combo!", "Two for one!", "Overachiever!", "Wow, a twofer",
+      "Jackpot!", "All the things!", "Doing it all!", "Combo meal!", "Brave diaper change",
+    ],
+    hero: "💩", rain: ["💧", 10], burst: ["✨", 8],
+  },
+  bottle: {
+    captions: [
+      "Yum!", "Glug glug glug", "Chug champion!", "Tummy full!", "Milk moustache!",
+      "Down the hatch!", "Bottoms up!", "Fuel secured", "Slurp!", "Nom nom nom",
+    ],
+    hero: "🍼", milk: true, rise: ["🫧", 12],
+  },
+  sleep_start: {
+    captions: [
+      "Sweet dreams", "Nighty night", "Lights out!", "Off to dreamland", "Shhh… sleeping",
+      "Sleep tight", "Time to recharge", "Snooze mode on", "Dream big, little one", "Zzz…",
+    ],
+    hero: "🌙", twinkle: ["⭐", 14], rise: ["💤", 5],
+  },
+  sleep_stop: {
+    captions: [
+      "Good morning!", "Rise and shine!", "Hello, world!", "Look who's awake", "Fully recharged!",
+      "Wakey wakey!", "Back in action", "Nap complete!", "Ta-da, awake!", "Sunshine mode on",
+    ],
+    hero: "☀️", rays: true, drift: ["☁️", 3],
+  },
 }
 
 const rand = (min, max) => min + Math.random() * (max - min)
@@ -32,6 +70,15 @@ let layer = null
 let playTimer = null
 let leaveTimer = null
 let lockTimer = null
+const lastCaption = {}
+
+// A random caption for `kind`, different from the last one shown for it.
+function pickCaption(kind, captions) {
+  const options = captions.filter(c => c !== lastCaption[kind])
+  const caption = options[Math.floor(Math.random() * options.length)]
+  lastCaption[kind] = caption
+  return caption
+}
 
 function bits(emoji, count, style) {
   return Array.from({length: count}, (_, i) =>
@@ -42,7 +89,7 @@ function bits(emoji, count, style) {
   ).join("")
 }
 
-function scene(spec) {
+function scene(kind, spec) {
   return [
     spec.milk && `<div class="splash-milk"></div>`,
     spec.rays && `<div class="splash-rays"></div>`,
@@ -52,7 +99,7 @@ function scene(spec) {
     spec.drift && bits(spec.drift[0], spec.drift[1], "drift"),
     `<div class="splash-hero" aria-hidden="true">${spec.hero}</div>`,
     spec.burst && bits(spec.burst[0], spec.burst[1], "burst"),
-    `<div class="splash-caption">${spec.caption}</div>`,
+    `<div class="splash-caption">${pickCaption(kind, spec.captions)}</div>`,
   ].filter(Boolean).join("")
 }
 
@@ -93,7 +140,7 @@ function play(kind) {
   clearTimers()
   el.dataset.kind = kind
   el.classList.remove("is-leaving")
-  el.innerHTML = scene(spec)
+  el.innerHTML = scene(kind, spec)
   // Restart the entrance even when replacing a scene that was mid-flight.
   el.classList.remove("is-playing")
   void el.offsetWidth
