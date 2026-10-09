@@ -127,7 +127,11 @@ defmodule TryggWeb.LogComponents do
       style={"--d: #{@index * 80}ms"}
     >
       <div class="flex items-center gap-4">
-        <span class="glance-bubble" style={"--bob-delay: #{@index * 700}ms"} aria-hidden="true">
+        <span
+          class={["glance-bubble", String.length(@emoji) > 1 && "glance-bubble-pair"]}
+          style={"--bob-delay: #{@index * 700}ms"}
+          aria-hidden="true"
+        >
           {@emoji}
           <span :if={@snooze} class="snooze glance-snooze"><i>z</i><i>z</i><i>z</i></span>
         </span>
