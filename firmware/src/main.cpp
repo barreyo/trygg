@@ -419,7 +419,8 @@ bool wifiUp() {
 
   // Re-syncing on every join keeps the drift of the (WiFi-less) clock in check. Only
   // the very first sync after boot is worth waiting for.
-  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  // configTime() would reset TZ to UTC, so the timezone goes in with the servers.
+  configTzTime(TIMEZONE, "pool.ntp.org", "time.google.com");
   unsigned long start = millis();
   while (!clockSynced() && millis() - start < CLOCK_WAIT_MS) vTaskDelay(pdMS_TO_TICKS(100));
   return clockSynced();
