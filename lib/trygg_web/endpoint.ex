@@ -19,6 +19,8 @@ defmodule TryggWeb.Endpoint do
     secure: Mix.env() == :prod
   ]
 
+  # Origin is checked in prod via `check_origin: :conn` (config/runtime.exs).
+  # Skipped in .sobelow-skips (Config.CSWH).
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [:peer_data, :x_headers, :uri, session: @session_options]],
     longpoll: [connect_info: [:peer_data, :x_headers, :uri, session: @session_options]]
@@ -43,6 +45,8 @@ defmodule TryggWeb.Endpoint do
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
+    # Dev-only socket.
+    # Skipped in .sobelow-skips (Config.CSWH).
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
     plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader
