@@ -21,6 +21,22 @@ defmodule TryggWeb.Router do
     plug :fetch_current_scope_for_user
   end
 
+  # Dev-only (mailbox preview): relax `frame-ancestors 'none'` to 'self'.
+  def allow_same_origin_frames(conn, _opts) do
+    csp =
+      String.replace(
+        @secure_browser_headers["content-security-policy"],
+        "frame-ancestors 'none'",
+        "frame-ancestors 'self'"
+      )
+
+    Plug.Conn.put_resp_header(conn, "content-security-policy", csp)
+  end
+
+  pipeline :same_origin_frames do
+    plug :allow_same_origin_frames
+  end
+
   # Same as :browser, but also accepts "pdf": the reports export route's URL
   # ends in .pdf, which Plug resolves to that format, so it needs its own
   # entry pipeline rather than loosening :accepts for every browser route.
@@ -78,10 +94,17 @@ defmodule TryggWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: TryggWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
 
       get "/emails", TryggWeb.EmailPreviewController, :index
       get "/emails/:name", TryggWeb.EmailPreviewController, :show
+    end
+
+    # The mailbox preview embeds each email in a same-origin iframe, which the
+    # browser pipeline's `frame-ancestors 'none'` would block.
+    scope "/dev" do
+      pipe_through [:browser, :same_origin_frames]
+
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 
