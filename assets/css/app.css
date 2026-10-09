@@ -521,9 +521,12 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   border-color: color-mix(in oklab, var(--color-primary-content) 30%, transparent);
   box-shadow: none;
 }
+/* Two glyphs (mixed diaper) at full size are wider than the bubble and spill to one side */
+.glance-bubble-pair { font-size: 1.35rem; letter-spacing: -0.05em; }
 /* Small phones: a smaller bubble gives the big numbers room to stay on one line */
 @media (max-width: 24rem) {
   .glance-bubble { width: 3rem; height: 3rem; font-size: 1.5rem; }
+  .glance-bubble-pair { font-size: 1rem; }
 }
 .glance-snooze { position: absolute; top: -0.35rem; right: -0.5rem; font-size: 1.1rem; }
 
