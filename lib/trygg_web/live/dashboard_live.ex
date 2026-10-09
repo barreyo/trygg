@@ -178,7 +178,12 @@ defmodule TryggWeb.DashboardLive do
 
   @impl true
   def handle_event("start_sleep", _params, socket) do
-    Log.start_timer(socket.assigns.current_scope, socket.assigns.current_child, :sleep)
+    socket =
+      case Log.start_timer(socket.assigns.current_scope, socket.assigns.current_child, :sleep) do
+        {:ok, _} -> splash(socket, "sleep_start")
+        _ -> socket
+      end
+
     {:noreply, socket}
   end
 
@@ -534,8 +539,12 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, settle_diaper(socket, result)}
   end
 
-  defp settle_diaper(socket, {:ok, _}),
-    do: socket |> assign(sheet: nil, sheet_form: nil) |> put_flash(:info, "Added that diaper.")
+  defp settle_diaper(socket, {:ok, entry}),
+    do:
+      socket
+      |> assign(sheet: nil, sheet_form: nil)
+      |> put_flash(:info, "Added that diaper.")
+      |> splash("diaper_#{entry.data["kind"]}")
 
   defp settle_diaper(socket, {:error, :future}),
     do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
@@ -547,7 +556,11 @@ defmodule TryggWeb.DashboardLive do
     do: put_flash(socket, :error, "Hmm, that didn't save — try again.")
 
   defp settle_feed(socket, {:ok, _}),
-    do: socket |> assign(sheet: nil, sheet_form: nil) |> put_flash(:info, "Saved.")
+    do:
+      socket
+      |> assign(sheet: nil, sheet_form: nil)
+      |> put_flash(:info, "Saved.")
+      |> splash("bottle")
 
   defp settle_feed(socket, {:error, :future}),
     do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
@@ -582,7 +595,7 @@ defmodule TryggWeb.DashboardLive do
         )
       end
 
-    settle(socket, result, "Sleep saved — sweet dreams.")
+    settle(socket, result, "Sleep saved — sweet dreams.", "sleep_stop")
   end
 
   defp save_sleep(socket, :sleep_start, params) do
@@ -596,7 +609,7 @@ defmodule TryggWeb.DashboardLive do
         Log.retime_entry(scope, nap, %{"started_at" => started})
       end
 
-    settle(socket, result, "Updated the start time.")
+    settle(socket, result, "Updated the start time.", nil)
   end
 
   defp save_sleep(socket, :sleep_past, params) do
@@ -620,22 +633,24 @@ defmodule TryggWeb.DashboardLive do
         )
       end
 
-    settle(socket, result, "Added that sleep.")
+    settle(socket, result, "Added that sleep.", "sleep_stop")
   end
 
-  defp settle(socket, {:ok, _}, msg),
-    do: socket |> assign(sheet: nil, sheet_form: nil) |> put_flash(:info, msg)
+  defp settle(socket, {:ok, _}, msg, splash_kind) do
+    socket = socket |> assign(sheet: nil, sheet_form: nil) |> put_flash(:info, msg)
+    if splash_kind, do: splash(socket, splash_kind), else: socket
+  end
 
-  defp settle(socket, {:error, %Ecto.Changeset{}}, _msg),
+  defp settle(socket, {:error, %Ecto.Changeset{}}, _msg, _splash),
     do: put_flash(socket, :error, "Their wake-up time needs to be after they fell asleep.")
 
-  defp settle(socket, {:error, :future}, _msg),
+  defp settle(socket, {:error, :future}, _msg, _splash),
     do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
 
-  defp settle(socket, nil, _msg),
+  defp settle(socket, nil, _msg, _splash),
     do: socket |> assign(sheet: nil) |> put_flash(:error, "There's no sleep to update right now.")
 
-  defp settle(socket, :error, _msg),
+  defp settle(socket, :error, _msg, _splash),
     do: put_flash(socket, :error, "That date and time didn't look right.")
 
   ## Helpers ------------------------------------------------------------
@@ -647,10 +662,16 @@ defmodule TryggWeb.DashboardLive do
       })
 
     case result do
-      {:ok, _} -> put_flash(socket, :info, "Saved.")
+      {:ok, _} -> socket |> put_flash(:info, "Saved.") |> splash("diaper_#{kind}")
       _ -> put_flash(socket, :error, "Hmm, that didn't save — try again.")
     end
   end
+
+  # Plays the full-screen celebration for a log this caregiver just made (see
+  # `assets/js/log_splash.js`). It also keeps the screen untappable for a beat,
+  # so a fast double tap can't log the same thing twice. Only for the caregiver's
+  # own taps: changes from elsewhere pulse instead (`TryggWeb.RemoteUpdate`).
+  defp splash(socket, kind), do: push_event(socket, "log-splash", %{kind: kind})
 
   defp consume_photo(socket), do: consume_photo(socket, socket.assigns.current_child)
 
@@ -1349,6 +1370,7 @@ defmodule TryggWeb.DashboardLive do
               id="log-sleep"
               variant="primary"
               phx-click="start_sleep"
+              data-splash-lock
               class="w-full"
             >
               <.icon name="hero-moon" class="size-5" /> Start sleep
@@ -1371,6 +1393,7 @@ defmodule TryggWeb.DashboardLive do
       type="button"
       phx-click="quick"
       phx-value-kind={@kind}
+      data-splash-lock
       class={["gap-1.5 px-1", @color_class]}
     >
       <span class="whitespace-nowrap text-xl leading-none" aria-hidden="true">{@emoji}</span>

@@ -660,6 +660,89 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "log splash" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "each one-tap diaper button plays its own splash", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      for kind <- ~w(pee poo mixed) do
+        lv |> element(~s(button[phx-value-kind="diaper_#{kind}"])) |> render_click()
+        assert_push_event(lv, "log-splash", %{kind: "diaper_" <> ^kind})
+      end
+    end
+
+    test "the one-tap buttons lock the screen before the server answers", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, ~s(button[phx-value-kind="diaper_pee"][data-splash-lock]))
+      assert has_element?(lv, "#log-sleep[data-splash-lock]")
+    end
+
+    test "starting and ending a sleep play the moon and the sunrise", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Start sleep") |> render_click()
+      assert_push_event(lv, "log-splash", %{kind: "sleep_start"})
+
+      lv |> element("button", "Stop") |> render_click()
+      lv |> form("#sleep-form", sleep: %{}) |> render_submit()
+      assert_push_event(lv, "log-splash", %{kind: "sleep_stop"})
+    end
+
+    test "a bottle saved through the sheet plays the bottle splash", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
+      lv |> form("#bottle-form", entry: %{bottle_contents: "formula"}) |> render_submit()
+
+      assert_push_event(lv, "log-splash", %{kind: "bottle"})
+    end
+
+    test "a past diaper saved through the sheet plays that kind's splash", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("button", "Log from earlier") |> render_click()
+      lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
+      lv |> form("#diaper-form", entry: %{kind: "poo", note: ""}) |> render_submit()
+
+      assert_push_event(lv, "log-splash", %{kind: "diaper_poo"})
+    end
+
+    test "a save that fails plays nothing", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      later =
+        DateTime.utc_now()
+        |> DateTime.add(2 * 3600, :second)
+        |> Calendar.strftime("%Y-%m-%dT%H:%M")
+
+      lv |> element("button", "Log a bottle") |> render_click()
+      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
+
+      html =
+        lv
+        |> form("#bottle-form", entry: %{bottle_contents: "formula", at: later})
+        |> render_submit()
+
+      assert html =~ "in the future"
+      refute_push_event(lv, "log-splash", _, 50)
+    end
+  end
+
   describe "remote update pulse" do
     import Trygg.LogFixtures
 
