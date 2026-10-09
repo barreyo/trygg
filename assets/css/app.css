@@ -634,6 +634,9 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 .log-splash[data-kind="bottle"]       { --splash-a: oklch(86% 0.07 235); --splash-b: oklch(70% 0.12 245); }
 .log-splash[data-kind="sleep_start"]  { --splash-a: #1c1650;             --splash-b: #3d2a7a; }
 .log-splash[data-kind="sleep_stop"]   { --splash-a: oklch(88% 0.12 85);  --splash-b: oklch(78% 0.15 50); }
+.log-splash[data-kind="measure_weight"] { --splash-a: oklch(88% 0.1 165);  --splash-b: oklch(74% 0.13 180); }
+.log-splash[data-kind="measure_height"] { --splash-a: oklch(86% 0.09 300); --splash-b: oklch(72% 0.14 280); }
+.log-splash[data-kind="measure_both"]   { --splash-a: oklch(88% 0.09 350); --splash-b: oklch(74% 0.15 20); }
 
 .splash-hero {
   grid-area: 1 / 1;
@@ -646,6 +649,9 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 [data-kind="bottle"] .splash-hero { animation-name: splash-hero-wobble; }
 [data-kind="sleep_start"] .splash-hero { animation-name: splash-hero-swing; animation-duration: 1500ms; }
 [data-kind="sleep_stop"] .splash-hero { animation-name: splash-hero-rise; animation-duration: 1200ms; }
+[data-kind="measure_weight"] .splash-hero,
+[data-kind="measure_both"] .splash-hero { animation-name: splash-hero-weigh; animation-duration: 1500ms; }
+[data-kind="measure_height"] .splash-hero { animation-name: splash-hero-grow; animation-duration: 1200ms; transform-origin: 50% 85%; }
 
 .splash-caption {
   grid-area: 1 / 1;
@@ -665,6 +671,9 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   animation: splash-caption 500ms 250ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 [data-kind="sleep_stop"] .splash-caption,
+[data-kind="measure_weight"] .splash-caption,
+[data-kind="measure_height"] .splash-caption,
+[data-kind="measure_both"] .splash-caption,
 [data-kind="diaper_pee"] .splash-caption { color: oklch(26% 0.05 60); background: rgb(255 255 255 / 0.5); text-shadow: none; }
 
 .splash-bit {
@@ -731,6 +740,22 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   0% { transform: translateY(70vh) scale(0.6); }
   70% { transform: translateY(-3vh) scale(1.08); }
   100% { transform: translateY(0) scale(1); }
+}
+/* Drops onto the scale, then the needle settles */
+@keyframes splash-hero-weigh {
+  0% { transform: translateY(-70vh) scale(1); }
+  28% { transform: translateY(0) scale(1.2, 0.8); }
+  40% { transform: rotate(-14deg) scale(1); }
+  55% { transform: rotate(10deg); }
+  70% { transform: rotate(-6deg); }
+  85% { transform: rotate(3deg); }
+  100% { transform: rotate(0); }
+}
+/* Stretches up from the floor, a touch past full height */
+@keyframes splash-hero-grow {
+  0% { transform: scale(0.9, 0.05); }
+  65% { transform: scale(0.95, 1.2); }
+  100% { transform: scale(1, 1); }
 }
 @keyframes splash-caption {
   from { opacity: 0; transform: translateY(24px) scale(0.8); }

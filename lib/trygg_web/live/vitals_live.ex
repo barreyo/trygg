@@ -708,8 +708,9 @@ defmodule TryggWeb.VitalsLive do
            "height_cm" => from_display(params["height"], :length, units),
            "note" => blank(params["note"])
          },
-         {:ok, _m} <- persist(socket, attrs) do
+         {:ok, m} <- persist(socket, attrs) do
       socket
+      |> splash(m, socket.assigns.editing)
       |> assign(sheet: false, form: nil, editing: nil, selected_point: nil)
       |> load_measurements()
       |> put_flash(:info, "Saved.")
@@ -730,6 +731,21 @@ defmodule TryggWeb.VitalsLive do
         |> put_flash(:error, changeset_flash(cs))
     end
   end
+
+  # Celebrates a newly logged measurement (see `assets/js/log_splash.js`), per
+  # what it holds: weight, height, or both. Fixing an old one isn't logging.
+  defp splash(socket, %Measurement{} = m, nil) do
+    kind =
+      case {m.weight_g, m.height_cm} do
+        {nil, _} -> "measure_height"
+        {_, nil} -> "measure_weight"
+        _ -> "measure_both"
+      end
+
+    push_event(socket, "log-splash", %{kind: kind})
+  end
+
+  defp splash(socket, _m, %Measurement{}), do: socket
 
   defp persist(socket, attrs) do
     scope = socket.assigns.current_scope

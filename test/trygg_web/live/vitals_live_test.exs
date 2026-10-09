@@ -74,6 +74,50 @@ defmodule TryggWeb.VitalsLiveTest do
     refute html =~ "Nothing to chart yet"
   end
 
+  describe "log splash" do
+    # One measurement per child per day, so successive logs step back a day
+    defp log_measurement(lv, child, fields, days_ago \\ 0) do
+      lv |> element("#add-measurement") |> render_click()
+      today = child |> Child.local_today() |> Date.add(-days_ago) |> Date.to_iso8601()
+
+      lv
+      |> form("#growth-form", measurement: Map.merge(%{measured_on: today}, fields))
+      |> render_submit()
+    end
+
+    test "a new weight, height, or both play their own splash", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
+
+      log_measurement(lv, child, %{weight: "3.2", height: ""})
+      assert_push_event(lv, "log-splash", %{kind: "measure_weight"})
+
+      log_measurement(lv, child, %{weight: "", height: "50"}, 1)
+      assert_push_event(lv, "log-splash", %{kind: "measure_height"})
+
+      log_measurement(lv, child, %{weight: "3.4", height: "51"}, 2)
+      assert_push_event(lv, "log-splash", %{kind: "measure_both"})
+    end
+
+    test "editing a measurement plays nothing", %{conn: conn, scope: scope, child: child} do
+      m = measurement_fixture(scope, child, %{"weight_g" => 3200, "height_cm" => 50})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
+
+      lv |> element("#measurement-#{m.id}") |> render_click()
+      lv |> form("#growth-form", measurement: %{weight: "3.4"}) |> render_submit()
+
+      refute_push_event(lv, "log-splash", _, 50)
+    end
+
+    test "a save that fails plays nothing", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
+
+      later = Date.to_iso8601(Date.add(Child.local_today(child), 3))
+      log_measurement(lv, child, %{weight: "3.2", measured_on: later})
+
+      refute_push_event(lv, "log-splash", _, 50)
+    end
+  end
+
   test "a measurement can be edited and deleted from the table", %{
     conn: conn,
     scope: scope,
