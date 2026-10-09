@@ -1062,6 +1062,33 @@ defmodule TryggWeb.DashboardLiveTest do
       assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :sleep]
     end
 
+    test "each card keeps its own color whatever the order", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      orders = [
+        [:feeding, :diaper, :sleep],
+        [:feeding, :sleep, :diaper],
+        [:diaper, :feeding, :sleep],
+        [:diaper, :sleep, :feeding],
+        [:sleep, :feeding, :diaper],
+        [:sleep, :diaper, :feeding]
+      ]
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      for order <- orders do
+        {:ok, _} = Families.update_tracked_types(scope, child, order)
+
+        # The category class drives the tint (see `.glance-*` in app.css), so
+        # it has to travel with the card, never stay behind at a position.
+        assert has_element?(lv, "#glance-feed .glance-card.glance-feed")
+        assert has_element?(lv, "#glance-diaper .glance-card.glance-diaper")
+        assert has_element?(lv, "#glance-sleep .glance-card.glance-sleep")
+      end
+    end
+
     test "customizing can't leave nothing tracked", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
