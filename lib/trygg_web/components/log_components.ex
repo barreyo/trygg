@@ -101,7 +101,9 @@ defmodule TryggWeb.LogComponents do
   status, today, tone) so the two stay easy to swap, but roomy and playful:
   generous padding, large type, a tinted gradient and a soft "toy" edge in the
   category colour. Cards stack full width, since big text doesn't fit three
-  across a phone. The look lives in the `.glance-*` rules in app.css.
+  across a phone, so the padding and gaps stay tight enough that all three cards
+  and their buttons fit one phone screen. The look lives in the `.glance-*`
+  rules in app.css.
   """
   attr :emoji, :string, required: true, doc: "emoji glyph shown in the bubble"
   attr :label, :string, required: true
@@ -133,7 +135,7 @@ defmodule TryggWeb.LogComponents do
       data-tone={@tone}
       style={"--d: #{@index * 80}ms"}
     >
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-3">
         <span
           class={["glance-bubble", String.length(@emoji) > 1 && "glance-bubble-pair"]}
           style={"--bob-delay: #{@index * 700}ms"}
@@ -148,18 +150,18 @@ defmodule TryggWeb.LogComponents do
             id={@timer && "timer-#{@timer.id}"}
             phx-hook={@timer && "Timer"}
             data-since={@timer && DateTime.to_unix(@timer.started_at)}
-            class="text-3xl font-extrabold leading-tight tabular-nums break-words"
+            class="text-3xl font-extrabold leading-[1.1] tabular-nums break-words"
           >
             {@value}
           </div>
-          <div :if={@sub} class="mt-0.5 text-base leading-snug opacity-80 break-words">{@sub}</div>
+          <div :if={@sub} class="text-base leading-snug opacity-80 break-words">{@sub}</div>
         </div>
       </div>
-      <div :if={@status || @today} class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div :if={@status || @today} class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span :if={@status} class="glance-pill">{@status}</span>
         <span :if={@today} class="text-sm leading-snug opacity-70 tabular-nums">{@today}</span>
       </div>
-      <div :if={@actions != []} class="mt-3">{render_slot(@actions)}</div>
+      <div :if={@actions != []} class="mt-2">{render_slot(@actions)}</div>
     </div>
     """
   end
