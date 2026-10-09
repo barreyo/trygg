@@ -107,6 +107,20 @@ defmodule TryggWeb.ChildLiveTest do
     refute has_element?(lv, "#tracked-sleep[checked]")
   end
 
+  test "editing a child keeps the Home order caregivers chose", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    {:ok, child} = Families.update_tracked_types(scope, child, [:sleep, :feeding, :diaper])
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+
+    {:error, {:live_redirect, _}} =
+      lv
+      |> form("#child-form", child: %{tracked_types: ["", "feeding", "diaper", "sleep"]})
+      |> render_submit()
+
+    assert Families.get_child!(scope, child.id).tracked_types == [:sleep, :feeding, :diaper]
+  end
+
   test "at least one tracker must stay on", %{conn: conn, scope: scope} do
     child = child_fixture(scope)
     {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")

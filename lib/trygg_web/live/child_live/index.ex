@@ -382,6 +382,7 @@ defmodule TryggWeb.ChildLive.Index do
 
   defp save(socket, :edit, params) do
     was_expecting? = Child.expecting?(socket.assigns.child)
+    params = keep_home_order(socket, params)
 
     case Families.update_child(socket.assigns.current_scope, socket.assigns.child, params) do
       {:ok, child} ->
@@ -406,6 +407,24 @@ defmodule TryggWeb.ChildLive.Index do
         {:noreply, assign(socket, :form, to_form(changeset))}
     end
   end
+
+  # The checkboxes always post in the same order, but caregivers can arrange
+  # Home from the Customize sheet. Keep the order they chose (as it is now, not
+  # as this page loaded) for trackers that stay on, and put new ones last.
+  defp keep_home_order(socket, %{"tracked_types" => submitted} = params) do
+    current =
+      socket.assigns.current_scope
+      |> Families.get_child!(socket.assigns.child.id)
+      |> Map.fetch!(:tracked_types)
+      |> Enum.map(&to_string/1)
+
+    sorted =
+      Enum.sort_by(submitted, fn t -> Enum.find_index(current, &(&1 == t)) || length(current) end)
+
+    %{params | "tracked_types" => sorted}
+  end
+
+  defp keep_home_order(_socket, params), do: params
 
   # "new" (or anything unreadable) starts a family of its own.
   defp parse_family_id(value) do

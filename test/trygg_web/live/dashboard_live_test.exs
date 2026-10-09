@@ -999,6 +999,112 @@ defmodule TryggWeb.DashboardLiveTest do
       refute has_element?(owner_lv, "#glance-sleep")
     end
 
+    defp card_order(lv) do
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#glance-cards > div")
+      |> Enum.map(fn el -> el |> LazyHTML.attribute("id") |> hd() end)
+    end
+
+    test "the cards follow the child's order", %{conn: conn, scope: scope, child: child} do
+      {:ok, child} = Families.update_tracked_types(scope, child, [:sleep, :feeding, :diaper])
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert card_order(lv) == ["glance-sleep", "glance-feed", "glance-diaper"]
+    end
+
+    test "caregivers can reorder Home and it sticks for everyone", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      member = user_fixture()
+      membership_fixture(child, member, :caregiver)
+
+      {:ok, owner_lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert card_order(owner_lv) == ["glance-feed", "glance-diaper", "glance-sleep"]
+
+      member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
+      {:ok, lv, _html} = live_loaded(member_conn, ~p"/c/#{child}")
+
+      lv |> element("#customize-home") |> render_click()
+      assert has_element?(lv, "#layout-up-feeding[disabled]")
+      assert has_element?(lv, "#layout-down-sleep[disabled]")
+
+      lv |> element("#layout-down-feeding") |> render_click()
+      lv |> element("#layout-up-sleep") |> render_click()
+      lv |> form("#layout-form") |> render_submit()
+
+      assert Families.get_child!(scope, child.id).tracked_types == [:diaper, :sleep, :feeding]
+      assert card_order(lv) == ["glance-diaper", "glance-sleep", "glance-feed"]
+      assert card_order(owner_lv) == ["glance-diaper", "glance-sleep", "glance-feed"]
+    end
+
+    test "moving a tracker keeps the other ticks as they were", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#customize-home") |> render_click()
+
+      lv
+      |> form("#layout-form", layout: %{tracked_types: ["", "feeding", "sleep"]})
+      |> render_change()
+
+      lv |> element("#layout-down-feeding") |> render_click()
+      refute has_element?(lv, "#layout-diaper[checked]")
+
+      lv |> form("#layout-form") |> render_submit()
+
+      assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :sleep]
+    end
+
+    test "each card keeps its own color whatever the order", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      orders = [
+        [:feeding, :diaper, :sleep],
+        [:feeding, :sleep, :diaper],
+        [:diaper, :feeding, :sleep],
+        [:diaper, :sleep, :feeding],
+        [:sleep, :feeding, :diaper],
+        [:sleep, :diaper, :feeding]
+      ]
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      for order <- orders do
+        {:ok, _} = Families.update_tracked_types(scope, child, order)
+
+        # The category class drives the tint (see `.glance-*` in app.css), so
+        # it has to travel with the card, never stay behind at a position.
+        assert has_element?(lv, "#glance-feed .glance-card.glance-feed")
+        assert has_element?(lv, "#glance-diaper .glance-card.glance-diaper")
+        assert has_element?(lv, "#glance-sleep .glance-card.glance-sleep")
+      end
+    end
+
+    test "an open Customize sheet catches up when another device rearranges Home", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element("#customize-home") |> render_click()
+      assert has_element?(lv, "#layout-up-feeding[disabled]")
+
+      {:ok, _} = Families.update_tracked_types(scope, child, [:sleep, :feeding])
+
+      assert has_element?(lv, "#layout-up-sleep[disabled]")
+      refute has_element?(lv, "#layout-diaper[checked]")
+      assert card_order(lv) == ["glance-sleep", "glance-feed"]
+    end
+
     test "customizing can't leave nothing tracked", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
