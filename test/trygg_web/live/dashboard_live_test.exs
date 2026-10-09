@@ -660,6 +660,47 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "remote update pulse" do
+    import Trygg.LogFixtures
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "an entry logged elsewhere pulses its glance card and row", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      # The test process stands in for another device: it isn't the LiveView.
+      entry = entry_fixture(scope, child, type: :diaper)
+
+      assert_push_event(lv, "remote-flash", %{targets: targets})
+      assert targets == ["#glance-diaper .glance-card", "#entries-#{entry.id}"]
+    end
+
+    test "a deleted entry pulses only its card", %{conn: conn, scope: scope, child: child} do
+      entry = entry_fixture(scope, child, type: :feeding)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      {:ok, _} = Log.delete_entry(scope, entry)
+
+      assert_push_event(lv, "remote-flash", %{targets: ["#glance-feed .glance-card"]})
+    end
+
+    test "the caregiver's own tap doesn't pulse", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element(~s(button[phx-value-kind="diaper_pee"])) |> render_click()
+
+      assert render(lv) =~ "Pee diaper"
+      refute_push_event(lv, "remote-flash", _)
+    end
+  end
+
   describe "vitamin D drop" do
     import Trygg.LogFixtures
 

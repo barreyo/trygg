@@ -39,6 +39,7 @@ import LoginResume from "./hooks/login_resume"
 import LoginScene from "./hooks/login_scene"
 import {installOfflinePanel} from "./offline/panel_toggle"
 import {startAutoSync} from "./offline/auto_sync"
+import "./remote_flash"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

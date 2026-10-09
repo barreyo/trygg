@@ -43,6 +43,10 @@ defmodule Trygg.Log.Entry do
     belongs_to :logged_by, Trygg.Accounts.User
     field :logged_via, :string
 
+    # Stamped onto the copy of the entry that is broadcast, with the pid of the
+    # process that wrote it. Never persisted. See `remote?/1`.
+    field :origin, :any, virtual: true
+
     timestamps(type: :utc_datetime)
   end
 
@@ -211,6 +215,16 @@ defmodule Trygg.Log.Entry do
 
   @doc "Whether an integration (an API token) logged the entry, rather than a person."
   def logged_by_integration?(%__MODULE__{logged_via: via}), do: is_binary(via)
+
+  @doc """
+  Whether this broadcast entry was written by a different process than the
+  caller — another device, another caregiver, an API token or the button —
+  rather than by the caller's own LiveView. A LiveView uses it to tell "my tap
+  just landed" from "someone else changed something". `false` for an entry that
+  didn't arrive by broadcast.
+  """
+  def remote?(%__MODULE__{origin: origin}), do: is_pid(origin) and origin != self()
+
   def timer_types, do: @timer_types
   def sleep_locations, do: @sleep_locations
   def bottle_contents, do: @bottle_contents

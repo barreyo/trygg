@@ -560,6 +560,49 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 }
 
 /*
+ * "Someone else just changed this" — see `TryggWeb.RemoteUpdate` and
+ * assets/js/remote_flash.js, which adds the class for one pulse. The pulse
+ * lives on an `::after` overlay so it never touches the element's own
+ * animations (a glance card's entrance, say) or transforms, and removing the
+ * class afterwards replays nothing.
+ */
+.remote-flash { position: relative; }
+.remote-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: remote-flash 1500ms ease-out both;
+}
+/* List rows have no radius or side padding of their own; give the pulse a pill to fill */
+#entries > .remote-flash::after { inset: 0 -0.5rem; border-radius: var(--radius-box); }
+
+@keyframes remote-flash {
+  0% {
+    background: color-mix(in oklab, var(--color-primary) 30%, transparent);
+    box-shadow:
+      0 0 0 0 color-mix(in oklab, var(--color-primary) 55%, transparent),
+      inset 0 0 0 2px color-mix(in oklab, var(--color-primary) 70%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow:
+      0 0 0 14px transparent,
+      inset 0 0 0 2px transparent;
+  }
+}
+
+/* Reduced motion: the same tint, but nothing spreads outwards */
+@keyframes remote-flash-soft {
+  from { background: color-mix(in oklab, var(--color-primary) 22%, transparent); }
+  to   { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remote-flash::after { animation-name: remote-flash-soft; animation-duration: 1200ms; }
+}
+
+/*
  * Login screen night sky — see `TryggWeb.LoginComponents`.
  *
  * A fixed full-viewport backdrop (`.login-sky`) plus a hero character

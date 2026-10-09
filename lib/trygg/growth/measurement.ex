@@ -18,8 +18,17 @@ defmodule Trygg.Growth.Measurement do
     belongs_to :child, Trygg.Families.Child
     belongs_to :logged_by, Trygg.Accounts.User
 
+    # Stamped onto the broadcast copy with the writer's pid; never persisted.
+    field :origin, :any, virtual: true
+
     timestamps(type: :utc_datetime)
   end
+
+  @doc """
+  Whether this broadcast measurement was written by a different process than
+  the caller (another device or caregiver). See `Trygg.Log.Entry.remote?/1`.
+  """
+  def remote?(%__MODULE__{origin: origin}), do: is_pid(origin) and origin != self()
 
   @doc false
   def changeset(measurement, attrs) do

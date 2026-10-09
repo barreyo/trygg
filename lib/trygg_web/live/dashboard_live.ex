@@ -7,7 +7,7 @@ defmodule TryggWeb.DashboardLive do
   alias Trygg.Log.Entry
   alias Trygg.Reports.Alerts
   alias Trygg.Units
-  alias TryggWeb.Loading
+  alias TryggWeb.{Loading, RemoteUpdate}
 
   @recent_limit 20
   @tick_ms 60_000
@@ -89,7 +89,8 @@ defmodule TryggWeb.DashboardLive do
   ## Realtime ---------------------------------------------------------------
 
   @impl true
-  def handle_info({:log, _action, _entry}, socket), do: {:noreply, refresh(socket)}
+  def handle_info({:log, action, entry}, socket),
+    do: {:noreply, socket |> refresh() |> RemoteUpdate.flash_home(entry, action)}
 
   def handle_info({:growth, _action, _measurement}, socket),
     do: {:noreply, refresh_summary(socket)}

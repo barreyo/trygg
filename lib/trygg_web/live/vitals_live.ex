@@ -12,7 +12,7 @@ defmodule TryggWeb.VitalsLive do
   alias Trygg.Reports
   alias Trygg.Units
   alias TryggWeb.GrowthComponents
-  alias TryggWeb.Loading
+  alias TryggWeb.{Loading, RemoteUpdate}
 
   @impl true
   def render(assigns) do
@@ -531,8 +531,8 @@ defmodule TryggWeb.VitalsLive do
     do: {:noreply, Loading.done(socket, result, &apply_measurements/2)}
 
   @impl true
-  def handle_info({:growth, _action, _measurement}, socket),
-    do: {:noreply, load_measurements(socket)}
+  def handle_info({:growth, action, measurement}, socket),
+    do: {:noreply, socket |> load_measurements() |> RemoteUpdate.flash_growth(measurement, action)}
 
   def handle_info({:child_updated, child}, socket) do
     {:noreply,

@@ -346,10 +346,10 @@ defmodule Trygg.Log do
 
         Enum.each(losers, fn loser ->
           {:ok, _} = Repo.delete(loser)
-          Families.broadcast(child_id, {:log, :deleted, loser})
+          Families.broadcast(child_id, {:log, :deleted, stamp_origin(loser)})
         end)
 
-        Families.broadcast(child_id, {:log, :updated, kept})
+        Families.broadcast(child_id, {:log, :updated, stamp_origin(kept)})
         kept
     end
   end
@@ -618,12 +618,16 @@ defmodule Trygg.Log do
   ## Helpers ------------------------------------------------------------
 
   defp broadcast({:ok, entry} = ok, child_id, action) do
-    Families.broadcast(child_id, {:log, action, entry})
+    Families.broadcast(child_id, {:log, action, stamp_origin(entry)})
     maybe_track_predictions(entry)
     ok
   end
 
   defp broadcast(other, _child_id, _action), do: other
+
+  # Lets each LiveView tell its own writes from everyone else's, see
+  # `Entry.remote?/1`.
+  defp stamp_origin(%Entry{} = entry), do: %{entry | origin: self()}
 
   # Every sleep write nudges the prediction ledger to record the fresh
   # nap/bedtime target and reconcile any that have now come due. Config-gated
