@@ -59,7 +59,7 @@ config :trygg, :email_from, "Trygg <contact@example.com>"
 
 # Configure esbuild (the version is required)
 config :esbuild,
-  version: "0.25.4",
+  version: "0.28.2",
   trygg: [
     args:
       ~w(js/app.js js/offline.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
@@ -69,7 +69,7 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.7",
+  version: "4.3.3",
   trygg: [
     args: ~w(
       --input=assets/css/app.css
