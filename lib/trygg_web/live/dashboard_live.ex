@@ -96,9 +96,12 @@ defmodule TryggWeb.DashboardLive do
     do: {:noreply, refresh_summary(socket)}
 
   def handle_info({:child_updated, child}, socket) do
+    previous = socket.assigns.current_child.tracked_types
+
     {:noreply,
      socket
      |> assign(:current_child, %{child | role: socket.assigns.role})
+     |> resync_layout_sheet(previous, child.tracked_types)
      |> refresh()}
   end
 
@@ -833,6 +836,16 @@ defmodule TryggWeb.DashboardLive do
   defp current_sheet_params(_socket), do: %{}
 
   # The sleep sheets submit as `sleep` params, everything else as `entry`.
+  # Someone else rearranged Home while this device has the Customize sheet open:
+  # show the arrangement that is now live, so saving can't quietly undo it.
+  defp resync_layout_sheet(%{assigns: %{sheet: :layout}} = socket, previous, current)
+       when previous != current do
+    types = Enum.map(current, &to_string/1)
+    assign(socket, :sheet_form, layout_form(layout_order(types), types))
+  end
+
+  defp resync_layout_sheet(socket, _previous, _current), do: socket
+
   # `order` is every tracker in display order, `checked` the ones switched on.
   defp layout_form(order, checked, errors \\ []),
     do: to_form(%{"order" => order, "tracked_types" => checked}, as: :layout, errors: errors)

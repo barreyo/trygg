@@ -1089,6 +1089,22 @@ defmodule TryggWeb.DashboardLiveTest do
       end
     end
 
+    test "an open Customize sheet catches up when another device rearranges Home", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element("#customize-home") |> render_click()
+      assert has_element?(lv, "#layout-up-feeding[disabled]")
+
+      {:ok, _} = Families.update_tracked_types(scope, child, [:sleep, :feeding])
+
+      assert has_element?(lv, "#layout-up-sleep[disabled]")
+      refute has_element?(lv, "#layout-diaper[checked]")
+      assert card_order(lv) == ["glance-sleep", "glance-feed"]
+    end
+
     test "customizing can't leave nothing tracked", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
