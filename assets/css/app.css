@@ -478,7 +478,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 .glance-card {
   --tint: var(--color-base-300);
   border-radius: var(--radius-card);
-  padding: 1rem;
+  padding: 0.75rem;
   border: 2px solid color-mix(in oklab, var(--tint) 45%, transparent);
   background: linear-gradient(
     135deg,
@@ -498,10 +498,10 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 4rem;
-  height: 4rem;
+  width: 3.5rem;
+  height: 3.5rem;
   border-radius: 9999px;
-  font-size: 2rem;
+  font-size: 1.75rem;
   line-height: 1;
   background: color-mix(in oklab, var(--tint, var(--color-primary)) 38%, var(--color-base-100));
   border: 2px solid color-mix(in oklab, var(--tint, var(--color-primary)) 55%, transparent);
