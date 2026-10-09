@@ -165,8 +165,8 @@ defmodule TryggWeb.LogComponents do
 
   def timer_banner(assigns) do
     ~H"""
-    <div class="glance-pop rounded-[1.75rem] bg-primary text-primary-content shadow-lg overflow-hidden">
-      <div class="p-5 flex items-center gap-4">
+    <div class="glance-pop timer-banner rounded-[var(--radius-card)] text-primary-content shadow-lg overflow-hidden">
+      <div class="flex items-center gap-3 p-4 min-[24rem]:gap-4 min-[24rem]:p-5">
         <span class="glance-bubble glance-bubble-solid" aria-hidden="true">
           <.icon name={entry_icon(@entry.type)} class="size-8" />
         </span>
@@ -178,7 +178,7 @@ defmodule TryggWeb.LogComponents do
             id={"timer-#{@entry.id}"}
             phx-hook="Timer"
             data-since={DateTime.to_unix(@entry.started_at)}
-            class="text-4xl font-extrabold leading-tight tabular-nums"
+            class="whitespace-nowrap text-3xl font-extrabold leading-tight tabular-nums min-[24rem]:text-4xl"
           >
             0s
           </div>
@@ -188,7 +188,7 @@ defmodule TryggWeb.LogComponents do
           type="button"
           phx-click={@on_stop}
           phx-value-id={@entry.id}
-          class="bg-primary-content text-primary border-0 hover:bg-primary-content hover:brightness-95"
+          class="shrink-0 bg-primary-content text-(color:--banner-bg) border-0 hover:bg-primary-content hover:brightness-95"
         >
           Stop
         </.button>

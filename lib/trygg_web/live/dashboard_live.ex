@@ -943,7 +943,7 @@ defmodule TryggWeb.DashboardLive do
                 since_label={Child.local_clock(@current_child, entry.started_at)}
               >
                 <:controls :if={@can_write}>
-                  <span class="text-xs opacity-70 mr-0.5">Started earlier?</span>
+                  <span class="mr-0.5 text-xs opacity-90">Started earlier?</span>
                   <.button
                     :for={m <- nudge_minutes()}
                     type="button"
@@ -1011,7 +1011,7 @@ defmodule TryggWeb.DashboardLive do
               <div
                 :if={@weight_reminder && "weight-check" not in @dismissed_notices}
                 id="weight-check-reminder"
-                class="glance-pop mb-4 flex items-start gap-3 rounded-[1.5rem] border-2 border-warning/40 bg-warning/10 p-4"
+                class="glance-pop mb-4 flex items-start gap-3 rounded-[var(--radius-card)] border-2 border-warning/40 bg-warning/10 p-4"
               >
                 <.icon name="hero-scale" class="size-5 shrink-0 mt-0.5 text-warning" />
                 <div class="min-w-0 flex-1">
@@ -1021,21 +1021,23 @@ defmodule TryggWeb.DashboardLive do
                   </p>
                   <.link
                     navigate={~p"/c/#{@current_child}/vitals"}
-                    class="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-0.5"
+                    class="mt-1 inline-flex items-center gap-0.5 text-sm text-primary underline underline-offset-2"
                   >
                     Log it in Vitals <.icon name="hero-arrow-right" class="size-3" />
                   </.link>
                 </div>
-                <button
+                <.button
                   id="weight-check-reminder-dismiss"
                   type="button"
+                  variant="ghost"
+                  size="xs"
                   phx-click="dismiss_notice"
                   phx-value-key="weight-check"
-                  class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1 shrink-0"
+                  class="btn-circle -mr-1 -mt-1 shrink-0"
                   aria-label="Dismiss weight check reminder"
                 >
                   <.icon name="hero-x-mark" class="size-4" />
-                </button>
+                </.button>
               </div>
             </div>
 
@@ -1086,7 +1088,7 @@ defmodule TryggWeb.DashboardLive do
             <%!-- Log something --%>
             <div
               :if={@can_write}
-              class="glance-pop mt-6 space-y-4 rounded-[1.75rem] border-2 border-base-300 bg-base-200/60 p-5"
+              class="glance-pop mt-6 space-y-4 rounded-[var(--radius-card)] border-2 border-base-300 bg-base-200/60 p-5"
               style="--d: 240ms"
             >
               <h2 class="flex items-center gap-2 text-lg font-extrabold">
@@ -1168,7 +1170,7 @@ defmodule TryggWeb.DashboardLive do
             phx-update="ignore"
             hidden
             data-vapid-key={@vapid_public_key}
-            class="mt-6 flex items-start gap-3 rounded-[1.5rem] border-2 border-base-300 bg-base-200 p-4 text-base"
+            class="mt-6 flex items-start gap-3 rounded-[var(--radius-card)] border-2 border-base-300 bg-base-200 p-4 text-base"
           >
             <.icon name="hero-bell-alert" class="size-5 shrink-0 mt-0.5 text-primary" />
             <div class="flex-1 min-w-0 space-y-2">
@@ -1195,14 +1197,16 @@ defmodule TryggWeb.DashboardLive do
                 </.button>
               </div>
             </div>
-            <button
+            <.button
               type="button"
-              class="btn btn-ghost btn-xs btn-circle -mr-1 -mt-1"
+              variant="ghost"
+              size="xs"
+              class="btn-circle -mr-1 -mt-1"
               aria-label="Dismiss"
               data-push-prompt-action="dismiss"
             >
               <.icon name="hero-x-mark" class="size-4" />
-            </button>
+            </.button>
           </div>
         </:left>
         <:right>

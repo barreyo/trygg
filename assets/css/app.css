@@ -39,7 +39,7 @@
   --color-accent-content: oklch(96% 0.016 293.756);
   --color-neutral: oklch(37% 0.044 257.287);
   --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
+  --color-info: oklch(54% 0.15 241.966);
   --color-info-content: oklch(97% 0.013 236.62);
   --color-success: oklch(60% 0.118 184.704);
   --color-success-content: oklch(98% 0.014 180.72);
@@ -76,7 +76,7 @@
   --color-accent-content: oklch(100% 0 0);
   --color-neutral: oklch(44% 0.017 285.786);
   --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
+  --color-info: oklch(54% 0.2 259.815);
   --color-info-content: oklch(97% 0.014 254.604);
   --color-success: oklch(70% 0.14 182.503);
   --color-success-content: oklch(98% 0.014 180.72);
@@ -132,7 +132,7 @@
   --color-diaper-pee-content: oklch(28% 0.04 95);
   --color-diaper-poo: oklch(38% 0.07 50);
   --color-diaper-poo-content: oklch(96% 0.01 90);
-  --color-diaper-mixed: oklch(64% 0.19 35);
+  --color-diaper-mixed: oklch(56% 0.19 35);
   --color-diaper-mixed-content: oklch(98% 0.02 60);
 }
 
@@ -150,6 +150,10 @@
   --ink-success: color-mix(in oklab, var(--color-success) 68%, black);
   --ink-warning: color-mix(in oklab, var(--color-warning) 74%, black);
   --ink-error: color-mix(in oklab, var(--color-error) 88%, black);
+  /* The running-timer card is a big primary surface with white text on it:
+     the light theme's bright orange is only ~2.7:1 there, so it is deepened. */
+  --banner-bg: color-mix(in oklab, var(--color-primary) 76%, black);
+  --radius-card: 1.75rem;
 }
 :root[data-theme="dark"] {
   --ink-primary: color-mix(in oklab, var(--color-primary) 72%, white);
@@ -157,6 +161,7 @@
   --ink-success: var(--color-success);
   --ink-warning: var(--color-warning);
   --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
+  --banner-bg: var(--color-primary);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
@@ -165,8 +170,10 @@
     --ink-success: var(--color-success);
     --ink-warning: var(--color-warning);
     --ink-error: color-mix(in oklab, var(--color-error) 84%, white);
+    --banner-bg: var(--color-primary);
   }
 }
+.timer-banner { background-color: var(--banner-bg); }
 @layer utilities {
   /* `bg-primary-content` marks a button that sits *on* a primary surface */
   .text-primary:not(.bg-primary-content) { color: var(--ink-primary); }
@@ -476,7 +483,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
  */
 .glance-card {
   --tint: var(--color-base-300);
-  border-radius: 1.75rem;
+  border-radius: var(--radius-card);
   padding: 1.25rem;
   border: 2px solid color-mix(in oklab, var(--tint) 45%, transparent);
   background: linear-gradient(
@@ -514,6 +521,10 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   border-color: color-mix(in oklab, var(--color-primary-content) 30%, transparent);
   box-shadow: none;
 }
+/* Small phones: a smaller bubble gives the big numbers room to stay on one line */
+@media (max-width: 24rem) {
+  .glance-bubble { width: 3rem; height: 3rem; font-size: 1.5rem; }
+}
 .glance-snooze { position: absolute; top: -0.35rem; right: -0.5rem; font-size: 1.1rem; }
 
 .glance-pill {
@@ -538,7 +549,14 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   from { opacity: 0; transform: translateY(16px) scale(0.96); }
   to   { opacity: 1; transform: none; }
 }
-.glance-pop { animation: glance-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both; animation-delay: var(--d, 0ms); }
+/* `backwards`: holds the from-state during the stagger delay, then lets go */
+.glance-pop { animation: glance-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; animation-delay: var(--d, 0ms); }
+
+/* The bobbing bubbles and Zzz rest while a sheet or modal covers the page */
+body:has(#quick-sheet, #edit-entry-modal) .glance-bubble,
+body:has(#quick-sheet, #edit-entry-modal) .snooze i {
+  animation-play-state: paused;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .glance-pop, .glance-bubble { animation: none; }

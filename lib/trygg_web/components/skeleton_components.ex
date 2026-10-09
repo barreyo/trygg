@@ -141,13 +141,13 @@ defmodule TryggWeb.SkeletonComponents do
 
   def glance_card_skeleton(assigns) do
     ~H"""
-    <div class={["rounded-[1.75rem] bg-base-200/70 p-4", @class]}>
+    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-5", @class]}>
       <div class="flex items-center gap-4">
         <.bone class="size-16 shrink-0 rounded-full" />
-        <div class="min-w-0 flex-1 space-y-2">
-          <.bone class="h-3.5 w-1/4 rounded" />
-          <.bone class="h-8 w-3/5 rounded" />
-          <.bone class="h-4 w-4/5 rounded" />
+        <div class="min-w-0 flex-1">
+          <.bone class="my-[3px] h-3.5 w-1/4 rounded" />
+          <.bone class="my-[3px] h-[1.9rem] w-3/5 rounded" />
+          <.bone class="my-[3px] h-4 w-4/5 rounded" />
         </div>
       </div>
       <div class="mt-4 flex items-center gap-3">
@@ -167,17 +167,17 @@ defmodule TryggWeb.SkeletonComponents do
       <.glance_card_skeleton :for={_ <- 1..3} />
     </section>
 
-    <div :if={@can_write} class="mt-6 space-y-4 rounded-[1.75rem] bg-base-200/60 p-5">
-      <.bone class="h-6 w-40 rounded" />
-      <.bone class="h-14 w-full rounded-field" />
-      <.bone class="h-14 w-full rounded-field" />
+    <div :if={@can_write} class="mt-6 space-y-4 rounded-[var(--radius-card)] bg-base-200/60 p-5">
+      <.bone class="h-7 w-40 rounded" />
+      <.bone class="h-[3.3rem] w-full rounded-field" />
+      <.bone class="h-[3.3rem] w-full rounded-field" />
       <div>
-        <.bone class="h-3.5 w-14 rounded mb-2" />
+        <.bone class="mb-2 h-5 w-14 rounded" />
         <div class="grid grid-cols-3 gap-3">
-          <.bone :for={_ <- 1..3} class="h-[6.25rem] rounded-field" />
+          <.bone :for={_ <- 1..3} class="h-[5.875rem] rounded-field" />
         </div>
       </div>
-      <.bone class="h-9 w-44 mx-auto rounded-field" />
+      <.bone class="mx-auto h-10 w-44 rounded-field" />
     </div>
     """
   end
