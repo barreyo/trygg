@@ -54,6 +54,27 @@ const SCENES = {
     ],
     hero: "🌙", twinkle: ["⭐", 14], rise: ["💤", 5],
   },
+  measure_weight: {
+    captions: [
+      "Weigh to go!", "Scale-ing up!", "Heavy hitter!", "Gaining glory!", "Look at those rolls!",
+      "Plump and proud", "Big numbers!", "Weigh-in complete!", "Growing chunk!", "Ounce by ounce",
+    ],
+    hero: "⚖️", rise: ["💪", 8],
+  },
+  measure_height: {
+    captions: [
+      "Growing tall!", "Stretching out!", "Up, up, up!", "Sprouting!", "Long legs ahead",
+      "Look who grew!", "Measuring up!", "Basketball star?", "Reaching new heights", "Tall order!",
+    ],
+    hero: "📏", rise: ["🌱", 10],
+  },
+  measure_both: {
+    captions: [
+      "Big kid energy!", "Growing like a weed!", "Checkup champ!", "Measured and mighty!", "Head to toe!",
+      "Off the charts!", "Look at you go!", "Bigger every day", "Stats updated!", "Little giant!",
+    ],
+    hero: "⚖️", rise: ["📏", 8], burst: ["✨", 10],
+  },
   sleep_stop: {
     captions: [
       "Good morning!", "Rise and shine!", "Hello, world!", "Look who's awake", "Fully recharged!",
