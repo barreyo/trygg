@@ -532,7 +532,8 @@ defmodule TryggWeb.VitalsLive do
 
   @impl true
   def handle_info({:growth, action, measurement}, socket),
-    do: {:noreply, socket |> load_measurements() |> RemoteUpdate.flash_growth(measurement, action)}
+    do:
+      {:noreply, socket |> load_measurements() |> RemoteUpdate.flash_growth(measurement, action)}
 
   def handle_info({:child_updated, child}, socket) do
     {:noreply,
