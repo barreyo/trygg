@@ -192,7 +192,7 @@ defmodule Trygg.Growth do
 
   defp broadcast({:ok, measurement}, child_id, action) do
     measurement = Repo.preload(measurement, :logged_by, force: true)
-    Families.broadcast(child_id, {:growth, action, measurement})
+    Families.broadcast(child_id, {:growth, action, %{measurement | origin: self()}})
     {:ok, measurement}
   end
 

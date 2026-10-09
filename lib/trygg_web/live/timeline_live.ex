@@ -5,7 +5,7 @@ defmodule TryggWeb.TimelineLive do
   alias Trygg.Families
   alias Trygg.Log
   alias Trygg.Log.Entry
-  alias TryggWeb.Loading
+  alias TryggWeb.{Loading, RemoteUpdate}
 
   @page_size 50
   @filters [nil, :feeding, :diaper, :sleep]
@@ -170,8 +170,11 @@ defmodule TryggWeb.TimelineLive do
   @impl true
   # A new entry joins the top of the list, so the reload window grows by one to
   # keep the oldest page-loaded entry on screen.
-  def handle_info({:log, :created, _entry}, socket), do: {:noreply, load_entries(socket, 1)}
-  def handle_info({:log, _action, _entry}, socket), do: {:noreply, load_entries(socket)}
+  def handle_info({:log, :created, entry}, socket),
+    do: {:noreply, socket |> load_entries(1) |> RemoteUpdate.flash_timeline(entry, :created)}
+
+  def handle_info({:log, action, entry}, socket),
+    do: {:noreply, socket |> load_entries() |> RemoteUpdate.flash_timeline(entry, action)}
 
   def handle_info({:child_updated, child}, socket) do
     {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}

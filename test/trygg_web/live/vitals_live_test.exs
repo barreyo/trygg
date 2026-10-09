@@ -127,6 +127,19 @@ defmodule TryggWeb.VitalsLiveTest do
     assert has_element?(lv, "#growth-table")
   end
 
+  test "a measurement logged elsewhere pulses the latest cards and its row", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
+
+    m = measurement_fixture(scope, child, %{"weight_g" => 3100, "height_cm" => 49})
+
+    assert_push_event(lv, "remote-flash", %{targets: targets})
+    assert targets == ["#latest-weight > *", "#latest-height > *", "#measurement-#{m.id}"]
+  end
+
   test "period chips and zoom change which points are on the chart", %{
     conn: conn,
     scope: scope,

@@ -270,4 +270,13 @@ defmodule TryggWeb.TimelineLiveTest do
     assert %{data: %{"vitamin_d" => true}} = Log.get_entry!(scope, entry.id)
     assert has_element?(lv, "[data-vitamin-d]")
   end
+
+  test "an entry logged elsewhere pulses its row", %{conn: conn, scope: scope, child: child} do
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+
+    entry = entry_fixture(scope, child, type: :feeding)
+
+    assert_push_event(lv, "remote-flash", %{targets: ["#entries-" <> id]})
+    assert id == to_string(entry.id)
+  end
 end
