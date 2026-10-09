@@ -499,7 +499,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
       past = DateTime.utc_now() |> DateTime.add(-2, :hour) |> Calendar.strftime("%Y-%m-%dT%H:%M")
 
-      lv |> element("button", "Edit") |> render_click()
+      lv |> element("#sleep-nudges button[aria-label=\"Edit start time\"]") |> render_click()
       lv |> form("#sleep-form", sleep: %{started_at: past}) |> render_submit()
 
       [nap] = Log.running_timers(scope, child)

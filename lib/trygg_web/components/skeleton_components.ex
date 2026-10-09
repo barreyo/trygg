@@ -142,20 +142,20 @@ defmodule TryggWeb.SkeletonComponents do
 
   def glance_card_skeleton(assigns) do
     ~H"""
-    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-4", @class]}>
-      <div class="flex items-center gap-4">
-        <.bone class="size-16 shrink-0 rounded-full" />
+    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-3", @class]}>
+      <div class="flex items-center gap-3">
+        <.bone class="size-14 shrink-0 rounded-full" />
         <div class="min-w-0 flex-1">
           <.bone class="my-[3px] h-3.5 w-1/4 rounded" />
           <.bone class="my-[3px] h-[1.9rem] w-3/5 rounded" />
           <.bone class="my-[3px] h-4 w-4/5 rounded" />
         </div>
       </div>
-      <div class="mt-3 flex items-center gap-3">
+      <div class="mt-1.5 flex items-center gap-3">
         <.bone class="h-7 w-32 rounded-full" />
         <.bone class="h-3.5 w-24 rounded" />
       </div>
-      <.bone :if={@action} class="mt-3 h-12 w-full rounded-field" />
+      <.bone :if={@action} class="mt-2 h-12 w-full rounded-field" />
     </div>
     """
   end
@@ -165,7 +165,7 @@ defmodule TryggWeb.SkeletonComponents do
 
   def home_status_skeleton(assigns) do
     ~H"""
-    <section class="space-y-4">
+    <section class="space-y-3">
       <.glance_card_skeleton :for={_ <- 1..3} action={@can_write} />
     </section>
     """

@@ -1064,7 +1064,7 @@ defmodule TryggWeb.DashboardLive do
                carries the buttons that log the next one of its kind, so the
                answer ("when was the last diaper?") and the action sit together
                and nothing important is a scroll away on a phone. --%>
-            <section id="glance-cards" class="space-y-4">
+            <section id="glance-cards" class="space-y-3">
               <.glance
                 :for={{type, i} <- Enum.with_index(@current_child.tracked_types)}
                 type={type}
@@ -1308,9 +1308,9 @@ defmodule TryggWeb.DashboardLive do
               <.icon name="hero-stop" class="size-5" /> Stop
             </.button>
             <%!-- Fix a start time that was logged late --%>
-            <div id="sleep-nudges" class="mt-3">
-              <div class="mb-1.5 text-xs opacity-80">Started earlier?</div>
-              <div class="grid grid-cols-4 gap-2">
+            <div id="sleep-nudges" class="mt-2 flex items-center gap-2">
+              <span class="shrink-0 text-xs opacity-80">Started earlier?</span>
+              <div class="grid flex-1 grid-cols-4 gap-1.5">
                 <.button
                   :for={m <- nudge_minutes()}
                   type="button"
@@ -1325,8 +1325,9 @@ defmodule TryggWeb.DashboardLive do
                   size="xs"
                   phx-click="open_sheet"
                   phx-value-kind="sleep_start"
+                  aria-label="Edit start time"
                 >
-                  <.icon name="hero-pencil-square" class="size-3.5" /> Edit
+                  <.icon name="hero-pencil-square" class="size-3.5" />
                 </.button>
               </div>
             </div>
@@ -1357,9 +1358,9 @@ defmodule TryggWeb.DashboardLive do
       type="button"
       phx-click="quick"
       phx-value-kind={@kind}
-      class={["h-auto flex-col gap-0 px-1 py-2", @color_class]}
+      class={["gap-1.5 px-1", @color_class]}
     >
-      <span class="whitespace-nowrap text-xl leading-tight" aria-hidden="true">{@emoji}</span>
+      <span class="whitespace-nowrap text-xl leading-none" aria-hidden="true">{@emoji}</span>
       <span class="text-sm font-bold">{@label}</span>
     </.button>
     """
