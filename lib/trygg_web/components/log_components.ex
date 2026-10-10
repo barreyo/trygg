@@ -802,8 +802,7 @@ defmodule TryggWeb.LogComponents do
           value=""
           checked={@form.params["pattern"] in [nil, ""]}
           class="radio radio-primary"
-        />
-        Skip
+        /> Skip
       </label>
     </fieldset>
     """
