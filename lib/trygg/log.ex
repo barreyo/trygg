@@ -118,10 +118,18 @@ defmodule Trygg.Log do
         diapers: length(diaper_kinds),
         diapers_wet: Enum.count(diaper_kinds, &(&1 in ["pee", "mixed"])),
         diapers_dirty: Enum.count(diaper_kinds, &(&1 in ["poo", "mixed"])),
-        sleep_seconds: sleep_seconds_between(child, day_start, day_end)
+        sleep_seconds: sleep_seconds_between(child, day_start, day_end),
+        breastfeeding_sessions: count_between(child, :breastfeeding, day_start, day_end),
+        breastfeeding_seconds: duration_seconds_between(child, :breastfeeding, day_start, day_end)
       }
     }
   end
+
+  @doc "Returns the running timer of `type` from a summary, if present."
+  def running(%{running: running}, type) when is_list(running),
+    do: Enum.find(running, &(&1.type == type))
+
+  def running(_summary, _type), do: nil
 
   @doc """
   Whether a feed logged on the child's local calendar `date` included a vitamin
@@ -183,10 +191,14 @@ defmodule Trygg.Log do
   end
 
   defp sleep_seconds_between(child, from, to) do
+    duration_seconds_between(child, :sleep, from, to)
+  end
+
+  defp duration_seconds_between(child, type, from, to) do
     now = DateTime.utc_now()
 
     Entry
-    |> where([e], e.child_id == ^child.id and e.type == :sleep and e.started_at < ^to)
+    |> where([e], e.child_id == ^child.id and e.type == ^type and e.started_at < ^to)
     |> where([e], is_nil(e.ended_at) or e.ended_at > ^from)
     |> Repo.all()
     |> Enum.reduce(0, fn e, acc ->
@@ -302,9 +314,13 @@ defmodule Trygg.Log do
   `{:error, :not_found}` if the entry is gone or belongs to another child.
   """
   def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at) do
+    sync_stop_timer(scope, child, id, ended_at, %{})
+  end
+
+  def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at, data) do
     with {int, ""} <- Integer.parse(to_string(id)),
          %Entry{child_id: child_id} = entry when child_id == child.id <- Repo.get(Entry, int) do
-      stop_timer(scope, entry, %{"ended_at" => clamp_future(ended_at)})
+      stop_timer(scope, entry, %{"ended_at" => clamp_future(ended_at), "data" => data})
     else
       _ -> {:error, :not_found}
     end

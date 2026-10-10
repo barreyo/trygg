@@ -795,6 +795,16 @@ defmodule TryggWeb.LogComponents do
         />
         {String.capitalize(pattern)}
       </label>
+      <label class="label min-h-10 gap-2">
+        <input
+          type="radio"
+          name={"#{@name}[pattern]"}
+          value=""
+          checked={@form.params["pattern"] in [nil, ""]}
+          class="radio radio-primary"
+        />
+        Skip
+      </label>
     </fieldset>
     """
   end

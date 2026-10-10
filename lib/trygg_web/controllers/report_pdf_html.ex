@@ -152,6 +152,8 @@ defmodule TryggWeb.ReportPdfHTML do
 
       <.feeding_section feeding={@feeding} unit_system={@unit_system} />
 
+      <.breastfeeding_section days={@export.week} />
+
       <.diapers_section diapers={@diapers} />
 
       <.changes_section shifts={@summary.shifts} />
@@ -649,6 +651,30 @@ defmodule TryggWeb.ReportPdfHTML do
           />
         </div>
       </div>
+    </section>
+    """
+  end
+
+  ## Breastfeeding -------------------------------------------------------------
+
+  attr :days, :list, required: true
+
+  defp breastfeeding_section(assigns) do
+    days = Enum.filter(assigns.days, &(&1.breastfeeding_sessions > 0))
+    assigns = assign(assigns, :days, days)
+
+    ~H"""
+    <section :if={@days != []} id="pdf-breastfeeding" class="pdf-card">
+      <h2 class="font-semibold">Breastfeeding · daily sessions and time</h2>
+      <div class="mt-2 divide-y divide-base-300">
+        <div :for={day <- @days} class="flex justify-between py-1 text-sm">
+          <span>{Calendar.strftime(day.date, "%a %-d %b")}</span>
+          <span class="tabular-nums">
+            {day.breastfeeding_sessions} sessions · {format_duration(day.breastfeeding_seconds)}
+          </span>
+        </div>
+      </div>
+      <p class="mt-2 text-xs opacity-60">Tracked separately from bottle feeds.</p>
     </section>
     """
   end

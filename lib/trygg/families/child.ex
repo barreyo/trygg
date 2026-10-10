@@ -91,6 +91,10 @@ defmodule Trygg.Families.Child do
     |> validate_day_night()
   end
 
+  def tracker_options do
+    [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep", breastfeeding: "Breastfeeding"]
+  end
+
   # Seed the virtual weeks/days pair from the stored total so the form shows
   # it and an untouched form doesn't register a change.
   defp with_gestation_fields(%__MODULE__{gestational_age_days: days} = child)

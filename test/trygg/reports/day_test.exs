@@ -43,7 +43,29 @@ defmodule Trygg.Reports.DayTest do
     }
   end
 
+  defp breastfeeding(id, start, finish) do
+    %Entry{
+      id: id,
+      type: :breastfeeding,
+      started_at: start,
+      ended_at: finish,
+      data: %{}
+    }
+  end
+
   describe "calendar segmentation" do
+    test "counts breastfeeding starts and clips timer duration to the local day" do
+      date = ~D[2026-03-02]
+      now = ~U[2026-03-03 12:00:00Z]
+      before_day = breastfeeding(1, ~U[2026-03-02 07:50:00Z], ~U[2026-03-02 08:20:00Z])
+      today = breastfeeding(2, ~U[2026-03-02 09:00:00Z], ~U[2026-03-02 09:10:00Z])
+
+      day = Day.build(child(), date, [before_day, today], now)
+
+      assert day.breastfeeding_sessions == 1
+      assert day.breastfeeding_seconds == 1800
+    end
+
     test "clips a sleep that spans midnight onto the local day" do
       date = ~D[2026-03-02]
       now = ~U[2026-03-03 12:00:00Z]

@@ -324,7 +324,7 @@ defmodule Trygg.LogTest do
   end
 
   describe "breastfeeding pattern data" do
-    test "stores supported patterns and permits missing or unrecognized values", %{
+    test "stores supported patterns, permits missing values, and rejects unknown values", %{
       scope: scope,
       child: child
     } do
@@ -350,14 +350,14 @@ defmodule Trygg.LogTest do
 
       assert missing.data == %{}
 
-      assert {:ok, unknown} =
+      assert {:error, changeset} =
                Log.create_entry(scope, child, :breastfeeding, %{
                  "started_at" => at,
                  "ended_at" => at,
                  "data" => %{"pattern" => "not a preset"}
                })
 
-      assert unknown.data == %{}
+      assert "pattern must be constant, on and off or barely" in errors_on(changeset).data
     end
   end
 
@@ -400,6 +400,17 @@ defmodule Trygg.LogTest do
       assert summary.today.diapers_dirty == 2
       assert summary.today.sleep_seconds == 3600
       assert summary.last_feeding.type == :feeding
+
+      {:ok, _} =
+        Log.create_entry(scope, child, :breastfeeding, %{
+          "started_at" => day_start,
+          "ended_at" => DateTime.add(day_start, 1200, :second),
+          "data" => %{"pattern" => "constant"}
+        })
+
+      summary = Log.summary(scope, child)
+      assert summary.today.breastfeeding_sessions == 1
+      assert summary.today.breastfeeding_seconds == 1200
     end
 
     test "counts an in-progress sleep up to now", %{scope: scope, child: child} do

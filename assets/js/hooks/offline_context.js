@@ -20,7 +20,9 @@ function persist(el) {
     unitSystem: unitSystem === "imperial" ? "imperial" : "metric",
     canWrite: true,
     tz: tz || "UTC",
-    trackedTypes: trackedTypes ? trackedTypes.split(",") : ["feeding", "diaper", "sleep"],
+    trackedTypes: trackedTypes
+      ? trackedTypes.split(",")
+      : ["feeding", "diaper", "sleep", "breastfeeding"],
     updatedAt: Date.now(),
   }).catch(() => {})
 }

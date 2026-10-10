@@ -201,13 +201,14 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  def handle_event("nudge_start", %{"by" => by}, socket) do
+  def handle_event("nudge_start", %{"by" => by} = params, socket) do
     minutes = String.to_integer(by)
+    type = if params["type"] == "breastfeeding", do: :breastfeeding, else: :sleep
 
     socket =
-      case running_sleep(socket.assigns) do
-        %Entry{} = nap ->
-          new_start = DateTime.add(nap.started_at, minutes * 60, :second)
+      case Log.running(socket.assigns.summary, type) do
+        %Entry{} = timer ->
+          new_start = DateTime.add(timer.started_at, minutes * 60, :second)
 
           cond do
             DateTime.compare(new_start, DateTime.utc_now()) == :gt ->
@@ -217,7 +218,7 @@ defmodule TryggWeb.DashboardLive do
               put_flash(socket, :error, "That's more than a day back — use Edit for that.")
 
             true ->
-              case Log.retime_entry(socket.assigns.current_scope, nap, %{
+              case Log.retime_entry(socket.assigns.current_scope, timer, %{
                      "started_at" => new_start
                    }) do
                 {:ok, _} -> socket
@@ -859,10 +860,8 @@ defmodule TryggWeb.DashboardLive do
 
       push_event(socket, "offline:snapshot", %{
         running:
-          summary.running
-          |> Enum.filter(&(&1.type == :sleep))
-          |> Enum.map(fn e ->
-            %{id: e.id, started_at: DateTime.to_iso8601(e.started_at)}
+          Enum.map(summary.running, fn e ->
+            %{id: e.id, type: e.type, started_at: DateTime.to_iso8601(e.started_at)}
           end),
         recent:
           scope
@@ -925,15 +924,8 @@ defmodule TryggWeb.DashboardLive do
   defp running_sleep(%{summary: %{running: running}}),
     do: Enum.find(running, &(&1.type == :sleep))
 
-  defp running_breastfeeding(assigns) do
-    running =
-      case Map.get(assigns, :summary) do
-        %{running: running} -> running
-        _ -> Map.get(assigns, :running, [])
-      end
-
-    Enum.find(running, &(&1.type == :breastfeeding))
-  end
+  defp running_breastfeeding(%{summary: summary}), do: Log.running(summary, :breastfeeding)
+  defp running_breastfeeding(summary), do: Log.running(summary, :breastfeeding)
 
   defp current_sheet_params(%{assigns: %{sheet_form: %{params: params}}}) when is_map(params),
     do: params
@@ -978,8 +970,7 @@ defmodule TryggWeb.DashboardLive do
     order |> List.replace_at(i, Enum.at(order, j)) |> List.replace_at(j, Enum.at(order, i))
   end
 
-  defp tracker_options,
-    do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep", breastfeeding: "Breastfeeding"]
+  defp tracker_options, do: Child.tracker_options()
 
   defp tracker_label(name),
     do:
@@ -1405,7 +1396,7 @@ defmodule TryggWeb.DashboardLive do
     <div id="glance-sleep">
       <.glance_card
         index={@index}
-        timer={running_sleep_entry(@summary)}
+        timer={Log.running(@summary, :sleep)}
         emoji={sleep_emoji(@summary)}
         snooze={sleeping?(@summary)}
         label={sleep_label(@summary)}
@@ -1474,13 +1465,14 @@ defmodule TryggWeb.DashboardLive do
     <div id="glance-breastfeeding">
       <.glance_card
         index={@index}
-        timer={running_breastfeeding(@summary)}
+        timer={Log.running(@summary, :breastfeeding)}
         emoji="🤱"
         label="Breastfeeding"
         category="feed"
         tone="base"
         value={breastfeeding_value(@summary.last_breastfeeding)}
         sub={breastfeeding_sub(@summary.last_breastfeeding)}
+        today={breastfeeding_today(@summary.today)}
       >
         <:actions :if={@can_write}>
           <%= if running_breastfeeding(@summary) do %>
@@ -1493,6 +1485,21 @@ defmodule TryggWeb.DashboardLive do
             >
               <.icon name="hero-stop" class="size-5" /> Stop
             </.button>
+            <div id="breastfeeding-nudges" class="mt-2 flex items-center gap-2">
+              <span class="shrink-0 text-xs opacity-80">Started earlier?</span>
+              <div class="grid flex-1 grid-cols-4 gap-1.5">
+                <.button
+                  :for={m <- nudge_minutes()}
+                  type="button"
+                  size="xs"
+                  phx-click="nudge_start"
+                  phx-value-type="breastfeeding"
+                  phx-value-by={m}
+                >
+                  {m}m
+                </.button>
+              </div>
+            </div>
           <% else %>
             <.button
               id="start-breastfeeding"
@@ -1988,6 +1995,10 @@ defmodule TryggWeb.DashboardLive do
 
   defp breastfeeding_value(entry), do: relative_time(time_of(entry))
 
+  defp breastfeeding_today(%{breastfeeding_sessions: count, breastfeeding_seconds: seconds}) do
+    "#{count} #{plural(count, "session")} · #{format_duration(seconds)} today · separate from bottles"
+  end
+
   # Feed card. The primary `value` is plain time since the last feed — the
   # single most-checked fact — in the card's biggest text; the next-feed
   # estimate demotes to the neutral `sub` line. The tone-coloured `status`
@@ -2082,7 +2093,7 @@ defmodule TryggWeb.DashboardLive do
   # feed card) and the awake duration moves down to `sub`.
   defp sleeping?(%{running: running}), do: Enum.any?(running, &(&1.type == :sleep))
 
-  defp running_sleep_entry(%{running: running}), do: Enum.find(running, &(&1.type == :sleep))
+  defp running_sleep_entry(summary), do: Log.running(summary, :sleep)
 
   defp woke_at(%{last_sleep: %Entry{ended_at: %DateTime{} = at}}), do: at
   defp woke_at(%{last_sleep: %Entry{started_at: at}}), do: at
