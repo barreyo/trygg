@@ -1354,6 +1354,8 @@ defmodule TryggWeb.DashboardLive do
     </div>
     """
   end
+
+  attr :type, :atom, required: true, values: [:feeding, :diaper, :sleep, :breastfeeding]
   attr :index, :integer, required: true, doc: "position in the child's Home order"
   attr :summary, :map, required: true
   attr :outlook, :map, required: true
