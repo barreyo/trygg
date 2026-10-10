@@ -473,6 +473,7 @@ defmodule TryggWeb.DashboardLiveTest do
       lv
       |> form("#breastfeeding-form", breastfeeding: %{pattern: "barely"})
       |> render_submit()
+
       assert_push_event(lv, "log-splash", %{kind: "breastfeeding_stop"})
 
       assert [%{type: :breastfeeding, data: %{"pattern" => "barely"}, ended_at: %DateTime{}}] =
