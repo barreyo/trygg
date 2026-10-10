@@ -925,8 +925,15 @@ defmodule TryggWeb.DashboardLive do
   defp running_sleep(%{summary: %{running: running}}),
     do: Enum.find(running, &(&1.type == :sleep))
 
-  defp running_breastfeeding(%{summary: %{running: running}}),
-    do: Enum.find(running, &(&1.type == :breastfeeding))
+  defp running_breastfeeding(assigns) do
+    running =
+      case Map.get(assigns, :summary) do
+        %{running: running} -> running
+        _ -> Map.get(assigns, :running, [])
+      end
+
+    Enum.find(running, &(&1.type == :breastfeeding))
+  end
 
   defp current_sheet_params(%{assigns: %{sheet_form: %{params: params}}}) when is_map(params),
     do: params
