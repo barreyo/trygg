@@ -246,7 +246,8 @@ defmodule TryggWeb.DashboardLive do
     form =
       to_form(
         %{
-          "ended_at" => timer_end_input(child, Log.running(socket.assigns.summary, :breastfeeding)),
+          "ended_at" =>
+            timer_end_input(child, Log.running(socket.assigns.summary, :breastfeeding)),
           "pattern" => "",
           "note" => ""
         },
