@@ -12,6 +12,8 @@ defmodule TryggWeb.Api.EntryController do
       `ended_at` starts a running timer. A `client_id` (a UUID) makes the call
       idempotent — repeating it updates the same entry instead of adding
       another — and requires `started_at` so a retry can't drift the time.
+      For breastfeeding, optional `data.pattern` must be `constant`,
+      `on_and_off` or `barely`.
     * `POST   /api/v1/children/:child_id/entries/:id/stop` — stops a running
       timer; takes `ended_at`, `data` and `note`
     * `DELETE /api/v1/children/:child_id/entries/:id`

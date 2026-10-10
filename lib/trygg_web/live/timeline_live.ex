@@ -3,12 +3,13 @@ defmodule TryggWeb.TimelineLive do
 
   alias Trygg.Accounts.Scope
   alias Trygg.Families
+  alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Log.Entry
   alias TryggWeb.{Loading, RemoteUpdate}
 
   @page_size 50
-  @filters [nil, :feeding, :diaper, :sleep, :breastfeeding]
+  @filters [:feeding, :diaper, :sleep, :breastfeeding]
 
   # The finer breakdown offered once a type is picked: `{id, label, data}`,
   # where `data` is what an entry's `data` map must match
@@ -39,7 +40,7 @@ defmodule TryggWeb.TimelineLive do
            and focus ring; the negative margins give the room back. --%>
       <div class="-mx-4 -mt-1 flex gap-2 overflow-x-auto px-4 pb-2 pt-1">
         <.button
-          :for={f <- filters()}
+          :for={f <- filters(@current_child)}
           type="button"
           variant={if @filter == f, do: "primary", else: nil}
           size="sm"
@@ -232,7 +233,7 @@ defmodule TryggWeb.TimelineLive do
 
   @impl true
   def handle_event("filter", %{"type" => type}, socket) do
-    filter = Enum.find(@filters, &(to_string(&1) == to_string(type)))
+    filter = Enum.find(filters(socket.assigns.current_child), &(to_string(&1) == to_string(type)))
 
     {:noreply,
      socket
@@ -373,7 +374,8 @@ defmodule TryggWeb.TimelineLive do
   end
 
   defp subfilters(filter), do: Map.get(@subfilters, filter, [])
-  defp filters, do: @filters
+  defp filters(child),
+    do: [nil | Enum.filter(@filters, &Child.tracks?(child, &1))]
   defp filter_label(nil), do: "All"
   defp filter_label(:feeding), do: "Feeds"
   defp filter_label(:diaper), do: "Diapers"

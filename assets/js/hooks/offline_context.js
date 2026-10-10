@@ -22,7 +22,7 @@ function persist(el) {
     tz: tz || "UTC",
     trackedTypes: trackedTypes
       ? trackedTypes.split(",")
-      : ["feeding", "diaper", "sleep", "breastfeeding"],
+      : ["feeding", "diaper", "sleep"],
     updatedAt: Date.now(),
   }).catch(() => {})
 }

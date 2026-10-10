@@ -384,7 +384,8 @@ defmodule TryggWeb.LogComponents do
   end
 
   def entry_detail(%Entry{type: :breastfeeding, data: data, note: note}, _units) do
-    [data["pattern"], note] |> compact_join(" · ")
+    [data["pattern"] && Entry.breastfeeding_pattern_label(data["pattern"]), note]
+    |> compact_join(" · ")
   end
 
   def entry_detail(%Entry{type: :diaper, data: data, note: note}, _units) do
@@ -784,7 +785,7 @@ defmodule TryggWeb.LogComponents do
   def breastfeeding_pattern_fieldset(assigns) do
     ~H"""
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">How did they feed?</legend>
+      <legend class="fieldset-legend">How did it go?</legend>
       <label :for={pattern <- Entry.breastfeeding_patterns()} class="label min-h-10 gap-2">
         <input
           type="radio"
@@ -793,7 +794,7 @@ defmodule TryggWeb.LogComponents do
           checked={@form.params["pattern"] == pattern}
           class="radio radio-primary"
         />
-        {String.capitalize(pattern)}
+        {Entry.breastfeeding_pattern_label(pattern)}
       </label>
       <label class="label min-h-10 gap-2">
         <input

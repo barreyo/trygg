@@ -6,6 +6,13 @@ defmodule Trygg.Families.Child do
   # What the Home screen can track — the same atoms as `Trygg.Log.Entry` types.
   # Bottles, diapers and sleep are on by default; breastfeeding is optional.
   @tracked_types [:feeding, :diaper, :sleep, :breastfeeding]
+  @default_tracked_types [:feeding, :diaper, :sleep]
+  @tracker_labels %{
+    feeding: "Bottles",
+    diaper: "Diapers",
+    sleep: "Sleep",
+    breastfeeding: "Breastfeeding"
+  }
   # New children default to the San Francisco Bay Area; the IANA zone handles
   # PST/PDT automatically.
   @default_timezone "America/Los_Angeles"
@@ -47,7 +54,7 @@ defmodule Trygg.Families.Child do
     field :tracked_types,
           {:array, Ecto.Enum},
           values: @tracked_types,
-          default: [:feeding, :diaper, :sleep]
+          default: @default_tracked_types
 
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
@@ -89,10 +96,6 @@ defmodule Trygg.Families.Child do
     |> truncate_time(:day_start)
     |> truncate_time(:night_start)
     |> validate_day_night()
-  end
-
-  def tracker_options do
-    [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep", breastfeeding: "Breastfeeding"]
   end
 
   # Seed the virtual weeks/days pair from the stored total so the form shows
@@ -480,6 +483,12 @@ defmodule Trygg.Families.Child do
   def tracks?(%__MODULE__{tracked_types: types}, type), do: type in types
 
   def tracked_types, do: @tracked_types
+  def default_tracked_types, do: @default_tracked_types
+
+  def tracker_options do
+    Enum.map(@tracked_types, &{&1, Map.fetch!(@tracker_labels, &1)})
+  end
+
   def sexes, do: @sexes
   def gestation_weeks, do: @gestation_weeks
   def default_timezone, do: @default_timezone

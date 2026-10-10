@@ -97,19 +97,21 @@ defmodule Trygg.Log do
   end
 
   @doc """
-  A snapshot for the dashboard: the last feed/diaper/sleep/breastfeeding, any running timers,
-  and today's counts (in the child's local day).
+  A snapshot for the dashboard: the latest entry of each tracked type, any
+  running timers, and today's counts (in the child's local day).
   """
   def summary(%Scope{} = scope, %Child{} = child) do
     Families.authorize!(scope, child, :viewer)
     {day_start, day_end} = Child.day_bounds(child)
     diaper_kinds = diaper_kinds_between(child, day_start, day_end)
+    {last_breastfeeding, breastfeeding_sessions, breastfeeding_seconds} =
+      breastfeeding_summary(child, day_start, day_end)
 
     %{
       last_feeding: last_of_type(child, :feeding),
       last_diaper: last_of_type(child, :diaper),
       last_sleep: last_of_type(child, :sleep),
-      last_breastfeeding: last_of_type(child, :breastfeeding),
+      last_breastfeeding: last_breastfeeding,
       running: running_timers(scope, child),
       vitamin_d_given_today?: vitamin_d_given?(child, Child.local_today(child)),
       today: %{
@@ -118,18 +120,28 @@ defmodule Trygg.Log do
         diapers: length(diaper_kinds),
         diapers_wet: Enum.count(diaper_kinds, &(&1 in ["pee", "mixed"])),
         diapers_dirty: Enum.count(diaper_kinds, &(&1 in ["poo", "mixed"])),
-        sleep_seconds: sleep_seconds_between(child, day_start, day_end),
-        breastfeeding_sessions: count_between(child, :breastfeeding, day_start, day_end),
-        breastfeeding_seconds: duration_seconds_between(child, :breastfeeding, day_start, day_end)
+        sleep_seconds: duration_seconds_between(child, :sleep, day_start, day_end),
+        breastfeeding_sessions: breastfeeding_sessions,
+        breastfeeding_seconds: breastfeeding_seconds
       }
     }
+  end
+
+  defp breastfeeding_summary(child, from, to) do
+    if Child.tracks?(child, :breastfeeding) do
+      {
+        last_of_type(child, :breastfeeding),
+        count_between(child, :breastfeeding, from, to),
+        duration_seconds_between(child, :breastfeeding, from, to)
+      }
+    else
+      {nil, 0, 0}
+    end
   end
 
   @doc "Returns the running timer of `type` from a summary, if present."
   def running(%{running: running}, type) when is_list(running),
     do: Enum.find(running, &(&1.type == type))
-
-  def running(_summary, _type), do: nil
 
   @doc """
   Whether a feed logged on the child's local calendar `date` included a vitamin
@@ -188,10 +200,6 @@ defmodule Trygg.Log do
             e.started_at >= ^from and e.started_at < ^to,
         select: fragment("?->>'kind'", e.data)
     )
-  end
-
-  defp sleep_seconds_between(child, from, to) do
-    duration_seconds_between(child, :sleep, from, to)
   end
 
   defp duration_seconds_between(child, type, from, to) do
@@ -305,19 +313,14 @@ defmodule Trygg.Log do
   end
 
   @doc """
-  Stops an already-persisted running timer by its server `id` — the offline
-  "Stop sleep" for a sleep that was started while online, so there is no
-  `client_id` to key on. `ended_at` (ISO8601) is the moment the caregiver
-  tapped stop; a value far in the future is pulled back to now. Requires
-  `:caregiver` for the timer's child. Idempotent.
+  Stops an already-persisted running timer by its server `id`, for an offline
+  timer started while online. `ended_at` is the tap time and is clamped if it is
+  far in the future; optional `data` records details entered when stopping.
+  Requires `:caregiver` for the timer's child. Idempotent.
 
   `{:error, :not_found}` if the entry is gone or belongs to another child.
   """
-  def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at) do
-    sync_stop_timer(scope, child, id, ended_at, %{})
-  end
-
-  def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at, data) do
+  def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at, data \\ %{}) do
     with {int, ""} <- Integer.parse(to_string(id)),
          %Entry{child_id: child_id} = entry when child_id == child.id <- Repo.get(Entry, int) do
       stop_timer(scope, entry, %{"ended_at" => clamp_future(ended_at), "data" => data})

@@ -266,7 +266,7 @@ export function renderPanel(root, opts = {}) {
 
     // Only the trackers this child's Home shows. Contexts mirrored before the
     // layout was configurable have no list and offer everything.
-    const tracked = ctx.trackedTypes || ["feeding", "diaper", "sleep", "breastfeeding"]
+    const tracked = ctx.trackedTypes || ["feeding", "diaper", "sleep"]
     timerBoxes = Object.fromEntries(
       ["sleep", "breastfeeding"]
         .filter((type) => tracked.includes(type))
@@ -336,7 +336,6 @@ export function renderPanel(root, opts = {}) {
     box.innerHTML = ""
     const breastfeeding = type === "breastfeeding"
     const label = breastfeeding ? "Breastfeeding" : "Sleep"
-    const title = breastfeeding ? "How did they eat?" : "Stop sleep"
     box.append(el("h2", {text: label}))
 
     const rows = await myQueue()
@@ -362,22 +361,39 @@ export function renderPanel(root, opts = {}) {
       })
       stop.addEventListener("click", async () => {
         const nowISO = new Date().toISOString()
-        const data = {}
         if (breastfeeding) {
-          const pattern = window.prompt(`${title} (constant, on and off, barely; leave blank to skip)`)
-          if (pattern && !["constant", "on and off", "barely"].includes(pattern)) {
-            return flash("Choose constant, on and off, barely or leave blank")
+          const choices = [
+            ["constant", "Constant"],
+            ["on_and_off", "On and off"],
+            ["barely", "Just a little"],
+          ]
+          const picker = el("div", {}, [el("h3", {text: "How did it go?"})])
+          choices.forEach(([value, labelText]) => {
+            const option = el("button", {type: "button", class: "full", text: labelText})
+            option.addEventListener("click", () => finishStop({pattern: value}))
+            picker.append(option)
+          })
+          const skip = el("button", {type: "button", class: "full", text: "Skip"})
+          skip.addEventListener("click", () => finishStop({}))
+          const cancel = el("button", {type: "button", class: "full", text: "Cancel"})
+          cancel.addEventListener("click", () => renderTimer(type, box))
+          picker.append(skip, cancel)
+          box.replaceChildren(el("h2", {text: label}), picker)
+          return
+        }
+
+        await finishStop({})
+
+        async function finishStop(data) {
+          if (localRun) {
+            await queuePut({...localRun, endedAt: nowISO, data: {...localRun.data, ...data}})
+            document.dispatchEvent(new CustomEvent("trygg:queue-changed"))
+            requestFlush("enqueue")
+          } else {
+            await enqueue(ctx, `${type}_stop`, {serverId: serverRun.id, endedAt: nowISO, data})
           }
-          if (pattern) data.pattern = pattern
+          flash(`${label} saved`)
         }
-        if (localRun) {
-          await queuePut({...localRun, endedAt: nowISO, data: {...localRun.data, ...data}})
-          document.dispatchEvent(new CustomEvent("trygg:queue-changed"))
-          requestFlush("enqueue")
-        } else {
-          await enqueue(ctx, `${type}_stop`, {serverId: serverRun.id, endedAt: nowISO, data})
-        }
-        flash(`${label} saved`)
       })
       box.append(elapsed, stop)
       return

@@ -105,15 +105,15 @@ defmodule Trygg.Reports.Day do
   end
 
   defp timer_seconds(entries, type, from, to, now) do
-    entries
-    |> Enum.filter(fn entry ->
-      entry.type == type and DateTime.compare(entry.started_at, to) == :lt and
-        DateTime.compare(entry.ended_at || now, from) == :gt
-    end)
-    |> Enum.reduce(0, fn entry, total ->
-      start = max_dt(entry.started_at, from)
-      finish = min_dt(entry.ended_at || now, to)
-      total + max(DateTime.diff(finish, start, :second), 0)
+    Enum.reduce(entries, 0, fn
+      %{type: ^type} = entry, total ->
+        case clip_timer(entry, from, to, now) do
+          nil -> total
+          segment -> total + segment.seconds
+        end
+
+      _entry, total ->
+        total
     end)
   end
 
@@ -121,36 +121,35 @@ defmodule Trygg.Reports.Day do
 
   defp clip_sleeps(sleeps, from, to, now) do
     sleeps
-    |> Enum.flat_map(fn e ->
-      ended = e.ended_at || now
-
-      if DateTime.compare(e.started_at, to) == :lt and DateTime.compare(ended, from) == :gt do
-        start = max_dt(e.started_at, from)
-        finish = min_dt(ended, to)
-        seconds = max(DateTime.diff(finish, start, :second), 0)
-
-        if seconds > 0 do
-          running? = is_nil(e.ended_at) and DateTime.compare(finish, now) != :lt
-
-          [
-            %{
-              id: e.id,
-              entry: e,
-              start: start,
-              end: finish,
-              running?: running?,
-              location: e.data["location"],
-              seconds: seconds
-            }
-          ]
-        else
+    |> Enum.flat_map(fn entry ->
+      case clip_timer(entry, from, to, now) do
+        nil ->
           []
-        end
-      else
-        []
+
+        segment ->
+          [Map.merge(segment, %{id: entry.id, entry: entry, location: entry.data["location"]})]
       end
     end)
     |> Enum.sort_by(& &1.start, DateTime)
+  end
+
+  defp clip_timer(entry, from, to, now) do
+    ended = entry.ended_at || now
+
+    if DateTime.compare(entry.started_at, to) == :lt and DateTime.compare(ended, from) == :gt do
+      start = max_dt(entry.started_at, from)
+      finish = min_dt(ended, to)
+      seconds = max(DateTime.diff(finish, start, :second), 0)
+
+      if seconds > 0 do
+        %{
+          start: start,
+          end: finish,
+          seconds: seconds,
+          running?: is_nil(entry.ended_at) and DateTime.compare(finish, now) != :lt
+        }
+      end
+    end
   end
 
   defp gaps(sleeps, from, to, now) do

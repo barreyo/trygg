@@ -17,7 +17,7 @@ defmodule Trygg.Log.Entry do
   @bottle_contents ~w(formula expressed donor)
   @diaper_kinds ~w(pee poo mixed)
   @sleep_locations ~w(bassinet crib contact stroller other)
-  @breastfeeding_patterns ["constant", "on and off", "barely"]
+  @breastfeeding_patterns ~w(constant on_and_off barely)
   @photo_content_types ~w(image/jpeg image/png image/webp image/gif)
 
   schema "log_entries" do
@@ -164,14 +164,24 @@ defmodule Trygg.Log.Entry do
   end
 
   defp validate_type_data(changeset, :breastfeeding, raw) do
-    pattern = blank_to_nil(raw["pattern"])
+    raw_pattern = blank_to_nil(raw["pattern"])
+    pattern = normalize_breastfeeding_pattern(raw_pattern)
 
     cond do
-      is_nil(pattern) -> put_change(changeset, :data, %{})
-      pattern in @breastfeeding_patterns -> put_change(changeset, :data, %{"pattern" => pattern})
-      true -> add_error(changeset, :data, "pattern must be constant, on and off or barely")
+      is_nil(raw_pattern) -> put_change(changeset, :data, %{})
+      pattern -> put_change(changeset, :data, %{"pattern" => pattern})
+      true ->
+        allowed = Enum.join(@breastfeeding_patterns, ", ")
+        add_error(changeset, :data, "pattern must be one of: #{allowed}")
     end
   end
+
+  defp normalize_breastfeeding_pattern("on and off"), do: "on_and_off"
+
+  defp normalize_breastfeeding_pattern(pattern) when pattern in @breastfeeding_patterns,
+    do: pattern
+
+  defp normalize_breastfeeding_pattern(_), do: nil
 
   defp truthy?(value), do: value in [true, "true", "on", "1", 1]
 
@@ -239,6 +249,10 @@ defmodule Trygg.Log.Entry do
   def timer_types, do: @timer_types
   def sleep_locations, do: @sleep_locations
   def breastfeeding_patterns, do: @breastfeeding_patterns
+  def breastfeeding_pattern_label("constant"), do: "Constant"
+  def breastfeeding_pattern_label("on_and_off"), do: "On and off"
+  def breastfeeding_pattern_label("on and off"), do: "On and off"
+  def breastfeeding_pattern_label("barely"), do: "Just a little"
   def bottle_contents, do: @bottle_contents
   def diaper_kinds, do: @diaper_kinds
   def photo_content_types, do: @photo_content_types

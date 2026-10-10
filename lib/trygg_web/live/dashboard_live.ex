@@ -201,36 +201,14 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  def handle_event("nudge_start", %{"by" => by} = params, socket) do
-    minutes = String.to_integer(by)
-    type = if params["type"] == "breastfeeding", do: :breastfeeding, else: :sleep
+  def handle_event("nudge_start", %{"by" => by, "type" => type}, socket) do
+    case {type, Integer.parse(by)} do
+      {type, {minutes, ""}} when type in ["sleep", "breastfeeding"] ->
+        {:noreply, nudge_timer(socket, String.to_existing_atom(type), minutes)}
 
-    socket =
-      case Log.running(socket.assigns.summary, type) do
-        %Entry{} = timer ->
-          new_start = DateTime.add(timer.started_at, minutes * 60, :second)
-
-          cond do
-            DateTime.compare(new_start, DateTime.utc_now()) == :gt ->
-              put_flash(socket, :error, "That would put the start in the future.")
-
-            DateTime.diff(DateTime.utc_now(), new_start, :second) > 86_400 ->
-              put_flash(socket, :error, "That's more than a day back — use Edit for that.")
-
-            true ->
-              case Log.retime_entry(socket.assigns.current_scope, timer, %{
-                     "started_at" => new_start
-                   }) do
-                {:ok, _} -> socket
-                {:error, _} -> put_flash(socket, :error, "Couldn't change the start time.")
-              end
-          end
-
-        nil ->
-          socket
-      end
-
-    {:noreply, socket}
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   # Home alerts and the weight-check banner can be dismissed for a week. Stored
@@ -260,7 +238,7 @@ defmodule TryggWeb.DashboardLive do
       to_form(
         %{
           "ended_at" => Child.to_local_input(child, now()),
-          "pattern" => "on and off",
+          "pattern" => "",
           "note" => ""
         },
         as: :breastfeeding
@@ -369,7 +347,7 @@ defmodule TryggWeb.DashboardLive do
   end
 
   def handle_event("open_sheet", %{"kind" => "sleep_start"}, socket) do
-    case running_sleep(socket.assigns) do
+    case Log.running(socket.assigns.summary, :sleep) do
       %Entry{} = nap ->
         form =
           to_form(
@@ -619,12 +597,8 @@ defmodule TryggWeb.DashboardLive do
     result =
       with {:ok, ended} <-
              Child.from_local_input(socket.assigns.current_child, params["ended_at"] || ""),
-           %Entry{} = nap <- running_sleep(socket.assigns) do
-        # a datetime-local field is minute-granular; if the chosen end lands on
-        # or before the start (e.g. stopping a nap that began seconds ago), the
-        # tap means "now".
-        ended = if DateTime.after?(ended, nap.started_at), do: ended, else: now()
-
+           %Entry{} = nap <- Log.running(socket.assigns.summary, :sleep),
+           :ok <- end_after_start(ended, nap.started_at) do
         Log.stop_timer(
           scope,
           nap,
@@ -645,7 +619,7 @@ defmodule TryggWeb.DashboardLive do
       with {:ok, started} <-
              Child.from_local_input(socket.assigns.current_child, params["started_at"] || ""),
            :ok <- not_future(started),
-           %Entry{} = nap <- running_sleep(socket.assigns) do
+           %Entry{} = nap <- Log.running(socket.assigns.summary, :sleep) do
         Log.retime_entry(scope, nap, %{"started_at" => started})
       end
 
@@ -657,7 +631,8 @@ defmodule TryggWeb.DashboardLive do
 
     result =
       with {:ok, started} <- Child.from_local_input(child, params["started_at"] || ""),
-           {:ok, ended} <- Child.from_local_input(child, params["ended_at"] || "") do
+           {:ok, ended} <- Child.from_local_input(child, params["ended_at"] || ""),
+           :ok <- end_after_start(ended, started) do
         Log.create_entry(
           socket.assigns.current_scope,
           child,
@@ -680,9 +655,8 @@ defmodule TryggWeb.DashboardLive do
     result =
       with {:ok, ended} <-
              Child.from_local_input(socket.assigns.current_child, params["ended_at"] || ""),
-           %Entry{} = feed <- running_breastfeeding(socket.assigns) do
-        ended = if DateTime.after?(ended, feed.started_at), do: ended, else: now()
-
+           %Entry{} = feed <- Log.running(socket.assigns.summary, :breastfeeding),
+           :ok <- end_after_start(ended, feed.started_at) do
         Log.stop_timer(
           socket.assigns.current_scope,
           feed,
@@ -711,11 +685,44 @@ defmodule TryggWeb.DashboardLive do
   defp settle(socket, {:error, :future}, _msg, _splash),
     do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
 
+  defp settle(socket, {:error, :end_before_start}, _msg, _splash),
+    do: put_flash(socket, :error, "Finish time must be after the start time.")
+
   defp settle(socket, nil, _msg, _splash),
     do: socket |> assign(sheet: nil) |> put_flash(:error, "There's no sleep to update right now.")
 
   defp settle(socket, :error, _msg, _splash),
     do: put_flash(socket, :error, "That date and time didn't look right.")
+
+  defp end_after_start(ended, started) do
+    if DateTime.after?(ended, started), do: :ok, else: {:error, :end_before_start}
+  end
+
+  defp nudge_timer(socket, type, minutes) do
+    case Log.running(socket.assigns.summary, type) do
+      %Entry{} = timer ->
+        new_start = DateTime.add(timer.started_at, minutes * 60, :second)
+
+        cond do
+          DateTime.compare(new_start, DateTime.utc_now()) == :gt ->
+            put_flash(socket, :error, "That would put the start in the future.")
+
+          DateTime.diff(DateTime.utc_now(), new_start, :second) > 86_400 ->
+            put_flash(socket, :error, "That's more than a day back — use Edit for that.")
+
+          true ->
+            case Log.retime_entry(socket.assigns.current_scope, timer, %{
+                   "started_at" => new_start
+                 }) do
+              {:ok, _} -> socket
+              {:error, _} -> put_flash(socket, :error, "Couldn't change the start time.")
+            end
+        end
+
+      nil ->
+        socket
+    end
+  end
 
   ## Helpers ------------------------------------------------------------
 
@@ -798,7 +805,7 @@ defmodule TryggWeb.DashboardLive do
 
   defp rhythm_center(%{summary: summary, outlook: outlook, current_child: child}) do
     cond do
-      e = running_sleep_entry(summary) ->
+      e = Log.running(summary, :sleep) ->
         %{
           eyebrow: "Asleep",
           since_unix: DateTime.to_unix(e.started_at),
@@ -899,7 +906,8 @@ defmodule TryggWeb.DashboardLive do
     do: "Breastfeeding"
 
   defp snapshot_line(%Entry{type: :breastfeeding, data: %{"pattern" => pattern}} = entry, _unit),
-    do: "Breastfed · #{pattern} · #{format_duration(Entry.duration_seconds(entry))}"
+    do:
+      "Breastfed · #{Entry.breastfeeding_pattern_label(pattern)} · #{format_duration(Entry.duration_seconds(entry))}"
 
   defp snapshot_line(%Entry{type: :breastfeeding} = entry, _unit),
     do: "Breastfed · #{format_duration(Entry.duration_seconds(entry))}"
@@ -920,12 +928,6 @@ defmodule TryggWeb.DashboardLive do
     |> assign(:entries_empty?, entries == [])
     |> stream(:entries, entries, reset: true)
   end
-
-  defp running_sleep(%{summary: %{running: running}}),
-    do: Enum.find(running, &(&1.type == :sleep))
-
-  defp running_breastfeeding(%{summary: summary}), do: Log.running(summary, :breastfeeding)
-  defp running_breastfeeding(summary), do: Log.running(summary, :breastfeeding)
 
   defp current_sheet_params(%{assigns: %{sheet_form: %{params: params}}}) when is_map(params),
     do: params
@@ -970,11 +972,11 @@ defmodule TryggWeb.DashboardLive do
     order |> List.replace_at(i, Enum.at(order, j)) |> List.replace_at(j, Enum.at(order, i))
   end
 
-  defp tracker_options, do: Child.tracker_options()
-
   defp tracker_label(name),
     do:
-      Enum.find_value(tracker_options(), fn {type, label} -> to_string(type) == name && label end)
+      Enum.find_value(Child.tracker_options(), fn {type, label} ->
+        to_string(type) == name && label
+      end)
 
   defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
   defp sheet_form_as(:breastfeeding_stop), do: :breastfeeding
@@ -987,7 +989,7 @@ defmodule TryggWeb.DashboardLive do
   defp sheet_label(:sleep_stop), do: "How did they sleep?"
   defp sheet_label(:sleep_start), do: "When did they fall asleep?"
   defp sheet_label(:sleep_past), do: "Add a sleep from earlier"
-  defp sheet_label(:breastfeeding_stop), do: "How did they eat?"
+  defp sheet_label(:breastfeeding_stop), do: "Finished feeding"
   defp sheet_label(:diaper_past), do: "Add a diaper from earlier"
 
   defp not_future(dt) do
@@ -1320,7 +1322,38 @@ defmodule TryggWeb.DashboardLive do
 
   ## Small render components ---------------------------------------------
 
-  attr :type, :atom, required: true
+  attr :type, :atom, required: true, values: [:sleep, :breastfeeding]
+  attr :edit_start?, :boolean, default: false
+
+  defp timer_nudges(assigns) do
+    ~H"""
+    <div id={"#{@type}-nudges"} class="mt-2 flex items-center gap-2">
+      <span class="shrink-0 text-xs opacity-80">Started earlier?</span>
+      <div class="grid flex-1 grid-cols-4 gap-1.5">
+        <.button
+          :for={m <- nudge_minutes()}
+          type="button"
+          size="xs"
+          phx-click="nudge_start"
+          phx-value-type={@type}
+          phx-value-by={m}
+        >
+          {m}m
+        </.button>
+        <.button
+          :if={@edit_start?}
+          type="button"
+          size="xs"
+          phx-click="open_sheet"
+          phx-value-kind="sleep_start"
+          aria-label="Edit start time"
+        >
+          <.icon name="hero-pencil-square" class="size-3.5" />
+        </.button>
+      </div>
+    </div>
+    """
+  end
   attr :index, :integer, required: true, doc: "position in the child's Home order"
   attr :summary, :map, required: true
   attr :outlook, :map, required: true
@@ -1414,35 +1447,12 @@ defmodule TryggWeb.DashboardLive do
               type="button"
               variant="primary"
               phx-click="request_stop"
-              phx-value-id={running_sleep_entry(@summary).id}
+              phx-value-id={Log.running(@summary, :sleep).id}
               class="w-full"
             >
               <.icon name="hero-stop" class="size-5" /> Stop
             </.button>
-            <%!-- Fix a start time that was logged late --%>
-            <div id="sleep-nudges" class="mt-2 flex items-center gap-2">
-              <span class="shrink-0 text-xs opacity-80">Started earlier?</span>
-              <div class="grid flex-1 grid-cols-4 gap-1.5">
-                <.button
-                  :for={m <- nudge_minutes()}
-                  type="button"
-                  size="xs"
-                  phx-click="nudge_start"
-                  phx-value-by={m}
-                >
-                  {m}m
-                </.button>
-                <.button
-                  type="button"
-                  size="xs"
-                  phx-click="open_sheet"
-                  phx-value-kind="sleep_start"
-                  aria-label="Edit start time"
-                >
-                  <.icon name="hero-pencil-square" class="size-3.5" />
-                </.button>
-              </div>
-            </div>
+            <.timer_nudges type={:sleep} edit_start? />
           <% else %>
             <.button
               id="log-sleep"
@@ -1469,13 +1479,12 @@ defmodule TryggWeb.DashboardLive do
         emoji="🤱"
         label="Breastfeeding"
         category="feed"
-        tone="base"
         value={breastfeeding_value(@summary.last_breastfeeding)}
         sub={breastfeeding_sub(@summary.last_breastfeeding)}
         today={breastfeeding_today(@summary.today)}
       >
         <:actions :if={@can_write}>
-          <%= if running_breastfeeding(@summary) do %>
+          <%= if Log.running(@summary, :breastfeeding) do %>
             <.button
               id="stop-breastfeeding"
               type="button"
@@ -1485,21 +1494,7 @@ defmodule TryggWeb.DashboardLive do
             >
               <.icon name="hero-stop" class="size-5" /> Stop
             </.button>
-            <div id="breastfeeding-nudges" class="mt-2 flex items-center gap-2">
-              <span class="shrink-0 text-xs opacity-80">Started earlier?</span>
-              <div class="grid flex-1 grid-cols-4 gap-1.5">
-                <.button
-                  :for={m <- nudge_minutes()}
-                  type="button"
-                  size="xs"
-                  phx-click="nudge_start"
-                  phx-value-type="breastfeeding"
-                  phx-value-by={m}
-                >
-                  {m}m
-                </.button>
-              </div>
-            </div>
+            <.timer_nudges type={:breastfeeding} />
           <% else %>
             <.button
               id="start-breastfeeding"
@@ -1549,7 +1544,7 @@ defmodule TryggWeb.DashboardLive do
   attr :unit_system, :atom, required: true
   attr :photo_upload, :any, required: true
   attr :vitamin_d_prompt?, :boolean, default: false
-  attr :tracked_types, :list, default: [:feeding, :diaper, :sleep, :breastfeeding]
+  attr :tracked_types, :list, default: [:feeding, :diaper, :sleep]
 
   defp sheet(assigns) do
     assigns = assign(assigns, :unit, Units.unit_label(:volume, assigns.unit_system))
@@ -1823,7 +1818,7 @@ defmodule TryggWeb.DashboardLive do
             <.sheet_buttons save="Add sleep" uploading?={photo_uploading?(@photo_upload)} />
           </.form>
         <% :breastfeeding_stop -> %>
-          <h3 class="font-semibold text-lg mb-3">How did they eat?</h3>
+          <h3 class="font-semibold text-lg mb-3">Finished feeding</h3>
           <.form
             for={@form}
             id="breastfeeding-form"
@@ -1987,7 +1982,8 @@ defmodule TryggWeb.DashboardLive do
 
   defp breastfeeding_sub(nil), do: "No session yet"
   defp breastfeeding_sub(%Entry{ended_at: nil}), do: "In progress"
-  defp breastfeeding_sub(%Entry{data: %{"pattern" => pattern}}), do: String.capitalize(pattern)
+  defp breastfeeding_sub(%Entry{data: %{"pattern" => pattern}}),
+    do: Entry.breastfeeding_pattern_label(pattern)
   defp breastfeeding_sub(_), do: "Last session"
 
   defp breastfeeding_value(%Entry{ended_at: nil} = entry),
@@ -2091,9 +2087,7 @@ defmodule TryggWeb.DashboardLive do
   # can be a plain duration instead of an ambiguous "1h 41m ago". Once a next
   # nap can be predicted, that becomes the primary `value` (mirroring the
   # feed card) and the awake duration moves down to `sub`.
-  defp sleeping?(%{running: running}), do: Enum.any?(running, &(&1.type == :sleep))
-
-  defp running_sleep_entry(summary), do: Log.running(summary, :sleep)
+  defp sleeping?(summary), do: not is_nil(Log.running(summary, :sleep))
 
   defp woke_at(%{last_sleep: %Entry{ended_at: %DateTime{} = at}}), do: at
   defp woke_at(%{last_sleep: %Entry{started_at: at}}), do: at
@@ -2111,7 +2105,7 @@ defmodule TryggWeb.DashboardLive do
 
   defp sleep_value(summary, outlook) do
     cond do
-      e = running_sleep_entry(summary) ->
+      e = Log.running(summary, :sleep) ->
         format_duration(Entry.duration_seconds(e))
 
       nap = awake_next_nap(outlook) ->
@@ -2127,7 +2121,7 @@ defmodule TryggWeb.DashboardLive do
 
   defp sleep_sub(summary, outlook, child) do
     cond do
-      e = running_sleep_entry(summary) ->
+      e = Log.running(summary, :sleep) ->
         "since #{Child.local_clock(child, e.started_at)}"
 
       nap = awake_next_nap(outlook) ->

@@ -1,6 +1,7 @@
 defmodule Trygg.LogTest do
   use Trygg.DataCase, async: true
 
+  alias Trygg.Families
   alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Log.Entry
@@ -236,11 +237,11 @@ defmodule Trygg.LogTest do
       assert {:ok, timer} = Log.start_timer(scope, child, :breastfeeding)
 
       assert {:ok, stopped} =
-               Log.stop_timer(scope, timer, %{"data" => %{"pattern" => "on and off"}})
+               Log.stop_timer(scope, timer, %{"data" => %{"pattern" => "on_and_off"}})
 
       assert stopped.type == :breastfeeding
       assert stopped.ended_at
-      assert stopped.data["pattern"] == "on and off"
+      assert stopped.data["pattern"] == "on_and_off"
       assert Log.running_timers(scope, child) == []
 
       assert {:ok, timer_without_pattern} = Log.start_timer(scope, child, :breastfeeding)
@@ -357,7 +358,7 @@ defmodule Trygg.LogTest do
                  "data" => %{"pattern" => "not a preset"}
                })
 
-      assert "pattern must be constant, on and off or barely" in errors_on(changeset).data
+      assert "pattern must be one of: constant, on_and_off, barely" in errors_on(changeset).data
     end
   end
 
@@ -366,6 +367,7 @@ defmodule Trygg.LogTest do
       scope: scope,
       child: child
     } do
+      {:ok, child} = Families.update_tracked_types(scope, child, [:feeding, :diaper, :sleep, :breastfeeding])
       {:ok, session} = Log.start_timer(scope, child, :breastfeeding)
 
       summary = Log.summary(scope, child)
@@ -375,6 +377,7 @@ defmodule Trygg.LogTest do
     end
 
     test "counts today's events and total sleep in the child's day", %{scope: scope, child: child} do
+      {:ok, child} = Families.update_tracked_types(scope, child, [:feeding, :diaper, :sleep, :breastfeeding])
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :diaper)
