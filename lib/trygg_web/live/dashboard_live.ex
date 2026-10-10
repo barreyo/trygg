@@ -1465,7 +1465,6 @@ defmodule TryggWeb.DashboardLive do
         tone="base"
         value={breastfeeding_value(@summary.last_breastfeeding)}
         sub={breastfeeding_sub(@summary.last_breastfeeding)}
-        status={nil}
         today=""
       >
         <:actions :if={@can_write}>
