@@ -1984,8 +1984,10 @@ defmodule TryggWeb.DashboardLive do
 
   defp breastfeeding_sub(nil), do: "No session yet"
   defp breastfeeding_sub(%Entry{ended_at: nil}), do: "In progress"
+
   defp breastfeeding_sub(%Entry{data: %{"pattern" => pattern}}),
     do: Entry.breastfeeding_pattern_label(pattern)
+
   defp breastfeeding_sub(_), do: "Last session"
 
   defp breastfeeding_value(%Entry{ended_at: nil} = entry),

@@ -367,7 +367,9 @@ defmodule Trygg.LogTest do
       scope: scope,
       child: child
     } do
-      {:ok, child} = Families.update_tracked_types(scope, child, [:feeding, :diaper, :sleep, :breastfeeding])
+      {:ok, child} =
+        Families.update_tracked_types(scope, child, [:feeding, :diaper, :sleep, :breastfeeding])
+
       {:ok, session} = Log.start_timer(scope, child, :breastfeeding)
 
       summary = Log.summary(scope, child)
@@ -377,7 +379,9 @@ defmodule Trygg.LogTest do
     end
 
     test "counts today's events and total sleep in the child's day", %{scope: scope, child: child} do
-      {:ok, child} = Families.update_tracked_types(scope, child, [:feeding, :diaper, :sleep, :breastfeeding])
+      {:ok, child} =
+        Families.update_tracked_types(scope, child, [:feeding, :diaper, :sleep, :breastfeeding])
+
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :diaper)

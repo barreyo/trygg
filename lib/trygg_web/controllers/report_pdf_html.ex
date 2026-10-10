@@ -667,6 +667,7 @@ defmodule TryggWeb.ReportPdfHTML do
       else
         []
       end
+
     assigns = assign(assigns, :days, days)
 
     ~H"""
@@ -676,8 +677,9 @@ defmodule TryggWeb.ReportPdfHTML do
         <div :for={day <- @days} class="flex justify-between py-1 text-sm">
           <span>{Calendar.strftime(day.date, "%a %-d %b")}</span>
           <span class="tabular-nums">
-            {day.breastfeeding_sessions} {plural(day.breastfeeding_sessions, "session")} ·
-            {format_duration(day.breastfeeding_seconds)}
+            {day.breastfeeding_sessions} {plural(day.breastfeeding_sessions, "session")} · {format_duration(
+              day.breastfeeding_seconds
+            )}
           </span>
         </div>
       </div>

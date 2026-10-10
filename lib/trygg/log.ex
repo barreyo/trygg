@@ -104,6 +104,7 @@ defmodule Trygg.Log do
     Families.authorize!(scope, child, :viewer)
     {day_start, day_end} = Child.day_bounds(child)
     diaper_kinds = diaper_kinds_between(child, day_start, day_end)
+
     {last_breastfeeding, breastfeeding_sessions, breastfeeding_seconds} =
       breastfeeding_summary(child, day_start, day_end)
 

@@ -374,8 +374,10 @@ defmodule TryggWeb.TimelineLive do
   end
 
   defp subfilters(filter), do: Map.get(@subfilters, filter, [])
+
   defp filters(child),
     do: [nil | Enum.filter(@filters, &Child.tracks?(child, &1))]
+
   defp filter_label(nil), do: "All"
   defp filter_label(:feeding), do: "Feeds"
   defp filter_label(:diaper), do: "Diapers"

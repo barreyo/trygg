@@ -168,8 +168,12 @@ defmodule Trygg.Log.Entry do
     pattern = normalize_breastfeeding_pattern(raw_pattern)
 
     cond do
-      is_nil(raw_pattern) -> put_change(changeset, :data, %{})
-      pattern -> put_change(changeset, :data, %{"pattern" => pattern})
+      is_nil(raw_pattern) ->
+        put_change(changeset, :data, %{})
+
+      pattern ->
+        put_change(changeset, :data, %{"pattern" => pattern})
+
       true ->
         allowed = Enum.join(@breastfeeding_patterns, ", ")
         add_error(changeset, :data, "pattern must be one of: #{allowed}")
