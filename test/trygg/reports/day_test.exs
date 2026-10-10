@@ -57,7 +57,7 @@ defmodule Trygg.Reports.DayTest do
     test "counts breastfeeding starts and clips timer duration to the local day" do
       date = ~D[2026-03-02]
       now = ~U[2026-03-03 12:00:00Z]
-      before_day = breastfeeding(1, ~U[2026-03-02 07:50:00Z], ~U[2026-03-02 08:20:00Z])
+      before_day = breastfeeding(1, ~U[2026-03-01 23:50:00Z], ~U[2026-03-02 00:20:00Z])
       today = breastfeeding(2, ~U[2026-03-02 09:00:00Z], ~U[2026-03-02 09:10:00Z])
 
       day = Day.build(child(), date, [before_day, today], now)

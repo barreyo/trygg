@@ -1143,7 +1143,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
       lv |> element("#customize-home") |> render_click()
       assert has_element?(lv, "#layout-up-feeding[disabled]")
-      assert has_element?(lv, "#layout-down-sleep[disabled]")
+      assert has_element?(lv, "#layout-down-breastfeeding[disabled]")
 
       lv |> element("#layout-down-feeding") |> render_click()
       lv |> element("#layout-up-sleep") |> render_click()
