@@ -167,7 +167,7 @@ defmodule TryggWeb.ReportsLive do
               icon="hero-heart"
               label="Breastfeeding"
               value={"#{@day.breastfeeding_sessions} sessions"}
-              sub={"#{format_duration(@day.breastfeeding_seconds)} total · tracked separately from bottles"}
+              sub={"#{format_duration(@day.breastfeeding_seconds)} total · not bottle feeds"}
             />
           </div>
         </:left>

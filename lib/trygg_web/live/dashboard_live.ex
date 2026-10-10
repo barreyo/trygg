@@ -1996,7 +1996,7 @@ defmodule TryggWeb.DashboardLive do
   defp breastfeeding_value(entry), do: relative_time(time_of(entry))
 
   defp breastfeeding_today(%{breastfeeding_sessions: count, breastfeeding_seconds: seconds}) do
-    "#{count} #{plural(count, "session")} · #{format_duration(seconds)} today · separate from bottles"
+    "#{count} #{plural(count, "session")} · #{format_duration(seconds)} today · not bottle feeds"
   end
 
   # Feed card. The primary `value` is plain time since the last feed — the
