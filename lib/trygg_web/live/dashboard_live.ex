@@ -257,11 +257,16 @@ defmodule TryggWeb.DashboardLive do
 
     form =
       to_form(
-        %{"ended_at" => Child.to_local_input(child, now()), "pattern" => "on and off", "note" => ""},
+        %{
+          "ended_at" => Child.to_local_input(child, now()),
+          "pattern" => "on and off",
+          "note" => ""
+        },
         as: :breastfeeding
       )
 
-    {:noreply, socket |> clear_photo_upload() |> assign(sheet: :breastfeeding_stop, sheet_form: form)}
+    {:noreply,
+     socket |> clear_photo_upload() |> assign(sheet: :breastfeeding_stop, sheet_form: form)}
   end
 
   def handle_event("sheet_change", %{"sleep" => params}, socket) do
@@ -889,9 +894,12 @@ defmodule TryggWeb.DashboardLive do
   defp snapshot_line(%Entry{type: :sleep} = entry, _unit),
     do: "Slept " <> format_duration(Entry.duration_seconds(entry))
 
-  defp snapshot_line(%Entry{type: :breastfeeding, ended_at: nil}, _unit), do: "Breastfeeding"
+  defp snapshot_line(%Entry{type: :breastfeeding, ended_at: nil}, _unit),
+    do: "Breastfeeding"
+
   defp snapshot_line(%Entry{type: :breastfeeding, data: %{"pattern" => pattern}} = entry, _unit),
     do: "Breastfed · #{pattern} · #{format_duration(Entry.duration_seconds(entry))}"
+
   defp snapshot_line(%Entry{type: :breastfeeding} = entry, _unit),
     do: "Breastfed · #{format_duration(Entry.duration_seconds(entry))}"
 
@@ -1469,11 +1477,23 @@ defmodule TryggWeb.DashboardLive do
       >
         <:actions :if={@can_write}>
           <%= if running_breastfeeding(@summary) do %>
-            <.button id="stop-breastfeeding" type="button" variant="primary" phx-click="request_breastfeeding_stop" class="w-full">
+            <.button
+              id="stop-breastfeeding"
+              type="button"
+              variant="primary"
+              phx-click="request_breastfeeding_stop"
+              class="w-full"
+            >
               <.icon name="hero-stop" class="size-5" /> Stop
             </.button>
           <% else %>
-            <.button id="start-breastfeeding" variant="primary" phx-click="start_breastfeeding" data-splash-lock class="w-full">
+            <.button
+              id="start-breastfeeding"
+              variant="primary"
+              phx-click="start_breastfeeding"
+              data-splash-lock
+              class="w-full"
+            >
               <.icon name="hero-heart" class="size-5" /> Start breastfeeding
             </.button>
           <% end %>
@@ -1790,13 +1810,13 @@ defmodule TryggWeb.DashboardLive do
           </.form>
         <% :breastfeeding_stop -> %>
           <h3 class="font-semibold text-lg mb-3">How did they eat?</h3>
-        <.form
-          for={@form}
-          id="breastfeeding-form"
-          phx-change="sheet_change"
-          phx-submit="save_breastfeeding"
-          class="space-y-4"
-        >
+          <.form
+            for={@form}
+            id="breastfeeding-form"
+            phx-change="sheet_change"
+            phx-submit="save_breastfeeding"
+            class="space-y-4"
+          >
             <.input field={@form[:ended_at]} type="datetime-local" label="Finished at" />
             <fieldset class="fieldset">
               <legend class="fieldset-legend">How did they feed?</legend>

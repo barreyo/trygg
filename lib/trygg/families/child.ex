@@ -45,9 +45,9 @@ defmodule Trygg.Families.Child do
     # Which trackers show on Home (glance cards, log buttons, recent list).
     # Shared by every caregiver; at least one must stay on.
     field :tracked_types,
-      {:array, Ecto.Enum},
-      values: @tracked_types,
-      default: [:feeding, :diaper, :sleep]
+          {:array, Ecto.Enum},
+          values: @tracked_types,
+          default: [:feeding, :diaper, :sleep]
 
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
