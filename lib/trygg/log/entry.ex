@@ -166,12 +166,7 @@ defmodule Trygg.Log.Entry do
   defp validate_type_data(changeset, :breastfeeding, raw) do
     pattern = enum(raw["pattern"], @breastfeeding_patterns)
     data = drop_nils(%{"pattern" => pattern})
-
-    if get_field(changeset, :ended_at) && is_nil(pattern) do
-      add_error(changeset, :data, "choose how the baby ate")
-    else
-      put_change(changeset, :data, data)
-    end
+    put_change(changeset, :data, data)
   end
 
   defp truthy?(value), do: value in [true, "true", "on", "1", 1]

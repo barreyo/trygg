@@ -732,19 +732,11 @@ defmodule TryggWeb.LogComponents do
           type="datetime-local"
           label="Ended"
         />
-        <fieldset :if={@entry.type == :breastfeeding} class="fieldset">
-          <legend class="fieldset-legend">How did they feed?</legend>
-          <label :for={pattern <- Entry.breastfeeding_patterns()} class="label min-h-10 gap-2">
-            <input
-              type="radio"
-              name="entry[pattern]"
-              value={pattern}
-              checked={@form.params["pattern"] == pattern}
-              class="radio radio-primary"
-            />
-            {String.capitalize(pattern)}
-          </label>
-        </fieldset>
+        <.breastfeeding_pattern_fieldset
+          :if={@entry.type == :breastfeeding}
+          form={@form}
+          name="entry"
+        />
         <.input
           :if={has_amount?(@entry)}
           field={@form[:amount]}
@@ -786,8 +778,28 @@ defmodule TryggWeb.LogComponents do
     """
   end
 
-  defp time_label(%Entry{type: :sleep}), do: "Started"
-  defp time_label(%Entry{type: :breastfeeding}), do: "Started"
+  attr :form, :any, required: true
+  attr :name, :string, required: true
+
+  def breastfeeding_pattern_fieldset(assigns) do
+    ~H"""
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">How did they feed?</legend>
+      <label :for={pattern <- Entry.breastfeeding_patterns()} class="label min-h-10 gap-2">
+        <input
+          type="radio"
+          name={"#{@name}[pattern]"}
+          value={pattern}
+          checked={@form.params["pattern"] == pattern}
+          class="radio radio-primary"
+        />
+        {String.capitalize(pattern)}
+      </label>
+    </fieldset>
+    """
+  end
+
+  defp time_label(%Entry{type: type}) when type in [:sleep, :breastfeeding], do: "Started"
   defp time_label(_), do: "Time"
 
   defp has_amount?(%Entry{type: :feeding}), do: true

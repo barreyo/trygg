@@ -229,6 +229,71 @@ defmodule Trygg.LogTest do
       assert Log.running_timers(scope, child) == []
     end
 
+    test "breastfeeding timer stops with its pattern and can be stopped without one", %{
+      scope: scope,
+      child: child
+    } do
+      assert {:ok, timer} = Log.start_timer(scope, child, :breastfeeding)
+
+      assert {:ok, stopped} =
+               Log.stop_timer(scope, timer, %{"data" => %{"pattern" => "on and off"}})
+
+      assert stopped.type == :breastfeeding
+      assert stopped.ended_at
+      assert stopped.data["pattern"] == "on and off"
+      assert Log.running_timers(scope, child) == []
+
+      assert {:ok, timer_without_pattern} = Log.start_timer(scope, child, :breastfeeding)
+      assert {:ok, stopped_without_pattern} = Log.stop_timer(scope, timer_without_pattern)
+      assert stopped_without_pattern.ended_at
+      refute Map.has_key?(stopped_without_pattern.data, "pattern")
+    end
+
+    test "syncing duplicate open breastfeeding sessions keeps the earliest", %{
+      scope: scope,
+      child: child
+    } do
+      earlier = DateTime.add(DateTime.utc_now(), -600, :second) |> DateTime.truncate(:second)
+      later = DateTime.add(earlier, 60, :second)
+
+      assert {:ok, _} =
+               Log.sync_entry(scope, child, %{
+                 "client_id" => Ecto.UUID.generate(),
+                 "type" => "breastfeeding",
+                 "started_at" => later,
+                 "data" => %{}
+               })
+
+      assert {:ok, kept} =
+               Log.sync_entry(scope, child, %{
+                 "client_id" => Ecto.UUID.generate(),
+                 "type" => "breastfeeding",
+                 "started_at" => earlier,
+                 "data" => %{}
+               })
+
+      assert kept.started_at == earlier
+      assert [%Entry{id: id, type: :breastfeeding}] = Log.running_timers(scope, child)
+      assert id == kept.id
+    end
+
+    test "breastfeeding timers are idempotent and keep the selected pattern", %{
+      scope: scope,
+      child: child
+    } do
+      assert {:ok, %Entry{type: :breastfeeding, ended_at: nil} = first} =
+               Log.start_timer(scope, child, :breastfeeding)
+
+      assert {:ok, second} = Log.start_timer(scope, child, :breastfeeding)
+      assert first.id == second.id
+
+      assert {:ok, stopped} =
+               Log.stop_timer(scope, first, %{"data" => %{"pattern" => "constant"}})
+
+      assert stopped.data["pattern"] == "constant"
+      assert Log.running_timers(scope, child) == []
+    end
+
     test "start_timer accepts a past start time", %{scope: scope, child: child} do
       past = DateTime.utc_now() |> DateTime.add(-40, :minute) |> DateTime.truncate(:second)
       assert {:ok, nap} = Log.start_timer(scope, child, :sleep, %{"started_at" => past})
@@ -258,7 +323,57 @@ defmodule Trygg.LogTest do
     end
   end
 
+  describe "breastfeeding pattern data" do
+    test "stores supported patterns and permits missing or unrecognized values", %{
+      scope: scope,
+      child: child
+    } do
+      at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      for pattern <- Entry.breastfeeding_patterns() do
+        assert {:ok, entry} =
+                 Log.create_entry(scope, child, :breastfeeding, %{
+                   "started_at" => at,
+                   "ended_at" => at,
+                   "data" => %{"pattern" => pattern}
+                 })
+
+        assert entry.data["pattern"] == pattern
+      end
+
+      assert {:ok, missing} =
+               Log.create_entry(scope, child, :breastfeeding, %{
+                 "started_at" => at,
+                 "ended_at" => at,
+                 "data" => %{}
+               })
+
+      assert missing.data == %{}
+
+      assert {:ok, unknown} =
+               Log.create_entry(scope, child, :breastfeeding, %{
+                 "started_at" => at,
+                 "ended_at" => at,
+                 "data" => %{"pattern" => "not a preset"}
+               })
+
+      assert unknown.data == %{}
+    end
+  end
+
   describe "summary/2" do
+    test "includes breastfeeding in the latest and running summaries", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, session} = Log.start_timer(scope, child, :breastfeeding)
+
+      summary = Log.summary(scope, child)
+      assert summary.last_breastfeeding.id == session.id
+      assert [%Entry{id: id, type: :breastfeeding}] = summary.running
+      assert id == session.id
+    end
+
     test "counts today's events and total sleep in the child's day", %{scope: scope, child: child} do
       entry_fixture(scope, child, type: :feeding)
       entry_fixture(scope, child, type: :feeding)

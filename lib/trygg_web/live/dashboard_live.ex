@@ -859,7 +859,9 @@ defmodule TryggWeb.DashboardLive do
 
       push_event(socket, "offline:snapshot", %{
         running:
-          Enum.map(summary.running, fn e ->
+          summary.running
+          |> Enum.filter(&(&1.type == :sleep))
+          |> Enum.map(fn e ->
             %{id: e.id, started_at: DateTime.to_iso8601(e.started_at)}
           end),
         recent:
@@ -1467,13 +1469,11 @@ defmodule TryggWeb.DashboardLive do
         index={@index}
         timer={running_breastfeeding(@summary)}
         emoji="🤱"
-        snooze={not is_nil(running_breastfeeding(@summary))}
         label="Breastfeeding"
         category="feed"
         tone="base"
         value={breastfeeding_value(@summary.last_breastfeeding)}
         sub={breastfeeding_sub(@summary.last_breastfeeding)}
-        today=""
       >
         <:actions :if={@can_write}>
           <%= if running_breastfeeding(@summary) do %>
@@ -1818,22 +1818,13 @@ defmodule TryggWeb.DashboardLive do
             class="space-y-4"
           >
             <.input field={@form[:ended_at]} type="datetime-local" label="Finished at" />
-            <fieldset class="fieldset">
-              <legend class="fieldset-legend">How did they feed?</legend>
-              <label :for={pattern <- Entry.breastfeeding_patterns()} class="label min-h-10 gap-2">
-                <input
-                  type="radio"
-                  name="breastfeeding[pattern]"
-                  value={pattern}
-                  checked={@form.params["pattern"] == pattern}
-                  class="radio radio-primary"
-                />
-                {String.capitalize(pattern)}
-              </label>
-            </fieldset>
+            <.breastfeeding_pattern_fieldset form={@form} name="breastfeeding" />
             <.note_field form={@form} />
             <.photo_field upload={@photo_upload} />
-            <.sheet_buttons save="Save breastfeeding" uploading?={photo_uploading?(@photo_upload)} />
+            <.sheet_buttons
+              save="Save breastfeeding"
+              uploading?={photo_uploading?(@photo_upload)}
+            />
           </.form>
         <% :diaper_past -> %>
           <h3 class="font-semibold text-lg mb-3">Add a diaper from earlier</h3>

@@ -454,6 +454,33 @@ defmodule TryggWeb.DashboardLiveTest do
       assert Log.running_timers(scope, child) == []
     end
 
+    test "breastfeeding starts and stops with a selected pattern", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, child} = Families.update_tracked_types(scope, child, [:breastfeeding])
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#start-breastfeeding") |> render_click()
+      assert_push_event(lv, "log-splash", %{kind: "breastfeeding_start"})
+      assert [%{type: :breastfeeding, ended_at: nil}] = Log.running_timers(scope, child)
+      assert has_element?(lv, "#stop-breastfeeding")
+
+      lv |> element("#stop-breastfeeding") |> render_click()
+      assert has_element?(lv, "#breastfeeding-form")
+
+      lv
+      |> form("#breastfeeding-form", breastfeeding: %{pattern: "barely"})
+      |> render_submit()
+      assert_push_event(lv, "log-splash", %{kind: "breastfeeding_stop"})
+
+      assert [%{type: :breastfeeding, data: %{"pattern" => "barely"}, ended_at: %DateTime{}}] =
+               Log.list_entries(scope, child)
+
+      assert Log.running_timers(scope, child) == []
+    end
+
     test "the recent list shows a gentle \"Sleeping\" state while a nap is running", %{
       conn: conn,
       child: child
@@ -991,6 +1018,8 @@ defmodule TryggWeb.DashboardLiveTest do
       for id <- ~w(glance-feed glance-diaper glance-sleep log-sleep log-bottle log-diaper) do
         assert has_element?(lv, "##{id}"), id
       end
+
+      refute has_element?(lv, "#glance-breastfeeding")
     end
 
     test "a bottles-only child gets bottle cards and buttons only", %{

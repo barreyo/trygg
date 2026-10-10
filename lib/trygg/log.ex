@@ -1,8 +1,8 @@
 defmodule Trygg.Log do
   @moduledoc """
-  The shared event log for a child — bottle feeds, diapers, sleep, and breastfeeding — plus the
-  running-timer helpers and the realtime broadcasts that keep every caregiver's
-  screen in sync.
+  The shared event log for a child — bottle feeds, diapers, sleep, and
+  breastfeeding — plus the running-timer helpers and the realtime broadcasts
+  that keep every caregiver's screen in sync.
 
   Reads require the `:viewer` role for the child; writes require `:caregiver`.
   All writes broadcast `{:log, :created | :updated | :deleted, entry}` on the
@@ -218,7 +218,7 @@ defmodule Trygg.Log do
   `"ended_at"`, `"note"` and a `"data"` map. Requires `:caregiver`.
 
   A `:feeding` entry created without an explicit `"ended_at"` is treated as
-  instantaneous (`ended_at == started_at`); only `:sleep` has running timers,
+  instantaneous (`ended_at == started_at`). Sleep and breastfeeding timers are
   started with `start_timer/4`.
   """
   def create_entry(%Scope{} = scope, %Child{} = child, type, attrs \\ %{}) do
@@ -288,7 +288,7 @@ defmodule Trygg.Log do
             |> broadcast(existing.child_id, :updated)
         end
 
-      with {:ok, entry} <- result, do: {:ok, collapse_open_sleeps(entry)}
+      with {:ok, entry} <- result, do: {:ok, collapse_open_timers(entry)}
     end
   end
 
@@ -310,16 +310,17 @@ defmodule Trygg.Log do
     end
   end
 
-  # At most one running sleep per child. When a sync leaves an open sleep and
-  # the child has others open — two caregivers each started one, at least one
-  # offline — treat them as the same sleep: keep the earliest start, fold any
-  # note/data from the rest into it, and delete the rest.
-  defp collapse_open_sleeps(%Entry{type: :sleep, ended_at: nil, child_id: child_id} = entry) do
+  # At most one running timer of each type per child. When a sync leaves an
+  # open timer and the child has others open — e.g. caregivers went offline —
+  # treat them as the same session: keep the earliest start, fold any note/data
+  # from the rest into it, and delete the rest.
+  defp collapse_open_timers(%Entry{type: type, ended_at: nil, child_id: child_id} = entry)
+       when type in @timer_types do
     others =
       Entry
       |> where(
         [e],
-        e.child_id == ^child_id and e.type == :sleep and is_nil(e.ended_at) and e.id != ^entry.id
+        e.child_id == ^child_id and e.type == ^type and is_nil(e.ended_at) and e.id != ^entry.id
       )
       |> Repo.all()
 
@@ -338,7 +339,7 @@ defmodule Trygg.Log do
         {:ok, kept} =
           kept
           |> Entry.changeset(%{
-            "type" => "sleep",
+            "type" => to_string(type),
             "started_at" => kept.started_at,
             "note" => note,
             "data" => data
@@ -355,7 +356,7 @@ defmodule Trygg.Log do
     end
   end
 
-  defp collapse_open_sleeps(entry), do: entry
+  defp collapse_open_timers(entry), do: entry
 
   defp fetch_client_id(attrs) do
     case Ecto.UUID.cast(attrs["client_id"]) do
