@@ -89,6 +89,16 @@ defmodule Trygg.Reports do
 
     Map.merge(insights, %{
       feeding: feeding,
+      breastfeeding: %{
+        per_day:
+          Enum.map(days, fn day ->
+            %{
+              date: day.date,
+              sessions: day.breastfeeding_sessions,
+              seconds: day.breastfeeding_seconds
+            }
+          end)
+      },
       diapers: diapers,
       shifts: shifts,
       growth: growth,

@@ -12,7 +12,14 @@ import {queueAdd, queueAll, queuePut, queueDelete, contextAll, snapshotAll} from
 import {requestFlush} from "./auto_sync"
 
 const ML_PER_OZ = 29.5735295625
-const TYPE_LABEL = {feeding: "Bottle", diaper: "Diaper", sleep: "Sleep", sleep_stop: "Sleep end"}
+const TYPE_LABEL = {
+  feeding: "Bottle",
+  diaper: "Diaper",
+  sleep: "Sleep",
+  sleep_stop: "Sleep end",
+  breastfeeding: "Breastfeeding",
+  breastfeeding_stop: "Breastfeeding end",
+}
 
 // --- context / snapshot ------------------------------------------------
 
@@ -176,8 +183,8 @@ export function renderPanel(root, opts = {}) {
 
   let ctx = null
   let snap = null
-  let sleepBox = null
-  let sleepTimer = null
+  let timerBoxes = {}
+  let timerIntervals = {}
   let toastTimer
   const flash = (msg) => {
     toast.textContent = msg
@@ -238,10 +245,8 @@ export function renderPanel(root, opts = {}) {
   function buildForms() {
     heading.innerHTML = ""
     forms.innerHTML = ""
-    if (sleepTimer) {
-      clearInterval(sleepTimer)
-      sleepTimer = null
-    }
+    Object.values(timerIntervals).forEach(clearInterval)
+    timerIntervals = {}
 
     if (!ctx) {
       heading.append(
@@ -261,14 +266,18 @@ export function renderPanel(root, opts = {}) {
 
     // Only the trackers this child's Home shows. Contexts mirrored before the
     // layout was configurable have no list and offer everything.
-    const tracked = ctx.trackedTypes || ["feeding", "diaper", "sleep"]
-    sleepBox = tracked.includes("sleep") ? el("section", {}) : null
+    const tracked = ctx.trackedTypes || ["feeding", "diaper", "sleep", "breastfeeding"]
+    timerBoxes = Object.fromEntries(
+      ["sleep", "breastfeeding"]
+        .filter((type) => tracked.includes(type))
+        .map((type) => [type, el("section", {})])
+    )
     if (tracked.includes("feeding")) forms.append(bottleSection())
     if (tracked.includes("diaper")) forms.append(diaperSection())
-    if (sleepBox) {
-      forms.append(sleepBox)
-      renderSleep(sleepBox)
-    }
+    Object.entries(timerBoxes).forEach(([type, box]) => {
+      forms.append(box)
+      renderTimer(type, box)
+    })
   }
 
   function bottleSection() {
@@ -320,53 +329,74 @@ export function renderPanel(root, opts = {}) {
     return el("section", {}, [el("h2", {text: "Diaper"}), el("div", {class: "grid3"}, btns)])
   }
 
-  // The sleep section is stateful: Start when nothing is running, Stop (with a
-  // live elapsed count) when a sleep is running — either one queued offline, or
-  // one from the last synced snapshot that was started online.
-  async function renderSleep(box) {
-    if (sleepTimer) {
-      clearInterval(sleepTimer)
-      sleepTimer = null
-    }
+  // Sleep and breastfeeding are independent timer types, both of which may be
+  // started on this device or stopped from a server snapshot.
+  async function renderTimer(type, box) {
+    if (timerIntervals[type]) clearInterval(timerIntervals[type])
     box.innerHTML = ""
-    box.append(el("h2", {text: "Sleep"}))
+    const breastfeeding = type === "breastfeeding"
+    const label = breastfeeding ? "Breastfeeding" : "Sleep"
+    const title = breastfeeding ? "How did they eat?" : "Stop sleep"
+    box.append(el("h2", {text: label}))
 
     const rows = await myQueue()
     const localRun = rows.find(
-      (r) => r.type === "sleep" && !r.endedAt && r.status === "pending"
+      (r) => r.type === type && !r.endedAt && r.status === "pending"
     )
-    const stoppedLocally = rows.some((r) => r.type === "sleep_stop")
+    const stoppedLocally = rows.some((r) => r.type === `${type}_stop`)
     const serverRun =
-      !localRun && !stoppedLocally && snap && snap.running && snap.running[0]
+      !localRun && !stoppedLocally && snap?.running?.find((entry) => entry.type === type)
 
     if (localRun || serverRun) {
       const since = new Date(localRun ? localRun.startedAt : serverRun.started_at).getTime()
       const elapsed = el("div", {class: "elapsed"})
-      const tick = () => (elapsed.textContent = `Asleep ${fmtElapsed(Date.now() - since)}`)
+      const tick = () =>
+        (elapsed.textContent = `${breastfeeding ? "Feeding" : "Asleep"} ${fmtElapsed(Date.now() - since)}`)
       tick()
-      sleepTimer = setInterval(tick, 30000)
+      timerIntervals[type] = setInterval(tick, 30000)
 
-      const stop = el("button", {type: "button", class: "primary full", text: "Stop sleep"})
+      const stop = el("button", {
+        type: "button",
+        class: "primary full",
+        text: breastfeeding ? "Stop breastfeeding" : "Stop sleep",
+      })
       stop.addEventListener("click", async () => {
         const nowISO = new Date().toISOString()
+        const data = {}
+        if (breastfeeding) {
+          const pattern = window.prompt(`${title} (constant, on and off, barely; leave blank to skip)`)
+          if (pattern && !["constant", "on and off", "barely"].includes(pattern)) {
+            return flash("Choose constant, on and off, barely or leave blank")
+          }
+          if (pattern) data.pattern = pattern
+        }
         if (localRun) {
-          await queuePut({...localRun, endedAt: nowISO})
+          await queuePut({...localRun, endedAt: nowISO, data: {...localRun.data, ...data}})
           document.dispatchEvent(new CustomEvent("trygg:queue-changed"))
           requestFlush("enqueue")
         } else {
-          await enqueue(ctx, "sleep_stop", {serverId: serverRun.id, endedAt: nowISO})
+          await enqueue(ctx, `${type}_stop`, {serverId: serverRun.id, endedAt: nowISO, data})
         }
-        flash("Sleep saved")
+        flash(`${label} saved`)
       })
       box.append(elapsed, stop)
       return
     }
 
-    const start = el("button", {type: "button", class: "primary full", text: "Start sleep"})
-    start.addEventListener("click", async () => {
-      await enqueue(ctx, "sleep", {startedAt: new Date().toISOString(), endedAt: null})
-      flash("Sleep started")
+    const start = el("button", {
+      type: "button",
+      class: "primary full",
+      text: breastfeeding ? "Start breastfeeding" : "Start sleep",
     })
+    start.addEventListener("click", async () => {
+      await enqueue(ctx, type, {startedAt: new Date().toISOString(), endedAt: null})
+      flash(`${label} started`)
+    })
+
+    if (breastfeeding) {
+      box.append(start)
+      return
+    }
 
     const now = new Date()
     const s = el("input", {
@@ -379,7 +409,7 @@ export function renderPanel(root, opts = {}) {
       const from = new Date(s.value)
       const to = new Date(e.value)
       if (!(from < to)) return flash("End must be after start")
-      await enqueue(ctx, "sleep", {startedAt: from.toISOString(), endedAt: to.toISOString()})
+      await enqueue(ctx, type, {startedAt: from.toISOString(), endedAt: to.toISOString()})
       flash("Sleep saved")
     })
 
@@ -403,7 +433,9 @@ export function renderPanel(root, opts = {}) {
   }
 
   const onQueueChanged = () => {
-    if (sleepBox && sleepBox.isConnected) renderSleep(sleepBox)
+    Object.entries(timerBoxes).forEach(([type, box]) => {
+      if (box.isConnected) renderTimer(type, box)
+    })
     renderPending()
   }
   const onSnapshotChanged = () => load()
@@ -421,7 +453,7 @@ export function renderPanel(root, opts = {}) {
 
   return {
     destroy() {
-      if (sleepTimer) clearInterval(sleepTimer)
+      Object.values(timerIntervals).forEach(clearInterval)
       document.removeEventListener("trygg:queue-changed", onQueueChanged)
       document.removeEventListener("trygg:snapshot-changed", onSnapshotChanged)
       root.innerHTML = ""

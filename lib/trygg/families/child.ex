@@ -4,8 +4,8 @@ defmodule Trygg.Families.Child do
 
   @sexes [:female, :male, :unspecified]
   # What the Home screen can track — the same atoms as `Trygg.Log.Entry` types.
-  # A child tracks all of them unless a caregiver trims the list down.
-  @tracked_types [:feeding, :diaper, :sleep]
+  # Bottles, diapers and sleep are on by default; breastfeeding is optional.
+  @tracked_types [:feeding, :diaper, :sleep, :breastfeeding]
   # New children default to the San Francisco Bay Area; the IANA zone handles
   # PST/PDT automatically.
   @default_timezone "America/Los_Angeles"
@@ -44,7 +44,10 @@ defmodule Trygg.Families.Child do
 
     # Which trackers show on Home (glance cards, log buttons, recent list).
     # Shared by every caregiver; at least one must stay on.
-    field :tracked_types, {:array, Ecto.Enum}, values: @tracked_types, default: @tracked_types
+    field :tracked_types,
+          {:array, Ecto.Enum},
+          values: @tracked_types,
+          default: [:feeding, :diaper, :sleep]
 
     # Populated by `Trygg.Families` with the current user's role for this child.
     field :role, Ecto.Enum, values: [:owner, :caregiver, :viewer], virtual: true
@@ -86,6 +89,10 @@ defmodule Trygg.Families.Child do
     |> truncate_time(:day_start)
     |> truncate_time(:night_start)
     |> validate_day_night()
+  end
+
+  def tracker_options do
+    [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep", breastfeeding: "Breastfeeding"]
   end
 
   # Seed the virtual weeks/days pair from the stored total so the form shows
@@ -469,7 +476,7 @@ defmodule Trygg.Families.Child do
     DateTime.shift_zone!(dt, "Etc/UTC")
   end
 
-  @doc "Whether the Home screen tracks entries of `type` (`:feeding`, `:diaper`, `:sleep`) for the child."
+  @doc "Whether the Home screen tracks entries of a supported type for the child."
   def tracks?(%__MODULE__{tracked_types: types}, type), do: type in types
 
   def tracked_types, do: @tracked_types

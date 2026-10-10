@@ -33,6 +33,8 @@ defmodule Trygg.Reports.Day do
     :wake_segments,
     :feeds,
     :diapers,
+    :breastfeeding_sessions,
+    :breastfeeding_seconds,
     :day_sleep_seconds,
     :night_sleep_seconds,
     :total_sleep_seconds,
@@ -81,6 +83,8 @@ defmodule Trygg.Reports.Day do
       wake_segments: annotate_offsets(wake_segments, from, day_seconds),
       feeds: markers(entries, :feeding, from, to, day_seconds),
       diapers: markers(entries, :diaper, from, to, day_seconds),
+      breastfeeding_sessions: count_started(entries, :breastfeeding, from, to),
+      breastfeeding_seconds: timer_seconds(entries, :breastfeeding, from, to, now),
       day_sleep_seconds: day_secs,
       night_sleep_seconds: night_secs,
       total_sleep_seconds: day_secs + night_secs,
@@ -91,6 +95,26 @@ defmodule Trygg.Reports.Day do
       naps: naps,
       wake_windows: wake_windows
     }
+  end
+
+  defp count_started(entries, type, from, to) do
+    Enum.count(entries, fn entry ->
+      entry.type == type and DateTime.compare(entry.started_at, from) != :lt and
+        DateTime.compare(entry.started_at, to) == :lt
+    end)
+  end
+
+  defp timer_seconds(entries, type, from, to, now) do
+    entries
+    |> Enum.filter(fn entry ->
+      entry.type == type and DateTime.compare(entry.started_at, to) == :lt and
+        DateTime.compare(entry.ended_at || now, from) == :gt
+    end)
+    |> Enum.reduce(0, fn entry, total ->
+      start = max_dt(entry.started_at, from)
+      finish = min_dt(entry.ended_at || now, to)
+      total + max(DateTime.diff(finish, start, :second), 0)
+    end)
   end
 
   ## Sleep / wake on the calendar day -------------------------------------

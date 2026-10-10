@@ -7,11 +7,11 @@ defmodule TryggWeb.Api.EntryController do
     * `GET    /api/v1/children/:child_id/entries` — newest first; `type`,
       `since`, `until` (ISO 8601) and `limit` (default 50, at most 200)
     * `POST   /api/v1/children/:child_id/entries` — `type` (`feeding`,
-      `diaper`, `sleep`), `started_at` (defaults to now), `ended_at`, `data`
-      and `note`. A `sleep` with no `ended_at` starts the running timer. With a
-      `client_id` (a UUID) the call is idempotent — repeating it updates the same
-      entry instead of adding another — and `started_at` is required, so a
-      retry can't drift the time.
+      `diaper`, `sleep`, `breastfeeding`), `started_at` (defaults to now),
+      `ended_at`, `data` and `note`. A sleep or breastfeeding session with no
+      `ended_at` starts a running timer. A `client_id` (a UUID) makes the call
+      idempotent — repeating it updates the same entry instead of adding
+      another — and requires `started_at` so a retry can't drift the time.
     * `POST   /api/v1/children/:child_id/entries/:id/stop` — stops a running
       timer; takes `ended_at`, `data` and `note`
     * `DELETE /api/v1/children/:child_id/entries/:id`
@@ -86,11 +86,12 @@ defmodule TryggWeb.Api.EntryController do
     end
   end
 
-  # A sleep with no end is the running timer, and there's at most one of those.
-  defp record(scope, child, :sleep, attrs) when not is_map_key(attrs, "ended_at"),
-    do: Log.start_timer(scope, child, :sleep, attrs)
-
-  defp record(scope, child, type, attrs), do: Log.create_entry(scope, child, type, attrs)
+  # A timer type with no end is the running timer, at most one per type.
+  defp record(scope, child, type, attrs) do
+    if type in Entry.timer_types() and not Map.has_key?(attrs, "ended_at"),
+      do: Log.start_timer(scope, child, type, attrs),
+      else: Log.create_entry(scope, child, type, attrs)
+  end
 
   defp fetch_type(%{"type" => type}) when is_binary(type) do
     case Enum.find(Entry.types(), &(Atom.to_string(&1) == type)) do

@@ -1,8 +1,8 @@
 defmodule Trygg.Log do
   @moduledoc """
-  The shared event log for a child — bottle feeds, diapers, and sleep — plus the
-  running-timer helpers and the realtime broadcasts that keep every caregiver's
-  screen in sync.
+  The shared event log for a child — bottle feeds, diapers, sleep, and
+  breastfeeding — plus the running-timer helpers and the realtime broadcasts
+  that keep every caregiver's screen in sync.
 
   Reads require the `:viewer` role for the child; writes require `:caregiver`.
   All writes broadcast `{:log, :created | :updated | :deleted, entry}` on the
@@ -86,7 +86,7 @@ defmodule Trygg.Log do
     entry
   end
 
-  @doc "Currently running timers for a child (only `:sleep`), oldest first."
+  @doc "Currently running sleep and breastfeeding timers for a child, oldest first."
   def running_timers(%Scope{} = scope, %Child{} = child) do
     Families.authorize!(scope, child, :viewer)
 
@@ -97,7 +97,7 @@ defmodule Trygg.Log do
   end
 
   @doc """
-  A snapshot for the dashboard: the last feed/diaper/sleep, any running timers,
+  A snapshot for the dashboard: the last feed/diaper/sleep/breastfeeding, any running timers,
   and today's counts (in the child's local day).
   """
   def summary(%Scope{} = scope, %Child{} = child) do
@@ -109,6 +109,7 @@ defmodule Trygg.Log do
       last_feeding: last_of_type(child, :feeding),
       last_diaper: last_of_type(child, :diaper),
       last_sleep: last_of_type(child, :sleep),
+      last_breastfeeding: last_of_type(child, :breastfeeding),
       running: running_timers(scope, child),
       vitamin_d_given_today?: vitamin_d_given?(child, Child.local_today(child)),
       today: %{
@@ -117,10 +118,18 @@ defmodule Trygg.Log do
         diapers: length(diaper_kinds),
         diapers_wet: Enum.count(diaper_kinds, &(&1 in ["pee", "mixed"])),
         diapers_dirty: Enum.count(diaper_kinds, &(&1 in ["poo", "mixed"])),
-        sleep_seconds: sleep_seconds_between(child, day_start, day_end)
+        sleep_seconds: sleep_seconds_between(child, day_start, day_end),
+        breastfeeding_sessions: count_between(child, :breastfeeding, day_start, day_end),
+        breastfeeding_seconds: duration_seconds_between(child, :breastfeeding, day_start, day_end)
       }
     }
   end
+
+  @doc "Returns the running timer of `type` from a summary, if present."
+  def running(%{running: running}, type) when is_list(running),
+    do: Enum.find(running, &(&1.type == type))
+
+  def running(_summary, _type), do: nil
 
   @doc """
   Whether a feed logged on the child's local calendar `date` included a vitamin
@@ -182,10 +191,14 @@ defmodule Trygg.Log do
   end
 
   defp sleep_seconds_between(child, from, to) do
+    duration_seconds_between(child, :sleep, from, to)
+  end
+
+  defp duration_seconds_between(child, type, from, to) do
     now = DateTime.utc_now()
 
     Entry
-    |> where([e], e.child_id == ^child.id and e.type == :sleep and e.started_at < ^to)
+    |> where([e], e.child_id == ^child.id and e.type == ^type and e.started_at < ^to)
     |> where([e], is_nil(e.ended_at) or e.ended_at > ^from)
     |> Repo.all()
     |> Enum.reduce(0, fn e, acc ->
@@ -217,7 +230,7 @@ defmodule Trygg.Log do
   `"ended_at"`, `"note"` and a `"data"` map. Requires `:caregiver`.
 
   A `:feeding` entry created without an explicit `"ended_at"` is treated as
-  instantaneous (`ended_at == started_at`); only `:sleep` has running timers,
+  instantaneous (`ended_at == started_at`). Sleep and breastfeeding timers are
   started with `start_timer/4`.
   """
   def create_entry(%Scope{} = scope, %Child{} = child, type, attrs \\ %{}) do
@@ -287,7 +300,7 @@ defmodule Trygg.Log do
             |> broadcast(existing.child_id, :updated)
         end
 
-      with {:ok, entry} <- result, do: {:ok, collapse_open_sleeps(entry)}
+      with {:ok, entry} <- result, do: {:ok, collapse_open_timers(entry)}
     end
   end
 
@@ -301,24 +314,29 @@ defmodule Trygg.Log do
   `{:error, :not_found}` if the entry is gone or belongs to another child.
   """
   def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at) do
+    sync_stop_timer(scope, child, id, ended_at, %{})
+  end
+
+  def sync_stop_timer(%Scope{} = scope, %Child{} = child, id, ended_at, data) do
     with {int, ""} <- Integer.parse(to_string(id)),
          %Entry{child_id: child_id} = entry when child_id == child.id <- Repo.get(Entry, int) do
-      stop_timer(scope, entry, %{"ended_at" => clamp_future(ended_at)})
+      stop_timer(scope, entry, %{"ended_at" => clamp_future(ended_at), "data" => data})
     else
       _ -> {:error, :not_found}
     end
   end
 
-  # At most one running sleep per child. When a sync leaves an open sleep and
-  # the child has others open — two caregivers each started one, at least one
-  # offline — treat them as the same sleep: keep the earliest start, fold any
-  # note/data from the rest into it, and delete the rest.
-  defp collapse_open_sleeps(%Entry{type: :sleep, ended_at: nil, child_id: child_id} = entry) do
+  # At most one running timer of each type per child. When a sync leaves an
+  # open timer and the child has others open — e.g. caregivers went offline —
+  # treat them as the same session: keep the earliest start, fold any note/data
+  # from the rest into it, and delete the rest.
+  defp collapse_open_timers(%Entry{type: type, ended_at: nil, child_id: child_id} = entry)
+       when type in @timer_types do
     others =
       Entry
       |> where(
         [e],
-        e.child_id == ^child_id and e.type == :sleep and is_nil(e.ended_at) and e.id != ^entry.id
+        e.child_id == ^child_id and e.type == ^type and is_nil(e.ended_at) and e.id != ^entry.id
       )
       |> Repo.all()
 
@@ -337,7 +355,7 @@ defmodule Trygg.Log do
         {:ok, kept} =
           kept
           |> Entry.changeset(%{
-            "type" => "sleep",
+            "type" => to_string(type),
             "started_at" => kept.started_at,
             "note" => note,
             "data" => data
@@ -354,7 +372,7 @@ defmodule Trygg.Log do
     end
   end
 
-  defp collapse_open_sleeps(entry), do: entry
+  defp collapse_open_timers(entry), do: entry
 
   defp fetch_client_id(attrs) do
     case Ecto.UUID.cast(attrs["client_id"]) do
@@ -457,7 +475,7 @@ defmodule Trygg.Log do
   ## Timers ---------------------------------------------------------------
 
   @doc """
-  Starts a running `:sleep` timer. If one is already running it is returned
+  Starts a running sleep or breastfeeding timer. If one is already running it is returned
   unchanged, so tapping twice is harmless. Requires `:caregiver`.
   """
   def start_timer(%Scope{} = scope, %Child{} = child, type, attrs \\ %{})

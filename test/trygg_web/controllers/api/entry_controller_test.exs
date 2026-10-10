@@ -138,6 +138,23 @@ defmodule TryggWeb.Api.EntryControllerTest do
                conn |> post_json(path, %{type: "sleep", ended_at: nil}) |> json_response(201)
     end
 
+    test "a breastfeeding session with no end starts one running timer", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      conn = bearer(conn, scope, child)
+      path = ~p"/api/v1/children/#{child.id}/entries"
+
+      assert %{"data" => %{"id" => id, "running" => true, "ended_at" => nil}} =
+               conn |> post_json(path, %{type: "breastfeeding"}) |> json_response(201)
+
+      assert %{"data" => %{"id" => ^id, "running" => true}} =
+               conn |> post_json(path, %{type: "breastfeeding"}) |> json_response(201)
+
+      assert [%{id: ^id, type: :breastfeeding}] = Log.running_timers(scope, child)
+    end
+
     test "a client_id makes the call idempotent", %{conn: conn, scope: scope, child: child} do
       conn = bearer(conn, scope, child)
       path = ~p"/api/v1/children/#{child.id}/entries"
@@ -188,6 +205,23 @@ defmodule TryggWeb.Api.EntryControllerTest do
         })
 
       assert %{"data" => %{"running" => false, "note" => "good one"}} = json_response(conn, 200)
+    end
+
+    test "stops a breastfeeding timer without requiring a preset", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, timer} = Log.start_timer(scope, child, :breastfeeding)
+
+      response =
+        conn
+        |> bearer(scope, child)
+        |> post_json(~p"/api/v1/children/#{child.id}/entries/#{timer.id}/stop", %{})
+        |> json_response(200)
+
+      assert response["data"]["running"] == false
+      assert response["data"]["type"] == "breastfeeding"
     end
 
     test "is a 409 for an entry that isn't running", %{conn: conn, scope: scope, child: child} do

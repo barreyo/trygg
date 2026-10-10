@@ -163,6 +163,12 @@ defmodule TryggWeb.ReportsLive do
               value={to_string(length(@day.feeds))}
               sub={day_feed_sub(@day, @unit_system)}
             />
+            <.since_card
+              icon="hero-heart"
+              label="Breastfeeding"
+              value={"#{@day.breastfeeding_sessions} sessions"}
+              sub={"#{format_duration(@day.breastfeeding_seconds)} total · not bottle feeds"}
+            />
           </div>
         </:left>
         <:right>
