@@ -227,7 +227,16 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("request_stop", _params, socket) do
     child = socket.assigns.current_child
-    form = to_form(%{"ended_at" => Child.to_local_input(child, now()), "note" => ""}, as: :sleep)
+
+    form =
+      to_form(
+        %{
+          "ended_at" => timer_end_input(child, Log.running(socket.assigns.summary, :sleep)),
+          "note" => ""
+        },
+        as: :sleep
+      )
+
     {:noreply, socket |> clear_photo_upload() |> assign(sheet: :sleep_stop, sheet_form: form)}
   end
 
@@ -237,7 +246,7 @@ defmodule TryggWeb.DashboardLive do
     form =
       to_form(
         %{
-          "ended_at" => Child.to_local_input(child, now()),
+          "ended_at" => timer_end_input(child, Log.running(socket.assigns.summary, :breastfeeding)),
           "pattern" => "",
           "note" => ""
         },
@@ -697,6 +706,25 @@ defmodule TryggWeb.DashboardLive do
   defp end_after_start(ended, started) do
     if DateTime.after?(ended, started), do: :ok, else: {:error, :end_before_start}
   end
+
+  defp timer_end_input(child, %Entry{started_at: started}) do
+    now = now()
+
+    rounded_now =
+      case Child.from_local_input(child, Child.to_local_input(child, now)) do
+        {:ok, ended} -> ended
+        _ -> now
+      end
+
+    ended =
+      if DateTime.after?(rounded_now, started),
+        do: rounded_now,
+        else: DateTime.add(started, 60, :second)
+
+    Child.to_local_input(child, ended)
+  end
+
+  defp timer_end_input(child, _timer), do: Child.to_local_input(child, now())
 
   defp nudge_timer(socket, type, minutes) do
     case Log.running(socket.assigns.summary, type) do

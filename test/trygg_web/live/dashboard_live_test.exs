@@ -469,6 +469,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
       lv |> element("#stop-breastfeeding") |> render_click()
       assert has_element?(lv, "#breastfeeding-form")
+      assert_push_event(lv, "offline:snapshot", _snapshot)
 
       lv
       |> form("#breastfeeding-form", breastfeeding: %{pattern: "barely"})
@@ -611,7 +612,7 @@ defmodule TryggWeb.DashboardLiveTest do
         |> form("#sleep-form", sleep: %{started_at: started, ended_at: ended})
         |> render_submit()
 
-      assert html =~ "after they fell asleep"
+      assert html =~ "Finish time must be after the start time."
     end
 
     test "a running sleep timer is visible to another caregiver and survives a reconnect", %{
