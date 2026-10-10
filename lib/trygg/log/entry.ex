@@ -1,22 +1,23 @@
 defmodule Trygg.Log.Entry do
   @moduledoc """
-  A single logged event for a child: a bottle feed, a diaper, or a stretch of
-  sleep.
+  A single logged event for a child: a bottle feed, a diaper, a stretch of
+  sleep, or a breastfeeding session.
 
   Type-specific fields live in the free-form `data` map (string keys) and are
   whitelisted/validated per `type` by `changeset/2`. `ended_at` being `nil` on a
-  `:sleep` entry means the timer is still running. Feeds and diapers are
-  instantaneous (`ended_at == started_at`).
+  `:sleep` or `:breastfeeding` entry means the timer is still running. Bottle
+  feeds and diapers are instantaneous (`ended_at == started_at`).
   """
   use Ecto.Schema
   import Ecto.Changeset
 
-  @types [:feeding, :diaper, :sleep]
-  @timer_types [:sleep]
+  @types [:feeding, :diaper, :sleep, :breastfeeding]
+  @timer_types [:sleep, :breastfeeding]
 
   @bottle_contents ~w(formula expressed donor)
   @diaper_kinds ~w(pee poo mixed)
   @sleep_locations ~w(bassinet crib contact stroller other)
+  @breastfeeding_patterns ~w(constant on_and_off barely)
   @photo_content_types ~w(image/jpeg image/png image/webp image/gif)
 
   schema "log_entries" do
@@ -162,6 +163,30 @@ defmodule Trygg.Log.Entry do
     put_change(changeset, :data, data)
   end
 
+  defp validate_type_data(changeset, :breastfeeding, raw) do
+    raw_pattern = blank_to_nil(raw["pattern"])
+    pattern = normalize_breastfeeding_pattern(raw_pattern)
+
+    cond do
+      is_nil(raw_pattern) ->
+        put_change(changeset, :data, %{})
+
+      pattern ->
+        put_change(changeset, :data, %{"pattern" => pattern})
+
+      true ->
+        allowed = Enum.join(@breastfeeding_patterns, ", ")
+        add_error(changeset, :data, "pattern must be one of: #{allowed}")
+    end
+  end
+
+  defp normalize_breastfeeding_pattern("on and off"), do: "on_and_off"
+
+  defp normalize_breastfeeding_pattern(pattern) when pattern in @breastfeeding_patterns,
+    do: pattern
+
+  defp normalize_breastfeeding_pattern(_), do: nil
+
   defp truthy?(value), do: value in [true, "true", "on", "1", 1]
 
   defp enum(value, allowed) do
@@ -227,6 +252,11 @@ defmodule Trygg.Log.Entry do
 
   def timer_types, do: @timer_types
   def sleep_locations, do: @sleep_locations
+  def breastfeeding_patterns, do: @breastfeeding_patterns
+  def breastfeeding_pattern_label("constant"), do: "Constant"
+  def breastfeeding_pattern_label("on_and_off"), do: "On and off"
+  def breastfeeding_pattern_label("on and off"), do: "On and off"
+  def breastfeeding_pattern_label("barely"), do: "Just a little"
   def bottle_contents, do: @bottle_contents
   def diaper_kinds, do: @diaper_kinds
   def photo_content_types, do: @photo_content_types

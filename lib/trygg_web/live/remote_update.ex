@@ -59,4 +59,5 @@ defmodule TryggWeb.RemoteUpdate do
   defp glance_card(:feeding), do: "#glance-feed .glance-card"
   defp glance_card(:diaper), do: "#glance-diaper .glance-card"
   defp glance_card(:sleep), do: "#glance-sleep .glance-card"
+  defp glance_card(:breastfeeding), do: "#glance-breastfeeding .glance-card"
 end

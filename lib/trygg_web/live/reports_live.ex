@@ -163,6 +163,13 @@ defmodule TryggWeb.ReportsLive do
               value={to_string(length(@day.feeds))}
               sub={day_feed_sub(@day, @unit_system)}
             />
+            <.since_card
+              :if={Child.tracks?(@child, :breastfeeding)}
+              icon="hero-heart"
+              label="Breastfeeding"
+              value={session_count_label(@day.breastfeeding_sessions)}
+              sub={"#{format_duration(@day.breastfeeding_seconds)} total · not bottle feeds"}
+            />
           </div>
         </:left>
         <:right>
@@ -824,6 +831,9 @@ defmodule TryggWeb.ReportsLive do
     do: "#{wet} / ~#{round(expected)}"
 
   defp today_wet_label(%{wet: wet}), do: to_string(wet)
+
+  defp session_count_label(1), do: "1 session"
+  defp session_count_label(count), do: "#{count} sessions"
 
   ## Changes card ---------------------------------------------------------
 

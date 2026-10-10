@@ -28,8 +28,13 @@ function groupByChild(rows) {
 function toEntry(row) {
   // "Stop this running timer" — keyed by the timer's server id, no client_id
   // payload beyond the queue key the server echoes back.
-  if (row.type === "sleep_stop") {
-    return {client_id: row.clientId, server_id: row.serverId, ended_at: row.endedAt}
+  if (["sleep_stop", "breastfeeding_stop"].includes(row.type)) {
+    return {
+      client_id: row.clientId,
+      server_id: row.serverId,
+      ended_at: row.endedAt,
+      data: row.data || {},
+    }
   }
 
   return {

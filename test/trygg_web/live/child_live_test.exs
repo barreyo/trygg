@@ -93,16 +93,18 @@ defmodule TryggWeb.ChildLiveTest do
 
     {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
     assert has_element?(lv, "#tracked-feeding[checked]")
+    refute has_element?(lv, "#tracked-breastfeeding[checked]")
 
     {:error, {:live_redirect, _}} =
       lv
-      |> form("#child-form", child: %{tracked_types: ["", "feeding"]})
+      |> form("#child-form", child: %{tracked_types: ["", "feeding", "breastfeeding"]})
       |> render_submit()
 
-    assert Families.get_child!(scope, child.id).tracked_types == [:feeding]
+    assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :breastfeeding]
 
     {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
     assert has_element?(lv, "#tracked-feeding[checked]")
+    assert has_element?(lv, "#tracked-breastfeeding[checked]")
     refute has_element?(lv, "#tracked-diaper[checked]")
     refute has_element?(lv, "#tracked-sleep[checked]")
   end

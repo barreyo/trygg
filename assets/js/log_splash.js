@@ -82,6 +82,14 @@ const SCENES = {
     ],
     hero: "☀️", rays: true, drift: ["☁️", 3],
   },
+  breastfeeding_start: {
+    captions: ["Milk time", "A little cuddle", "Settling in", "Feed started", "Snuggle close"],
+    hero: "🤱", rise: ["💗", 8],
+  },
+  breastfeeding_stop: {
+    captions: ["All done", "A little more settled", "Feed complete", "Nice and cozy", "Well fed"],
+    hero: "🤱", burst: ["💗", 10],
+  },
 }
 
 const rand = (min, max) => min + Math.random() * (max - min)

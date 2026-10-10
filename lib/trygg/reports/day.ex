@@ -33,6 +33,8 @@ defmodule Trygg.Reports.Day do
     :wake_segments,
     :feeds,
     :diapers,
+    :breastfeeding_sessions,
+    :breastfeeding_seconds,
     :day_sleep_seconds,
     :night_sleep_seconds,
     :total_sleep_seconds,
@@ -81,6 +83,8 @@ defmodule Trygg.Reports.Day do
       wake_segments: annotate_offsets(wake_segments, from, day_seconds),
       feeds: markers(entries, :feeding, from, to, day_seconds),
       diapers: markers(entries, :diaper, from, to, day_seconds),
+      breastfeeding_sessions: count_started(entries, :breastfeeding, from, to),
+      breastfeeding_seconds: timer_seconds(entries, :breastfeeding, from, to, now),
       day_sleep_seconds: day_secs,
       night_sleep_seconds: night_secs,
       total_sleep_seconds: day_secs + night_secs,
@@ -93,40 +97,59 @@ defmodule Trygg.Reports.Day do
     }
   end
 
+  defp count_started(entries, type, from, to) do
+    Enum.count(entries, fn entry ->
+      entry.type == type and DateTime.compare(entry.started_at, from) != :lt and
+        DateTime.compare(entry.started_at, to) == :lt
+    end)
+  end
+
+  defp timer_seconds(entries, type, from, to, now) do
+    Enum.reduce(entries, 0, fn
+      %{type: ^type} = entry, total ->
+        case clip_timer(entry, from, to, now) do
+          nil -> total
+          segment -> total + segment.seconds
+        end
+
+      _entry, total ->
+        total
+    end)
+  end
+
   ## Sleep / wake on the calendar day -------------------------------------
 
   defp clip_sleeps(sleeps, from, to, now) do
     sleeps
-    |> Enum.flat_map(fn e ->
-      ended = e.ended_at || now
-
-      if DateTime.compare(e.started_at, to) == :lt and DateTime.compare(ended, from) == :gt do
-        start = max_dt(e.started_at, from)
-        finish = min_dt(ended, to)
-        seconds = max(DateTime.diff(finish, start, :second), 0)
-
-        if seconds > 0 do
-          running? = is_nil(e.ended_at) and DateTime.compare(finish, now) != :lt
-
-          [
-            %{
-              id: e.id,
-              entry: e,
-              start: start,
-              end: finish,
-              running?: running?,
-              location: e.data["location"],
-              seconds: seconds
-            }
-          ]
-        else
+    |> Enum.flat_map(fn entry ->
+      case clip_timer(entry, from, to, now) do
+        nil ->
           []
-        end
-      else
-        []
+
+        segment ->
+          [Map.merge(segment, %{id: entry.id, entry: entry, location: entry.data["location"]})]
       end
     end)
     |> Enum.sort_by(& &1.start, DateTime)
+  end
+
+  defp clip_timer(entry, from, to, now) do
+    ended = entry.ended_at || now
+
+    if DateTime.compare(entry.started_at, to) == :lt and DateTime.compare(ended, from) == :gt do
+      start = max_dt(entry.started_at, from)
+      finish = min_dt(ended, to)
+      seconds = max(DateTime.diff(finish, start, :second), 0)
+
+      if seconds > 0 do
+        %{
+          start: start,
+          end: finish,
+          seconds: seconds,
+          running?: is_nil(entry.ended_at) and DateTime.compare(finish, now) != :lt
+        }
+      end
+    end
   end
 
   defp gaps(sleeps, from, to, now) do

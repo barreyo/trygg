@@ -51,7 +51,7 @@ defmodule TryggWeb.LogSyncController do
        when is_integer(server_id) or is_binary(server_id) do
     client_id = attrs["client_id"]
 
-    case Log.sync_stop_timer(scope, child, server_id, attrs["ended_at"]) do
+    case Log.sync_stop_timer(scope, child, server_id, attrs["ended_at"], attrs["data"] || %{}) do
       {:ok, entry} -> %{client_id: client_id, status: "ok", id: entry.id}
       {:error, :not_found} -> rejected(client_id, %{server_id: ["not found"]})
       {:error, %Ecto.Changeset{} = changeset} -> rejected(client_id, changeset_errors(changeset))
