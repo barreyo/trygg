@@ -8,7 +8,7 @@ defmodule TryggWeb.TimelineLive do
   alias TryggWeb.{Loading, RemoteUpdate}
 
   @page_size 50
-  @filters [nil, :feeding, :diaper, :sleep]
+  @filters [nil, :feeding, :diaper, :sleep, :breastfeeding]
 
   # The finer breakdown offered once a type is picked: `{id, label, data}`,
   # where `data` is what an entry's `data` map must match
@@ -378,4 +378,5 @@ defmodule TryggWeb.TimelineLive do
   defp filter_label(:feeding), do: "Feeds"
   defp filter_label(:diaper), do: "Diapers"
   defp filter_label(:sleep), do: "Sleep"
+  defp filter_label(:breastfeeding), do: "Breastfeeding"
 end

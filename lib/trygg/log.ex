@@ -1,6 +1,6 @@
 defmodule Trygg.Log do
   @moduledoc """
-  The shared event log for a child — bottle feeds, diapers, and sleep — plus the
+  The shared event log for a child — bottle feeds, diapers, sleep, and breastfeeding — plus the
   running-timer helpers and the realtime broadcasts that keep every caregiver's
   screen in sync.
 
@@ -86,7 +86,7 @@ defmodule Trygg.Log do
     entry
   end
 
-  @doc "Currently running timers for a child (only `:sleep`), oldest first."
+  @doc "Currently running sleep and breastfeeding timers for a child, oldest first."
   def running_timers(%Scope{} = scope, %Child{} = child) do
     Families.authorize!(scope, child, :viewer)
 
@@ -97,7 +97,7 @@ defmodule Trygg.Log do
   end
 
   @doc """
-  A snapshot for the dashboard: the last feed/diaper/sleep, any running timers,
+  A snapshot for the dashboard: the last feed/diaper/sleep/breastfeeding, any running timers,
   and today's counts (in the child's local day).
   """
   def summary(%Scope{} = scope, %Child{} = child) do
@@ -109,6 +109,7 @@ defmodule Trygg.Log do
       last_feeding: last_of_type(child, :feeding),
       last_diaper: last_of_type(child, :diaper),
       last_sleep: last_of_type(child, :sleep),
+      last_breastfeeding: last_of_type(child, :breastfeeding),
       running: running_timers(scope, child),
       vitamin_d_given_today?: vitamin_d_given?(child, Child.local_today(child)),
       today: %{
@@ -457,7 +458,7 @@ defmodule Trygg.Log do
   ## Timers ---------------------------------------------------------------
 
   @doc """
-  Starts a running `:sleep` timer. If one is already running it is returned
+  Starts a running sleep or breastfeeding timer. If one is already running it is returned
   unchanged, so tapping twice is harmless. Requires `:caregiver`.
   """
   def start_timer(%Scope{} = scope, %Child{} = child, type, attrs \\ %{})

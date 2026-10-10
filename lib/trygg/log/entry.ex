@@ -1,22 +1,23 @@
 defmodule Trygg.Log.Entry do
   @moduledoc """
-  A single logged event for a child: a bottle feed, a diaper, or a stretch of
-  sleep.
+  A single logged event for a child: a bottle feed, a diaper, a stretch of
+  sleep, or a breastfeeding session.
 
   Type-specific fields live in the free-form `data` map (string keys) and are
   whitelisted/validated per `type` by `changeset/2`. `ended_at` being `nil` on a
-  `:sleep` entry means the timer is still running. Feeds and diapers are
-  instantaneous (`ended_at == started_at`).
+  `:sleep` or `:breastfeeding` entry means the timer is still running. Bottle
+  feeds and diapers are instantaneous (`ended_at == started_at`).
   """
   use Ecto.Schema
   import Ecto.Changeset
 
-  @types [:feeding, :diaper, :sleep]
-  @timer_types [:sleep]
+  @types [:feeding, :diaper, :sleep, :breastfeeding]
+  @timer_types [:sleep, :breastfeeding]
 
   @bottle_contents ~w(formula expressed donor)
   @diaper_kinds ~w(pee poo mixed)
   @sleep_locations ~w(bassinet crib contact stroller other)
+  @breastfeeding_patterns ["constant", "on and off", "barely"]
   @photo_content_types ~w(image/jpeg image/png image/webp image/gif)
 
   schema "log_entries" do
@@ -162,6 +163,17 @@ defmodule Trygg.Log.Entry do
     put_change(changeset, :data, data)
   end
 
+  defp validate_type_data(changeset, :breastfeeding, raw) do
+    pattern = enum(raw["pattern"], @breastfeeding_patterns)
+    data = drop_nils(%{"pattern" => pattern})
+
+    if get_field(changeset, :ended_at) && is_nil(pattern) do
+      add_error(changeset, :data, "choose how the baby ate")
+    else
+      put_change(changeset, :data, data)
+    end
+  end
+
   defp truthy?(value), do: value in [true, "true", "on", "1", 1]
 
   defp enum(value, allowed) do
@@ -227,6 +239,7 @@ defmodule Trygg.Log.Entry do
 
   def timer_types, do: @timer_types
   def sleep_locations, do: @sleep_locations
+  def breastfeeding_patterns, do: @breastfeeding_patterns
   def bottle_contents, do: @bottle_contents
   def diaper_kinds, do: @diaper_kinds
   def photo_content_types, do: @photo_content_types

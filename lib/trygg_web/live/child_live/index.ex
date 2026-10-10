@@ -319,7 +319,8 @@ defmodule TryggWeb.ChildLive.Index do
 
   defp arrived_defaults(_child, _status), do: %{}
 
-  defp tracker_options, do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep"]
+  defp tracker_options,
+    do: [feeding: "Bottles", diaper: "Diapers", sleep: "Sleep", breastfeeding: "Breastfeeding"]
 
   defp tracked_values(form), do: Enum.map(List.wrap(form[:tracked_types].value), &to_string/1)
 

@@ -308,6 +308,7 @@ defmodule TryggWeb.LogComponents do
   def entry_icon(:feeding), do: "hero-beaker"
   def entry_icon(:diaper), do: "hero-sparkles"
   def entry_icon(:sleep), do: "hero-moon"
+  def entry_icon(:breastfeeding), do: "hero-heart"
   def entry_icon(_), do: "hero-clipboard-document-list"
 
   # The one accent color that marks an entry's activity type in the timeline
@@ -315,6 +316,7 @@ defmodule TryggWeb.LogComponents do
   # glance cards, so "blue" reads as "feeding" everywhere in the app.
   defp entry_icon_color(:feeding), do: "text-info"
   defp entry_icon_color(:sleep), do: "text-primary"
+  defp entry_icon_color(:breastfeeding), do: "text-info"
   defp entry_icon_color(_), do: "opacity-60"
 
   # {emoji, stored kind, label} — the single source of truth for how each
@@ -355,6 +357,14 @@ defmodule TryggWeb.LogComponents do
     end
   end
 
+  def entry_title(%Entry{type: :breastfeeding} = e, _units) do
+    cond do
+      Entry.running?(e) -> "Breastfeeding"
+      d = short_duration(e) -> "Breastfed #{d}"
+      true -> "Breastfeeding"
+    end
+  end
+
   def entry_title(%Entry{type: type}, _units), do: type |> to_string() |> String.capitalize()
 
   @doc "Whether this entry is a child who is asleep right now."
@@ -365,11 +375,16 @@ defmodule TryggWeb.LogComponents do
   def entry_noun(%Entry{type: :sleep}), do: "sleep"
   def entry_noun(%Entry{type: :feeding}), do: "feed"
   def entry_noun(%Entry{type: :diaper}), do: "diaper"
+  def entry_noun(%Entry{type: :breastfeeding}), do: "breastfeeding session"
   def entry_noun(%Entry{type: type}), do: to_string(type)
 
   @doc "Secondary line for an entry (location, colour, note), or nil."
   def entry_detail(%Entry{type: :sleep, data: data, note: note}, _units) do
     [location_label(data["location"]), note] |> compact_join(" · ")
+  end
+
+  def entry_detail(%Entry{type: :breastfeeding, data: data, note: note}, _units) do
+    [data["pattern"], note] |> compact_join(" · ")
   end
 
   def entry_detail(%Entry{type: :diaper, data: data, note: note}, _units) do
@@ -479,6 +494,7 @@ defmodule TryggWeb.LogComponents do
       "ended_at" => to_local_input(child, e.ended_at),
       "note" => e.note,
       "amount" => amount_display(e),
+      "pattern" => e.data["pattern"],
       "vitamin_d" => to_string(Entry.vitamin_d?(e))
     }
   end
@@ -496,7 +512,7 @@ defmodule TryggWeb.LogComponents do
       {:ok, started_at} ->
         # feeds and diapers are instantaneous: keep ended_at pinned to started_at
         ended_at =
-          if entry.type == :sleep do
+          if entry.type in [:sleep, :breastfeeding] do
             case local_to_utc(child, params["ended_at"]) do
               {:ok, dt} -> dt
               _ -> nil
@@ -711,11 +727,24 @@ defmodule TryggWeb.LogComponents do
       >
         <.input field={@form[:started_at]} type="datetime-local" label={time_label(@entry)} />
         <.input
-          :if={@entry.type == :sleep}
+          :if={@entry.type in [:sleep, :breastfeeding]}
           field={@form[:ended_at]}
           type="datetime-local"
           label="Ended"
         />
+        <fieldset :if={@entry.type == :breastfeeding} class="fieldset">
+          <legend class="fieldset-legend">How did they feed?</legend>
+          <label :for={pattern <- Entry.breastfeeding_patterns()} class="label min-h-10 gap-2">
+            <input
+              type="radio"
+              name="entry[pattern]"
+              value={pattern}
+              checked={@form.params["pattern"] == pattern}
+              class="radio radio-primary"
+            />
+            {String.capitalize(pattern)}
+          </label>
+        </fieldset>
         <.input
           :if={has_amount?(@entry)}
           field={@form[:amount]}
@@ -758,6 +787,7 @@ defmodule TryggWeb.LogComponents do
   end
 
   defp time_label(%Entry{type: :sleep}), do: "Started"
+  defp time_label(%Entry{type: :breastfeeding}), do: "Started"
   defp time_label(_), do: "Time"
 
   defp has_amount?(%Entry{type: :feeding}), do: true
@@ -772,6 +802,12 @@ defmodule TryggWeb.LogComponents do
     data =
       case {has_amount?(e), parse_number(params["amount"])} do
         {true, n} when is_number(n) -> Map.put(data, "amount_ml", n)
+        _ -> data
+      end
+
+    data =
+      case {e.type, params["pattern"]} do
+        {:breastfeeding, pattern} when is_binary(pattern) -> Map.put(data, "pattern", pattern)
         _ -> data
       end
 
