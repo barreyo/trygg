@@ -52,6 +52,13 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
+  dom: {
+    // A fold (<details class="fold">) the user opened stays open when the server
+    // re-renders around it: a form change, a tick, a realtime update.
+    onBeforeElUpdated(from, to) {
+      if (from.tagName === "DETAILS" && from.classList.contains("fold")) to.open = from.open
+    },
+  },
   hooks: {
     ...colocatedHooks,
     Timer,

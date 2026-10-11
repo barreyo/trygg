@@ -547,7 +547,7 @@ defmodule TryggWeb.SleepToolkitComponents do
           :for={tool <- @tools}
           id={"tool-#{tool.id}"}
           data-state={tool.state}
-          class="rounded-box border border-base-300 px-3 pb-3"
+          class="rounded-box border border-base-300 p-3"
         >
           <div class="flex items-center justify-between gap-2">
             <h3 class="text-sm font-semibold">{tool.name}</h3>
