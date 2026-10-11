@@ -37,6 +37,15 @@ defmodule TryggWeb.SleepToolkitComponents do
       >
         Toolkit
       </.button>
+      <.button
+        id="subnav-night"
+        navigate={"/c/#{@child.id}/sleep/night"}
+        size="sm"
+        variant={if @current == :night, do: "primary"}
+        aria-current={@current == :night && "page"}
+      >
+        <.icon name="hero-moon" class="size-4" /> Night mode
+      </.button>
     </nav>
     """
   end
@@ -408,6 +417,51 @@ defmodule TryggWeb.SleepToolkitComponents do
   defp feed_amount(%{ml: ml}, system) when is_number(ml), do: Units.format(ml, :volume, system)
   defp feed_amount(%{minutes: min}, _system) when is_integer(min), do: "#{min} min"
   defp feed_amount(_event, _system), do: "feed"
+
+  ## Night wakes ------------------------------------------------------------------
+
+  attr :summary, :map, required: true
+  attr :child_id, :integer, required: true
+
+  def night_wakes_panel(assigns) do
+    ~H"""
+    <section id="toolkit-night-wakes" class={panel_class()}>
+      <h2 class={heading_class()}>Night wakings</h2>
+
+      <%= if @summary.count == 0 do %>
+        <p id="night-wakes-empty" class="text-sm opacity-80">
+          Work through a waking in night mode and how it went shows here.
+        </p>
+      <% else %>
+        <p id="night-wakes-summary" class="text-sm">
+          {@summary.count} in the last 2 weeks: {@summary.settled} settled, {@summary.fed} ended in a feed.
+        </p>
+        <p
+          :if={@summary.settled_at != %{}}
+          id="night-wakes-steps"
+          class="mt-1 text-sm opacity-80"
+        >
+          Settled at step {settled_steps(@summary.settled_at)}.
+        </p>
+      <% end %>
+
+      <.button
+        id="open-night-mode"
+        navigate={"/c/#{@child_id}/sleep/night"}
+        size="sm"
+        class="mt-3"
+      >
+        <.icon name="hero-moon" class="size-4" /> Night mode
+      </.button>
+    </section>
+    """
+  end
+
+  defp settled_steps(settled_at) do
+    settled_at
+    |> Enum.sort()
+    |> Enum.map_join(", ", fn {step, n} -> "#{step + 1} (#{n}×)" end)
+  end
 
   ## Checklists --------------------------------------------------------------------
 
