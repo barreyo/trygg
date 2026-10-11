@@ -36,7 +36,7 @@ defmodule TryggWeb.UserLive.Login do
           <.login_hero :if={@immersive} variant={:mail} />
 
           <div class={["login-rise text-center", @immersive && "login-copy"]} style="--d: 0.15s">
-            <h1 class={["text-2xl font-bold", @immersive && "text-white drop-shadow"]}>
+            <h1 class={["text-2xl font-bold tracking-tight", @immersive && "text-white drop-shadow"]}>
               Check your email
             </h1>
             <p class={[
@@ -141,7 +141,7 @@ defmodule TryggWeb.UserLive.Login do
           <.login_hero :if={@immersive} variant={:night} />
 
           <div class={["login-rise text-center", @immersive && "login-copy"]} style="--d: 0.15s">
-            <h1 class={["text-2xl font-bold", @immersive && "text-white drop-shadow"]}>
+            <h1 class={["text-2xl font-bold tracking-tight", @immersive && "text-white drop-shadow"]}>
               {if @current_scope, do: "Log in", else: "Welcome to Trygg"}
             </h1>
             <p class={[
