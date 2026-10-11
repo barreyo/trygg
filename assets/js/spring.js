@@ -125,3 +125,12 @@ export function rubberband(overshoot, dimension, constant = 0.55) {
   const eased = (abs * dimension * constant) / (dimension + constant * abs)
   return overshoot < 0 ? -eased : eased
 }
+
+// The finger travel that `rubberband` would turn into `value`: lets a drag that
+// is picked up mid-flight carry on from where the element actually is. `value`
+// must be below `dimension` (the curve never gets past it).
+export function unrubberband(value, dimension, constant = 0.55) {
+  const abs = Math.min(Math.abs(value), dimension * 0.999)
+  const travel = (abs * dimension) / (constant * (dimension - abs))
+  return value < 0 ? -travel : travel
+}
