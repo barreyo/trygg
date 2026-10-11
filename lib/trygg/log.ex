@@ -128,6 +128,17 @@ defmodule Trygg.Log do
     }
   end
 
+  @doc """
+  When the last feed (a bottle or a nursing session) happened, from a
+  `summary/2` map: a bottle's time, or a session's end (its start while still
+  going). `nil` when there is none.
+  """
+  def last_feed_at(%{last_feeding: bottle, last_breastfeeding: nursing}) do
+    [bottle && bottle.started_at, nursing && (nursing.ended_at || nursing.started_at)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(DateTime, fn -> nil end)
+  end
+
   defp breastfeeding_summary(child, from, to) do
     if Child.tracks?(child, :breastfeeding) do
       {

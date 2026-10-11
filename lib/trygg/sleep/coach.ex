@@ -11,7 +11,8 @@ defmodule Trygg.Sleep.Coach do
   the Taking Cara Babies guides.
 
   Pure: `insights/1` takes a map with `:child`, `:phase`, `:prediction`,
-  `:today` (a `%Day{}`), `:habits` (`Trygg.Reports.SleepHabits`), `:last_feed_at`
+  `:today` (a `%Day{}`), `:habits` (`Trygg.Reports.SleepHabits`), `:nights`
+  (`Trygg.Reports.Nights`, optional), `:last_feed_at`
   (a `DateTime` or `nil`) and `:now`.
   """
 
@@ -40,6 +41,7 @@ defmodule Trygg.Sleep.Coach do
       late_bedtime(ctx),
       overtired_pattern(ctx),
       cue_window(ctx),
+      longest_night(ctx),
       feed_sleep(ctx),
       transition(ctx),
       estimates(ctx)
@@ -175,7 +177,8 @@ defmodule Trygg.Sleep.Coach do
         "ready-window",
         :info,
         "Their \"ready\" cue",
-        "They usually show ready cues after about #{dur(s)} awake: a good moment to start the nap routine."
+        "They usually show ready cues after about #{dur(s)} awake: a good moment to start the nap routine." <>
+          cue_effect(ctx)
       )
     end
   end
@@ -188,6 +191,22 @@ defmodule Trygg.Sleep.Coach do
 
   defp ready_in_other?(%{habits: %{week: %{overtired: n, cued: c}}}), do: n >= 2 and c >= 3
   defp ready_in_other?(_ctx), do: false
+
+  # A new longest unbroken sleep, only once there are a few nights to compare.
+  defp longest_night(%{nights: %{nights: [last | earlier]}}) when length(earlier) >= 2 do
+    best = earlier |> Enum.map(& &1.longest_sleep_seconds) |> Enum.max()
+
+    if last.longest_sleep_seconds >= best + 15 * 60 do
+      insight(
+        "longest-night",
+        :info,
+        "Longest unbroken sleep yet",
+        "Last night's longest stretch was #{dur(last.longest_sleep_seconds)}, up from #{dur(best)}."
+      )
+    end
+  end
+
+  defp longest_night(_ctx), do: nil
 
   defp feed_sleep(%{habits: %{week: %{measured: m, fed_to_sleep: n}}})
        when m >= 4 and n / m >= 0.75 do
@@ -238,6 +257,15 @@ defmodule Trygg.Sleep.Coach do
 
   defp cries(%{phase: %{id: :newborn}}), do: " If they're upset, try C.R.I.E.S."
   defp cries(_ctx), do: ""
+
+  # Say when the cues are pulling predicted nap times, and which way.
+  defp cue_effect(%{prediction: %{cue_factor: f}}) when is_number(f) and f <= 0.97,
+    do: " Predicted nap times lean about #{round((1 - f) * 100)}% earlier because of it."
+
+  defp cue_effect(%{prediction: %{cue_factor: f}}) when is_number(f) and f >= 1.03,
+    do: " Predicted nap times lean about #{round((f - 1) * 100)}% later because of it."
+
+  defp cue_effect(_ctx), do: ""
 
   defp ready_hint(%{habits: %{cue_windows: %{"ready" => %{median_seconds: s}}}}),
     do: " Their ready cues usually show after about #{dur(s)} awake."

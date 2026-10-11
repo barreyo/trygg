@@ -27,6 +27,7 @@ defmodule Trygg.Reports.PredictionLedger do
   alias Trygg.Reports.Day
   alias Trygg.Reports.Insights
   alias Trygg.Reports.Prediction
+  alias Trygg.Reports.SleepHabits
   alias Trygg.Repo
 
   # Days of history to rebuild so the recomputed prediction matches what the
@@ -53,7 +54,7 @@ defmodule Trygg.Reports.PredictionLedger do
     {days, today_day, sleeps} = context(child, now)
 
     prediction =
-      Insights.summarize(child, days, today_day, now, prediction_opts(child.id)).prediction
+      Insights.summarize(child, days, today_day, now, opts_with_cues(child, sleeps, today_day)).prediction
 
     record_open(child, prediction, now)
     reconcile(child, sleeps, days, now)
@@ -76,8 +77,9 @@ defmodule Trygg.Reports.PredictionLedger do
 
   def prediction(%Child{} = child, now) do
     now = DateTime.truncate(now, :second)
-    {days, today_day, _sleeps} = context(child, now)
-    Insights.summarize(child, days, today_day, now, prediction_opts(child.id)).prediction
+    {days, today_day, sleeps} = context(child, now)
+
+    Insights.summarize(child, days, today_day, now, opts_with_cues(child, sleeps, today_day)).prediction
   end
 
   def prediction(child_id, now) when is_integer(child_id) do
@@ -166,6 +168,13 @@ defmodule Trygg.Reports.PredictionLedger do
       half_life_days: half_life,
       bias: %{next_nap: bias_for(nap), bedtime: bias_for(bed)}
     ]
+  end
+
+  # The ledger's feedback plus the cue-based wake-window factor, so what's
+  # recorded here is the prediction the app actually shows.
+  defp opts_with_cues(%Child{} = child, sleeps, today_day) do
+    cues = SleepHabits.cue_adjustment(child, sleeps, today_day.date)
+    Keyword.put(prediction_opts(child.id), :cue_factor, cues && cues.factor)
   end
 
   # Enough resolved rows, and the last few errors all lean the same way and are

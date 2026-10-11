@@ -242,6 +242,58 @@ defmodule Trygg.Sleep.CoachTest do
     end
   end
 
+  describe "overnight" do
+    defp night(longest_hours, date \\ @date) do
+      %{
+        date: date,
+        longest_sleep_seconds: round(longest_hours * 3600),
+        asleep_seconds: 0,
+        wakings: 0,
+        feeds: 0,
+        longest_feed_gap_seconds: nil
+      }
+    end
+
+    defp nights(list), do: %{nights: list, last: List.first(list)}
+
+    test "a new longest unbroken sleep is noted once there are a few nights to compare" do
+      ctx = ctx(nights: nights([night(5), night(4), night(4.25), night(3.5)]))
+
+      assert %{tone: :info, detail: detail} = find(ctx, "longest-night")
+      assert detail =~ "5h"
+      assert detail =~ "4h 15m"
+    end
+
+    test "not for a modest gain, a slip, or too few nights" do
+      refute "longest-night" in ids(
+               ctx(nights: nights([night(4.1), night(4), night(3.5), night(3)]))
+             )
+
+      refute "longest-night" in ids(ctx(nights: nights([night(3), night(4), night(5)])))
+      refute "longest-night" in ids(ctx(nights: nights([night(6), night(4)])))
+      refute "longest-night" in ids(ctx(nights: nights([])))
+    end
+  end
+
+  describe "cue-based adjustment" do
+    @ready %{"ready" => %{n: 5, median_seconds: 3000}}
+
+    test "says when the cues are pulling nap times earlier" do
+      ctx = ctx(habits: habits([], @ready), prediction: prediction(cue_factor: 0.9))
+      assert find(ctx, "ready-window").detail =~ "lean about 10% earlier"
+    end
+
+    test "and later" do
+      ctx = ctx(habits: habits([], @ready), prediction: prediction(cue_factor: 1.08))
+      assert find(ctx, "ready-window").detail =~ "lean about 8% later"
+    end
+
+    test "stays quiet about it for a negligible factor" do
+      ctx = ctx(habits: habits([], @ready), prediction: prediction(cue_factor: 0.99))
+      refute find(ctx, "ready-window").detail =~ "lean"
+    end
+  end
+
   describe "how sure the estimates are" do
     test "age-based estimates are called out, by name" do
       ctx = ctx(prediction: prediction(next_nap: %{source: :age_prior}))

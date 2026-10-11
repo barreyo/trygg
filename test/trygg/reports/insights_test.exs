@@ -425,6 +425,63 @@ defmodule Trygg.Reports.InsightsTest do
     assert drift3 >= 0 and drift3 < drift2
   end
 
+  describe "the cue factor" do
+    setup do
+      child = %{child() | birth_date: ~D[2025-10-07]}
+
+      history =
+        for date <- [~D[2026-03-02], ~D[2026-03-03], ~D[2026-03-04], ~D[2026-03-05]] do
+          nap_day(date, [
+            {~T[09:30:00], ~T[10:30:00]},
+            {~T[12:30:00], ~T[13:30:00]},
+            {~T[15:30:00], ~T[16:30:00]}
+          ])
+        end
+
+      night = sleep(60, ~U[2026-03-05 20:00:00Z], ~U[2026-03-06 07:00:00Z])
+      now = ~U[2026-03-06 08:30:00Z]
+      today = Day.build(child, ~D[2026-03-06], [night], now)
+      %{child: child, history: history, today: today, now: now}
+    end
+
+    test "scales the usual wake window and the next nap", ctx do
+      %{prediction: base} = Insights.summarize(ctx.child, ctx.history, ctx.today, ctx.now)
+
+      %{prediction: earlier} =
+        Insights.summarize(ctx.child, ctx.history, ctx.today, ctx.now, cue_factor: 0.9)
+
+      assert base.cue_factor == 1.0
+      assert earlier.cue_factor == 0.9
+
+      assert_in_delta earlier.wake_pressure.typical_seconds,
+                      base.wake_pressure.typical_seconds * 0.9,
+                      1.0
+
+      assert DateTime.compare(earlier.next_nap.at, base.next_nap.at) == :lt
+    end
+
+    test "a factor of 1 or none changes nothing", ctx do
+      %{prediction: base} = Insights.summarize(ctx.child, ctx.history, ctx.today, ctx.now)
+
+      %{prediction: same} =
+        Insights.summarize(ctx.child, ctx.history, ctx.today, ctx.now, cue_factor: 1.0)
+
+      %{prediction: nothing} =
+        Insights.summarize(ctx.child, ctx.history, ctx.today, ctx.now, cue_factor: nil)
+
+      assert same == base
+      assert nothing == base
+    end
+
+    test "never takes the window below the age floor", ctx do
+      %{prediction: p} =
+        Insights.summarize(ctx.child, ctx.history, ctx.today, ctx.now, cue_factor: 0.01)
+
+      assert p.wake_pressure.typical_seconds >=
+               Norms.min_wake_window_seconds(Norms.corrected_age_days(ctx.child, ~D[2026-03-06]))
+    end
+  end
+
   describe "the rest of the day while asleep" do
     setup do
       child = %{child() | birth_date: ~D[2025-10-07]}

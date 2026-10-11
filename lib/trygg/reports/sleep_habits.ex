@@ -26,6 +26,14 @@ defmodule Trygg.Reports.SleepHabits do
   @max_awake_seconds 4 * 3600
   @min_cue_sample 3
 
+  # Cue-based adjustment of wake-window predictions (see `cue_adjustment/3`).
+  @cue_adjust_days 14
+  @min_ready_samples 4
+  @min_awake_samples 8
+  @cue_shrink_k 6
+  @min_cue_factor 0.85
+  @max_cue_factor 1.15
+
   @doc "Days the weekly figures cover, ending today."
   def window_days, do: @window_days
 
@@ -67,9 +75,66 @@ defmodule Trygg.Reports.SleepHabits do
     }
   end
 
+  @doc """
+  How the child's "ready" cues compare with their actual wake windows over the
+  last 14 days, as a factor to nudge predicted wake windows by.
+
+  Sleeps are started when a parent decides to, which may be early or late
+  relative to the cues. If sleeps noted as *ready* come after a shorter stretch
+  awake than sleeps in general, the true sweet spot is earlier than the history
+  suggests, and the factor is below 1 (above 1 if it's later). The ratio is
+  shrunk toward 1 by sample size and bounded to 0.85–1.15.
+
+  Returns `nil` until there are 4 ready sleeps and 8 sleeps with a known
+  wake window; otherwise `%{factor, ready_seconds, overall_seconds, n_ready, n_overall}`.
+  """
+  def cue_adjustment(%Child{} = child, entries, %Date{} = today) when is_list(entries) do
+    from = Date.add(today, 1 - @cue_adjust_days)
+
+    sleeps =
+      entries
+      |> Enum.filter(&(&1.type == :sleep))
+      |> Enum.sort_by(& &1.started_at, DateTime)
+
+    samples =
+      [nil | sleeps]
+      |> Enum.zip(sleeps)
+      |> Enum.flat_map(fn {previous, sleep} ->
+        date = local_date(child, sleep.started_at)
+
+        with true <- Date.compare(date, from) != :lt and Date.compare(date, today) != :gt,
+             awake when is_integer(awake) <- awake_before(sleep, previous) do
+          [{sleep.data["cue"], awake}]
+        else
+          _ -> []
+        end
+      end)
+
+    ready = for {"ready", awake} <- samples, do: awake
+    overall = Enum.map(samples, &elem(&1, 1))
+
+    if length(ready) >= @min_ready_samples and length(overall) >= @min_awake_samples do
+      ready_median = Stats.median(ready)
+      overall_median = Stats.median(overall)
+      ratio = if overall_median > 0, do: ready_median / overall_median, else: 1.0
+      w = length(ready) / (length(ready) + @cue_shrink_k)
+
+      %{
+        factor: (1 + (ratio - 1) * w) |> max(@min_cue_factor) |> min(@max_cue_factor),
+        ready_seconds: round(ready_median),
+        overall_seconds: round(overall_median),
+        n_ready: length(ready),
+        n_overall: length(overall)
+      }
+    end
+  end
+
+  defp local_date(child, at),
+    do: at |> DateTime.shift_zone!(child.timezone) |> DateTime.to_date()
+
   defp annotate(child, sleep, previous, feeds, now) do
     %{
-      date: sleep.started_at |> DateTime.shift_zone!(child.timezone) |> DateTime.to_date(),
+      date: local_date(child, sleep.started_at),
       cue: sleep.data["cue"],
       feed_gap: feed_gap(sleep, feeds, now),
       awake_before: awake_before(sleep, previous)
