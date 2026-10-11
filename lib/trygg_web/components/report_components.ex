@@ -117,7 +117,7 @@ defmodule TryggWeb.ReportComponents do
           x={(@plot.col_left + @plot.col_right) / 2}
           y={wake.y + wake.h / 2 + 3}
           text-anchor="middle"
-          class="fill-base-content/60"
+          class="fill-base-content/70"
           font-size="11"
         >
           {wake.label}
@@ -185,7 +185,7 @@ defmodule TryggWeb.ReportComponents do
         :if={@plot.now_y}
         x={@plot.col_right + 2}
         y={@plot.now_y + 3}
-        class="fill-error"
+        class="fill-(--ink-error)"
         font-size="10"
       >
         now
@@ -294,7 +294,7 @@ defmodule TryggWeb.ReportComponents do
           text-anchor="middle"
           class={[
             "fill-base-content/70",
-            col.today? && "fill-primary font-semibold"
+            col.today? && "fill-(--ink-primary) font-semibold"
           ]}
           font-size="9"
         >
@@ -338,7 +338,7 @@ defmodule TryggWeb.ReportComponents do
 
     ~H"""
     <div id={@id} phx-hook={!@static && !@chart.empty? && "ChartScrub"}>
-      <p :if={@chart.empty?} class="opacity-60 text-sm py-8 text-center">Nothing to chart yet.</p>
+      <p :if={@chart.empty?} class="opacity-70 text-sm py-8 text-center">Nothing to chart yet.</p>
       <svg
         :if={!@chart.empty?}
         viewBox={"0 0 #{@chart.width} #{@chart.height}"}
@@ -438,7 +438,7 @@ defmodule TryggWeb.ReportComponents do
         class={[
           "text-sm text-center mt-1 tabular-nums min-h-5",
           @caption && "font-medium",
-          !@caption && "opacity-60 text-xs"
+          !@caption && "opacity-70 text-xs"
         ]}
       >
         {@caption || "Tap a day for the total · tap again to open it"}
@@ -455,7 +455,7 @@ defmodule TryggWeb.ReportComponents do
           <span class="size-2.5 rounded-sm bg-base-content/20" aria-hidden="true"></span> Awake
         </span>
       </div>
-      <p :if={@slope_label} id={"#{@id}-slope"} class="text-xs opacity-60 text-center mt-0.5">
+      <p :if={@slope_label} id={"#{@id}-slope"} class="text-xs opacity-70 text-center mt-0.5">
         {@slope_label}
       </p>
     </div>
@@ -524,7 +524,7 @@ defmodule TryggWeb.ReportComponents do
           </button>
         </li>
       </ul>
-      <p class="text-xs opacity-60 px-3 py-1.5 border-t border-base-content/10">
+      <p class="text-xs opacity-70 px-3 py-1.5 border-t border-base-content/10">
         {Alerts.disclaimer()}
       </p>
     </section>
@@ -555,7 +555,7 @@ defmodule TryggWeb.ReportComponents do
         <.icon name="hero-information-circle" class="size-4 shrink-0 text-primary" />
         <span class="min-w-0 flex-1 truncate">
           <span class="font-medium">{hd(@alerts).title}</span>
-          <span :if={length(@alerts) > 1} class="opacity-60">
+          <span :if={length(@alerts) > 1} class="opacity-70">
             +{length(@alerts) - 1} more
           </span>
         </span>
@@ -624,7 +624,7 @@ defmodule TryggWeb.ReportComponents do
 
     ~H"""
     <div id={@id}>
-      <p :if={@chart.empty?} class="opacity-60 text-sm py-6 text-center">Nothing to chart yet.</p>
+      <p :if={@chart.empty?} class="opacity-70 text-sm py-6 text-center">Nothing to chart yet.</p>
       <svg
         :if={!@chart.empty?}
         viewBox={"0 0 #{@chart.width} #{@chart.height}"}
@@ -698,7 +698,7 @@ defmodule TryggWeb.ReportComponents do
       <p
         :if={!@chart.empty? && @chart.baseline_y && @baseline_label}
         id={"#{@id}-baseline"}
-        class="text-xs opacity-60 text-center mt-0.5"
+        class="text-xs opacity-70 text-center mt-0.5"
       >
         <span class="inline-block w-4 border-t border-dashed border-accent align-middle mr-1"></span>
         {@baseline_label}
@@ -826,7 +826,7 @@ defmodule TryggWeb.ReportComponents do
 
     ~H"""
     <div id={@id}>
-      <p :if={@chart.empty?} class="opacity-60 text-sm py-6 text-center">
+      <p :if={@chart.empty?} class="opacity-70 text-sm py-6 text-center">
         No wake or bedtimes to chart yet.
       </p>
       <svg
@@ -1010,9 +1010,9 @@ defmodule TryggWeb.ReportComponents do
     <div id={@id} class="rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">{@title}</h3>
-        <p :if={@hint} class="text-xs opacity-60 mt-0.5">{@hint}</p>
+        <p :if={@hint} class="text-xs opacity-70 mt-0.5">{@hint}</p>
       </div>
-      <p :if={@rows == []} class="opacity-60 text-sm py-8 text-center px-3">{@empty}</p>
+      <p :if={@rows == []} class="opacity-70 text-sm py-8 text-center px-3">{@empty}</p>
       <div :if={@rows != []} class="overflow-x-auto">
         <table class="table table-sm">
           <thead>
@@ -1028,7 +1028,7 @@ defmodule TryggWeb.ReportComponents do
               <td>{@label_fn.(row)}</td>
               <td class="tabular-nums">{LogComponents.format_duration(row.median)}</td>
               <td class="tabular-nums">{LogComponents.format_duration(row.iqr)}</td>
-              <td class="tabular-nums opacity-60">{row.n}</td>
+              <td class="tabular-nums opacity-70">{row.n}</td>
             </tr>
           </tbody>
         </table>
@@ -1071,7 +1071,7 @@ defmodule TryggWeb.ReportComponents do
 
     ~H"""
     <div id={@id} phx-hook={!@static && @plot && "ChartScrub"}>
-      <p :if={!@plot} class="opacity-60 text-sm py-6 text-center">Not enough days yet.</p>
+      <p :if={!@plot} class="opacity-70 text-sm py-6 text-center">Not enough days yet.</p>
       <svg
         :if={@plot}
         viewBox={"0 0 #{@plot.width} #{@plot.height}"}
@@ -1174,7 +1174,7 @@ defmodule TryggWeb.ReportComponents do
             x={tick.x}
             y={@plot.strip_bottom + 18}
             text-anchor={tick.anchor}
-            class={if(tick.major?, do: "fill-base-content/80", else: "fill-base-content/60")}
+            class={if(tick.major?, do: "fill-base-content/80", else: "fill-base-content/70")}
             font-size={if(tick.major?, do: "12", else: "10")}
           >
             {tick.label}
@@ -1187,7 +1187,7 @@ defmodule TryggWeb.ReportComponents do
         class={[
           "text-sm text-center mt-2 tabular-nums min-h-5",
           @caption && "font-medium",
-          !@caption && "opacity-60 text-xs"
+          !@caption && "opacity-70 text-xs"
         ]}
       >
         {@caption || "Tap a time to see how often they're asleep"}
@@ -1197,8 +1197,8 @@ defmodule TryggWeb.ReportComponents do
         id={"#{@id}-markers"}
         class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs mt-1"
       >
-        <span :for={marker <- @plot.markers} class="tabular-nums opacity-80">
-          <span class="opacity-60">{marker.kind}</span>
+        <span :for={marker <- @plot.markers} class="tabular-nums">
+          <span class="opacity-70">{marker.kind}</span>
           <span class="font-medium">{marker.clock}</span>
         </span>
       </p>

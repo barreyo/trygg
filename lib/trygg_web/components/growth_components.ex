@@ -44,15 +44,15 @@ defmodule TryggWeb.GrowthComponents do
     <div id={@id} class="p-3">
       <div class="flex items-baseline justify-between mb-1">
         <h3 class="font-semibold text-sm">{@title}</h3>
-        <span class="text-xs opacity-60">
+        <span class="text-xs opacity-70">
           {@unit}
           <span :if={@chart.show_bands} id={"#{@id}-band-source"} class="opacity-70">
             · {@chart.band_label} 5th–95th
           </span>
         </span>
       </div>
-      <p :if={@chart.empty?} class="opacity-60 text-sm py-8 text-center">Nothing to chart yet.</p>
-      <p :if={@chart.empty_range?} class="opacity-60 text-sm py-8 text-center">
+      <p :if={@chart.empty?} class="opacity-70 text-sm py-8 text-center">Nothing to chart yet.</p>
+      <p :if={@chart.empty_range?} class="opacity-70 text-sm py-8 text-center">
         None in this period.
       </p>
       <svg
@@ -153,7 +153,7 @@ defmodule TryggWeb.GrowthComponents do
           x="42"
           y={tick.y + 3}
           text-anchor="end"
-          class="fill-base-content/55"
+          class="fill-base-content/70"
           font-size="9"
         >
           {tick.label}
@@ -178,7 +178,7 @@ defmodule TryggWeb.GrowthComponents do
           x={tick.x}
           y="140"
           text-anchor={tick.anchor}
-          class="fill-base-content/55"
+          class="fill-base-content/70"
           font-size="9"
         >
           {tick.label}
@@ -241,7 +241,7 @@ defmodule TryggWeb.GrowthComponents do
         class={[
           "text-sm text-center mt-1 tabular-nums min-h-5",
           @chart.caption && "font-medium",
-          !@chart.caption && "opacity-60 text-xs"
+          !@chart.caption && "opacity-70 text-xs"
         ]}
       >
         {@chart.caption || "Tap a point for the reading"}

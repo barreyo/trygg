@@ -95,7 +95,7 @@ defmodule TryggWeb.VitalsLive do
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
                   <h2 class="font-semibold">Growth</h2>
-                  <p id="chart-window" class="text-xs opacity-60 tabular-nums mt-0.5">
+                  <p id="chart-window" class="text-xs opacity-70 tabular-nums mt-0.5">
                     {@chart_window_label}
                   </p>
                 </div>
@@ -150,7 +150,7 @@ defmodule TryggWeb.VitalsLive do
             <p
               :if={@percentile_note}
               id="percentile-source"
-              class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+              class="text-xs opacity-70 px-3 py-2 border-t border-base-300"
             >
               {@percentile_note} · 5th–95th
               <span :if={@corrected_age} id="corrected-age">· {@corrected_age}</span>
@@ -158,14 +158,14 @@ defmodule TryggWeb.VitalsLive do
             <p
               :if={@age_basis == :actual and @age_basis_toggle?}
               id="percentile-actual-age"
-              class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+              class="text-xs opacity-70 px-3 py-2 border-t border-base-300"
             >
               Showing actual age, not corrected for birth at {Child.gestation_label(@current_child)}.
             </p>
             <p
               :if={@percentile_hint == :before_preterm_chart}
               id="percentile-hint"
-              class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+              class="text-xs opacity-70 px-3 py-2 border-t border-base-300"
             >
               Born at {Child.gestation_label(@current_child)}, so corrected percentiles begin on {Calendar.strftime(
                 Percentiles.first_date(@current_child),
@@ -175,7 +175,7 @@ defmodule TryggWeb.VitalsLive do
             <p
               :if={@percentile_hint == :unspecified_sex}
               id="percentile-hint"
-              class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+              class="text-xs opacity-70 px-3 py-2 border-t border-base-300"
             >
               Set this child's sex to girl or boy to see CDC growth percentiles.
               <.link navigate={~p"/children/#{@current_child}/edit"} class="underline">
@@ -185,7 +185,7 @@ defmodule TryggWeb.VitalsLive do
             <p
               :if={@percentile_hint == :no_birth_date}
               id="percentile-hint"
-              class="text-xs opacity-60 px-3 py-2 border-t border-base-300"
+              class="text-xs opacity-70 px-3 py-2 border-t border-base-300"
             >
               Add a birth date to see CDC growth percentiles.
               <.link navigate={~p"/children/#{@current_child}/edit"} class="underline">
@@ -198,7 +198,7 @@ defmodule TryggWeb.VitalsLive do
             <div class="px-3 py-2.5 border-b border-base-300 bg-base-200/40">
               <h2 class="font-semibold">History</h2>
             </div>
-            <p :if={@measurements == []} class="opacity-60 text-sm py-10 text-center px-3">
+            <p :if={@measurements == []} class="opacity-70 text-sm py-10 text-center px-3">
               No measurements yet.
             </p>
             <div :if={@measurements != []} id="growth-table" class="overflow-x-auto">
@@ -228,7 +228,7 @@ defmodule TryggWeb.VitalsLive do
                     <td class="tabular-nums">
                       {Units.format(m.height_cm, :length, @unit_system) || "—"}
                     </td>
-                    <td class="opacity-60 truncate max-w-20">
+                    <td class="opacity-70 truncate max-w-20">
                       {m.logged_by && User.capitalize_name(m.logged_by.first_name)}
                     </td>
                   </tr>
@@ -256,7 +256,7 @@ defmodule TryggWeb.VitalsLive do
     <section id="weight-gain-card" class="mt-4 rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2 flex items-baseline justify-between gap-2">
         <h2 class="font-semibold text-sm">Weight gain</h2>
-        <span :if={@velocity.available?} class="text-xs opacity-60 tabular-nums">
+        <span :if={@velocity.available?} class="text-xs opacity-70 tabular-nums">
           {Calendar.strftime(@velocity.prior.date, "%-d %b")} → {Calendar.strftime(
             @velocity.latest.date,
             "%-d %b"
@@ -269,7 +269,7 @@ defmodule TryggWeb.VitalsLive do
             <span id="weight-gain-rate" class="text-xl font-semibold tabular-nums">
               {gain_per_week(@velocity.velocity.g_per_week, @unit_system)}
             </span>
-            <span class="opacity-60">over {@velocity.velocity.days} days</span>
+            <span class="opacity-70">over {@velocity.velocity.days} days</span>
           </div>
           <p :if={@velocity.velocity.expected_gain_g} id="weight-gain-expected" class="opacity-70">
             Expected about {gain_label(@velocity.velocity.expected_gain_g, @unit_system)} in that
@@ -293,7 +293,7 @@ defmodule TryggWeb.VitalsLive do
             {guide_copy(@velocity.velocity, @unit_system)}
           </p>
         <% else %>
-          <p id="weight-gain-empty" class="opacity-60">
+          <p id="weight-gain-empty" class="opacity-70">
             {if @velocity.latest,
               do: "Log another weight at least 5 days apart and the gain rate will show here.",
               else: "Log a weight to start tracking gain."}

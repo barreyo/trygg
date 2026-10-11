@@ -75,7 +75,7 @@ defmodule TryggWeb.SkeletonComponents do
     <div class="rounded-box border border-base-300 bg-base-200/60 px-4 py-8 text-center" role="alert">
       <.icon name="hero-cloud" class="size-8 mx-auto opacity-40" />
       <p class="mt-2 font-medium">This didn't load just now</p>
-      <p class="mt-1 text-sm opacity-60">Check the connection, then give it another go.</p>
+      <p class="mt-1 text-sm opacity-70">Check the connection, then give it another go.</p>
       <.button
         id={@id}
         type="button"

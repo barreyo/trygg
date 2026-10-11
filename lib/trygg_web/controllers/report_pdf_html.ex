@@ -162,7 +162,7 @@ defmodule TryggWeb.ReportPdfHTML do
         <.alerts_list id="pdf-alert-list" title="Worth a look" alerts={@summary.alerts} />
       </section>
 
-      <footer id="pdf-footer" class="text-[10px] opacity-60 border-t border-base-300 pt-2 space-y-1">
+      <footer id="pdf-footer" class="text-[10px] opacity-70 border-t border-base-300 pt-2 space-y-1">
         <p>{Alerts.disclaimer()}</p>
         <p>{Norms.kcal_note()}</p>
         <p :if={@percentile_note}>Growth percentiles: {@percentile_note}.</p>
@@ -196,7 +196,7 @@ defmodule TryggWeb.ReportPdfHTML do
     <header id="pdf-header" class="pdf-card border-b border-base-300 pb-3">
       <div class="flex items-end justify-between gap-4">
         <div>
-          <p class="text-xs uppercase tracking-wide opacity-60">Trygg · Growth &amp; sleep report</p>
+          <p class="text-xs uppercase tracking-wide opacity-70">Trygg · Growth &amp; sleep report</p>
           <h1 id="pdf-child-name" class="text-2xl font-bold leading-tight mt-0.5">{@child.name}</h1>
           <p class="text-sm opacity-80 mt-0.5">
             {[
@@ -393,7 +393,7 @@ defmodule TryggWeb.ReportPdfHTML do
         <div class="bg-base-200/40 px-3 py-2">
           <h3 class="font-semibold text-sm">Measurements</h3>
         </div>
-        <p :if={@measurements == []} class="opacity-60 text-sm py-4 text-center">
+        <p :if={@measurements == []} class="opacity-70 text-sm py-4 text-center">
           No height or weight logged yet.
         </p>
         <table :if={@measurements != []} class="table table-xs">
@@ -443,7 +443,7 @@ defmodule TryggWeb.ReportPdfHTML do
     <section id="pdf-sleep" class="space-y-3">
       <.section_title title="Sleep" hint="Per day, with the 7-day rolling total" />
 
-      <p :if={!@summary.ready?} id="pdf-sleep-sparse" class="opacity-60 text-sm">
+      <p :if={!@summary.ready?} id="pdf-sleep-sparse" class="opacity-70 text-sm">
         Fewer than {@summary.min_sample} days of sleep logged in this window — trends are thin.
       </p>
 
@@ -537,7 +537,7 @@ defmodule TryggWeb.ReportPdfHTML do
         hint="Bottle volume, feed count, feed length and estimated calories per day"
       />
 
-      <p :if={!@feeding.ready?} id="pdf-feeding-sparse" class="opacity-60 text-sm">
+      <p :if={!@feeding.ready?} id="pdf-feeding-sparse" class="opacity-70 text-sm">
         Only a few bottles logged in this window — the rhythm figures are provisional.
       </p>
 
@@ -611,10 +611,10 @@ defmodule TryggWeb.ReportPdfHTML do
               @unit_system
             )}) — {intake_status_copy(@feeding.intake, @unit_system)}
           </p>
-          <p :if={!@feeding.intake} class="opacity-60">
+          <p :if={!@feeding.intake} class="opacity-70">
             Log a recent weight to compare intake against the {Units.rate_per_kg_label(@unit_system)} guide for their age.
           </p>
-          <p class="opacity-60 text-xs leading-snug">{Norms.kcal_note()}</p>
+          <p class="opacity-70 text-xs leading-snug">{Norms.kcal_note()}</p>
         </div>
       </div>
 
@@ -624,7 +624,7 @@ defmodule TryggWeb.ReportPdfHTML do
           title="Feed length per day (minutes)"
           hint="Timed from the diaper change just before each feed"
         >
-          <p :if={!@duration.mean} id="pdf-feed-length-sparse" class="opacity-60 text-sm">
+          <p :if={!@duration.mean} id="pdf-feed-length-sparse" class="opacity-70 text-sm">
             Not enough feeds logged right after a diaper change to time them.
           </p>
           <.count_bar_chart
@@ -683,7 +683,7 @@ defmodule TryggWeb.ReportPdfHTML do
           </span>
         </div>
       </div>
-      <p class="mt-2 text-xs opacity-60">Tracked separately from bottle feeds.</p>
+      <p class="mt-2 text-xs opacity-70">Tracked separately from bottle feeds.</p>
     </section>
     """
   end
@@ -724,7 +724,7 @@ defmodule TryggWeb.ReportPdfHTML do
             value={count_label(@diapers.baseline.dirty)}
             label="dirty / day"
           />
-          <p class="col-span-2 text-left text-xs opacity-60 leading-snug">
+          <p class="col-span-2 text-left text-xs opacity-70 leading-snug">
             Guidance floor: at least {@diapers.min_wet} wet diapers a day and no more than {div(
               @diapers.max_dry_seconds,
               3600
@@ -752,7 +752,7 @@ defmodule TryggWeb.ReportPdfHTML do
     >
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">Recent changes</h3>
-        <p class="text-xs opacity-60">The last 3 days against the two weeks before</p>
+        <p class="text-xs opacity-70">The last 3 days against the two weeks before</p>
       </div>
       <div class="p-3 text-sm space-y-1.5">
         <ul :if={@findings != []} class="space-y-1">
@@ -784,7 +784,7 @@ defmodule TryggWeb.ReportPdfHTML do
     ~H"""
     <div class="pdf-title flex items-baseline justify-between gap-3 border-b border-base-300 pb-1">
       <h2 class="text-base font-bold">{@title}</h2>
-      <p :if={@hint} class="text-xs opacity-60">{@hint}</p>
+      <p :if={@hint} class="text-xs opacity-70">{@hint}</p>
     </div>
     """
   end
@@ -799,7 +799,7 @@ defmodule TryggWeb.ReportPdfHTML do
     <div id={@id} class="rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">{@title}</h3>
-        <p :if={@hint} class="text-xs opacity-60">{@hint}</p>
+        <p :if={@hint} class="text-xs opacity-70">{@hint}</p>
       </div>
       <div class="p-3">{render_slot(@inner_block)}</div>
     </div>
@@ -814,7 +814,7 @@ defmodule TryggWeb.ReportPdfHTML do
     ~H"""
     <div id={@id} class="rounded-box bg-base-200 border border-base-300 py-2 px-1">
       <div class="font-semibold tabular-nums">{@value}</div>
-      <div class="opacity-60 text-xs">{@label}</div>
+      <div class="opacity-70 text-xs">{@label}</div>
     </div>
     """
   end

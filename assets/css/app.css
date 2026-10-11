@@ -69,7 +69,8 @@
   --color-base-300: oklch(92% 0.004 286.32);
   --color-base-content: oklch(21% 0.006 285.885);
   --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
+  /* Dark on the bright orange: white on it is only 2.75:1 (needs 4.5), this is ~6:1. */
+  --color-primary-content: oklch(22% 0.045 48);
   --color-secondary: oklch(55% 0.027 264.364);
   --color-secondary-content: oklch(98% 0.002 247.839);
   --color-accent: oklch(0% 0 0);
@@ -411,6 +412,15 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   .sheet-panel { animation: trygg-fade-in 150ms ease-out backwards; }
 }
 
+/* An outlined red button (Delete) reads its label from the fill-tuned error colour,
+   about 4.3:1 on the page; the readable "ink" variant is used for the label instead
+   (hover, which fills the button, keeps daisyUI's own pairing). */
+@layer utilities {
+  .btn-outline.btn-error:not(:hover, :active, :focus-visible, .btn-active) {
+    --btn-fg: var(--ink-error);
+  }
+}
+
 /*
  * Touch floor for the compact button sizes. With the roomier `--size-field`
  * token, daisyUI's `xs`/`sm` come out at ~26px / ~35px tall with 11px / 12px
@@ -495,7 +505,13 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   }
   .input { padding-inline: 1rem; }
   .textarea { padding: 0.75rem 1rem; }
-  .input::placeholder, .textarea::placeholder { opacity: 0.62; font-weight: 500; }
+  /* daisyUI's placeholder is the text colour at 50% alpha, and the old opacity on
+     top of that left it near 2:1. An explicit colour (about 5:1) instead. */
+  .input::placeholder, .textarea::placeholder {
+    color: color-mix(in oklab, var(--color-base-content) 66%, transparent);
+    opacity: 1;
+    font-weight: 500;
+  }
 
   /* After the base rule above, so an error border isn't flattened back to grey */
   .input-error, .select-error, .textarea-error {
@@ -521,8 +537,15 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
     box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-error) 24%, transparent);
   }
 
-  /* Friendlier labels */
-  .label { font-size: 0.9rem; font-weight: 600; }
+  /* Friendlier labels (daisyUI dims them to 60%, which is only ~4.5:1; 72% is comfortable) */
+  .label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+  }
+  .table :where(thead, tfoot) {
+    color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+  }
 }
 
 /*

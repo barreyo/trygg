@@ -1328,7 +1328,7 @@ defmodule TryggWeb.DashboardLive do
 
           <.loadable id="home-recent" loaded={@loaded?} failed={@load_failed?} retry={false}>
             <:skeleton><.entry_rows_skeleton count={5} /></:skeleton>
-            <p :if={@entries_empty?} class="opacity-60 text-sm py-6 text-center">
+            <p :if={@entries_empty?} class="opacity-70 text-sm py-6 text-center">
               Nothing tracked yet today — tap a button to start.
             </p>
 
@@ -1606,7 +1606,7 @@ defmodule TryggWeb.DashboardLive do
       <%= case @kind do %>
         <% :earlier -> %>
           <h3 class="font-semibold text-lg mb-1">Log from earlier</h3>
-          <p class="text-sm opacity-60 mb-4">What do you want to add?</p>
+          <p class="text-sm opacity-70 mb-4">What do you want to add?</p>
           <div class="space-y-2">
             <.button
               :if={:sleep in @tracked_types}
@@ -1659,7 +1659,7 @@ defmodule TryggWeb.DashboardLive do
           </div>
         <% :layout -> %>
           <h3 class="font-semibold text-lg mb-1">Customize Today</h3>
-          <p class="text-sm opacity-60 mb-4">
+          <p class="text-sm opacity-70 mb-4">
             Choose what to track and put it in the order you like. Everyone caring for this child
             sees the same Today screen. Hidden entries stay in the full log and reports.
           </p>
@@ -1773,7 +1773,7 @@ defmodule TryggWeb.DashboardLive do
                     aria-label={"Amount in #{@unit}"}
                     class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  <span class="text-base font-normal opacity-60">{@unit}</span>
+                  <span class="text-base font-normal opacity-70">{@unit}</span>
                 </div>
 
                 <.button
