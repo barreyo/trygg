@@ -56,11 +56,11 @@ defmodule TryggWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50 top-[max(0.5rem,env(safe-area-inset-top))]"
+      class="toast toast-center z-50 bottom-[calc(env(safe-area-inset-bottom)+5rem)] lg:bottom-6"
       {@rest}
     >
       <div class={[
-        "alert w-[min(20rem,calc(100vw-1rem))] sm:w-96 text-wrap",
+        "flash-pop alert w-[min(20rem,calc(100vw-1rem))] sm:w-96 text-wrap",
         @kind == :info && "alert-info",
         @kind == :error && "alert-error"
       ]}>

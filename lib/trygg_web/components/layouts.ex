@@ -246,7 +246,10 @@ defmodule TryggWeb.Layouts do
   end
 
   # Rendered hidden; the InstallPrompt hook decides which variant (if any) to
-  # show based on platform, install state and a localStorage dismissal.
+  # show based on platform, install state and a localStorage dismissal. It floats
+  # above the tab bar, within thumb reach and in view (at the bottom of the page
+  # nobody scrolled to it), but only appears a few seconds after the screen has
+  # settled and stays out of the way of toasts (see `.install-prompt` in app.css).
   defp install_prompt(assigns) do
     ~H"""
     <div
@@ -254,7 +257,7 @@ defmodule TryggWeb.Layouts do
       phx-hook="InstallPrompt"
       phx-update="ignore"
       hidden
-      class="mt-6 flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm"
+      class="install-prompt fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-30 mx-auto flex max-w-md items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-sm shadow-lg lg:bottom-6 lg:left-auto lg:right-6 lg:mx-0"
     >
       <.icon name="hero-device-phone-mobile" class="size-5 shrink-0 mt-0.5 text-primary" />
       <div class="flex-1 min-w-0 space-y-2">

@@ -27,9 +27,14 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      ),
+      // Start the navigation request while the worker is still waking up
+      // instead of after it, which is what makes a cold start feel slow.
+      self.registration.navigationPreload ? self.registration.navigationPreload.enable() : null,
+    ]).then(() => self.clients.claim())
   )
 })
 
@@ -42,7 +47,16 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/health") return
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE)))
+    event.respondWith(
+      (async () => {
+        try {
+          // The preloaded response, when the browser started one; else fetch.
+          return (await event.preloadResponse) || (await fetch(request))
+        } catch (_e) {
+          return caches.match(OFFLINE)
+        }
+      })()
+    )
     return
   }
 
