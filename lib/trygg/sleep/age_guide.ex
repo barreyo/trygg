@@ -166,9 +166,9 @@ defmodule Trygg.Sleep.AgeGuide do
   def compare(band, stats) do
     [
       line(:naps, "Naps a day", stats[:naps], band.naps, 0.5),
-      line(:nap_minutes, "Typical nap (min)", stats[:nap_minutes], band.nap, 5),
-      line(:night_hours, "Night sleep (h)", stats[:night_hours], band.night_hours, 0.25),
-      line(:total_hours, "Total sleep (h)", stats[:total_hours], band.total_hours, 0.25),
+      line(:nap_minutes, "Typical nap", stats[:nap_minutes], band.nap, 5),
+      line(:night_hours, "Night sleep", stats[:night_hours], band.night_hours, 0.25),
+      line(:total_hours, "Total sleep", stats[:total_hours], band.total_hours, 0.25),
       line(:bedtime, "Bedtime", stats[:bedtime], band.bedtime, 15)
     ]
     |> Enum.reject(&is_nil/1)

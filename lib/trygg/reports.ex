@@ -379,8 +379,12 @@ defmodule Trygg.Reports do
     age_days = phase && phase.age_days
     band = Trygg.Sleep.AgeGuide.band(age_days)
 
+    {findings, _naps} =
+      setback_checks(scope, child, now, Child.local_today(child), age_days, s, nights)
+
     %{
       plan: DayPlan.build(child, s.today, s.prediction, now),
+      findings: Enum.take(findings, 3),
       insights: Trygg.Sleep.Coach.insights(context),
       habits: habits,
       nights: nights,
@@ -393,6 +397,34 @@ defmodule Trygg.Reports do
         comparison: Trygg.Sleep.AgeGuide.compare(band, Trygg.Sleep.AgeGuide.stats_from(s))
       }
     }
+  end
+
+  # What the last two weeks of the log say is worth a look, with the naps checked
+  # against the book's conventions. Shared by the Sleep tab and the Help page.
+  defp setback_checks(scope, child, now, today, age_days, summary, nights) do
+    {days, entries} = load_days(scope, child, Date.add(today, -13), today, now)
+    band = Trygg.Sleep.AgeGuide.band(age_days)
+
+    findings =
+      Trygg.Reports.Setbacks.detect(%{
+        child: child,
+        age_days: age_days,
+        nights: nights,
+        days: days,
+        entries: entries,
+        insights: summary,
+        today: today
+      })
+
+    naps =
+      Trygg.Sleep.NapConventions.assess(%{
+        child: child,
+        entries: entries,
+        today: today,
+        min_window_minutes: band && elem(band.before_bed, 0)
+      })
+
+    {findings, naps}
   end
 
   @doc """
@@ -410,29 +442,13 @@ defmodule Trygg.Reports do
     age_days = phase && phase.age_days
     s = summary(scope, child, @outlook_window, now)
     nights = nights(scope, child, now, count: 14)
-    {days, entries} = load_days(scope, child, Date.add(today, -13), today, now)
-    band = Trygg.Sleep.AgeGuide.band(age_days)
+    {findings, naps} = setback_checks(scope, child, now, today, age_days, s, nights)
 
     %{
       phase: phase,
       age_days: age_days,
-      findings:
-        Trygg.Reports.Setbacks.detect(%{
-          child: child,
-          age_days: age_days,
-          nights: nights,
-          days: days,
-          entries: entries,
-          insights: s,
-          today: today
-        }),
-      naps:
-        Trygg.Sleep.NapConventions.assess(%{
-          child: child,
-          entries: entries,
-          today: today,
-          min_window_minutes: band && elem(band.before_bed, 0)
-        }),
+      findings: findings,
+      naps: naps,
       dst: Trygg.Sleep.Setbacks.next_dst_change(child, today),
       usual: %{
         bed: s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes),

@@ -32,24 +32,26 @@ defmodule Trygg.Reports.Setbacks do
   where `nights` is a `Trygg.Reports.Nights` summary, `days` the recent
   `%Day{}`s (oldest first), `entries` the log entries they were built from and
   `insights` a `Trygg.Reports.Insights` summary.
-  Each finding is `%{id, title, detail, playbook}`; `playbook` is a
-  `Trygg.Sleep.Setbacks` id or `nil`. Most pressing first.
+  Each finding is `%{id, title, detail, playbook, points}`; `playbook` is a
+  `Trygg.Sleep.Setbacks` id or `nil`, `points` a short list of what to try when there's no playbook. Most pressing first.
   """
   def detect(%{child: %Child{} = child, today: today} = ctx) do
     age = ctx[:age_days]
 
     [
       dst(child, today),
-      regression(age),
       early_wake(child, age, ctx.nights),
       night_gap(age, ctx.nights),
       sleep_debt(age, ctx.days),
       late_catnap(child, age, ctx),
       short_naps(age, ctx.days),
       nap_drop(age, ctx.days),
-      bedtime_drift(age, ctx.insights)
+      bedtime_drift(age, ctx.insights),
+      # Informational, so it goes last.
+      regression(age)
     ]
     |> Enum.reject(&is_nil/1)
+    |> Enum.map(&Map.put_new(&1, :points, []))
   end
 
   defp dst(child, today) do
@@ -62,8 +64,13 @@ defmodule Trygg.Reports.Setbacks do
             id: :dst,
             title: "The clocks go #{direction_word(direction)} in #{days_word(days)}",
             detail:
-              "Spring is easier if you start early: 15 minutes a day for four days. Autumn is about light. The planner below has the days.",
-            playbook: nil
+              "Spring is easier if you start early: 15 minutes a day for four days. Autumn is about light. The clock-change planner in Help has the days.",
+            playbook: nil,
+            points:
+              direction
+              |> Setbacks.dst_plan(date, %{bed: 19 * 60, wake: 6 * 60})
+              |> Map.fetch!(:tips)
+              |> Enum.take(3)
           }
         end
 
@@ -178,7 +185,12 @@ defmodule Trygg.Reports.Setbacks do
         title: "Not much time awake before bed",
         detail:
           "On #{late} of the last 7 evenings the last nap ended less than #{min} minutes before they went down for the night. A late catnap, even a short one in the car, eats the build-up to bedtime.",
-        playbook: nil
+        playbook: nil,
+        points: [
+          "Cap the afternoon nap, or wake them from it sooner, so it ends at least #{min} minutes before bed.",
+          "No car or stroller naps late in the day: even five minutes deflates the build-up to bedtime.",
+          "If a late nap can't be avoided, push bedtime later that night rather than putting them down too soon."
+        ]
       }
     else
       _ -> nil
@@ -199,7 +211,8 @@ defmodule Trygg.Reports.Setbacks do
         title: "Naps are short",
         detail:
           "The first two naps of the day run under 45 minutes. If they fall asleep on their own, the book has two tricks for stretching them.",
-        playbook: nil
+        playbook: nil,
+        points: for(fix <- NapConventions.short_nap_fixes(), do: "#{fix.name}. #{fix.detail}")
       }
     end
   end
@@ -222,7 +235,8 @@ defmodule Trygg.Reports.Setbacks do
         title: "The third nap is getting thin",
         detail:
           "It's often under half an hour now. Between six and twelve months the third nap goes. Skip it when the second runs late or long, or bridge to bedtime with a walk.",
-        playbook: nil
+        playbook: nil,
+        points: NapConventions.transition_tips()
       }
     end
   end
@@ -236,7 +250,12 @@ defmodule Trygg.Reports.Setbacks do
         title: "Bedtime moves around",
         detail:
           "It varies by about #{round(iqr)} minutes. From three months a steady bedtime, within 15–30 minutes, is one of the strongest sleep cues there is.",
-        playbook: nil
+        playbook: nil,
+        points: [
+          "Pick a time, usually between 7 and 8 pm, and hold it within 15–30 minutes, weekends too.",
+          "Plan the naps backwards from it, so they're ready for bed at that time.",
+          "To move it, 15 minutes a day. The bedtime planner in Help has the days."
+        ]
       }
     end
   end

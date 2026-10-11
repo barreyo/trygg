@@ -230,12 +230,11 @@ defmodule TryggWeb.SleepPlanLiveTest do
       assert render(lv) =~ "Check the feed times and amounts"
     end
 
-    test "the nap signs are there with the N.A.P. steps", %{conn: conn, child: child} do
+    test "naps wait until the plan is running", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
       choose_abcs(lv)
-      assert has_element?(lv, "#abcs-naps #nap-signs li")
-      assert has_element?(lv, "#nap-steps", "Naptime routine")
-      assert has_element?(lv, "#nap-table")
+      refute has_element?(lv, "#abcs-naps")
+      refute has_element?(lv, "#nap-master-plan")
     end
   end
 
@@ -244,6 +243,18 @@ defmodule TryggWeb.SleepPlanLiveTest do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
       child = old_child(scope) |> then(&ready(scope, &1))
       %{conn: conn, scope: scope, child: child}
+    end
+
+    test "the nap signs are there with the N.A.P. steps", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      start_plan(scope, child, 3)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      assert has_element?(lv, "#abcs-naps #nap-signs li")
+      assert has_element?(lv, "#nap-steps", "Naptime routine")
+      assert has_element?(lv, "#nap-table")
     end
 
     test "night 1 shows tonight's instructions with touch comfort", %{

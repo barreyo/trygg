@@ -441,18 +441,18 @@ defmodule TryggWeb.SleepPlanLive do
           can_write={@can_write}
           child_id={@child.id}
         />
+        <SleepAbcsComponents.progress_panel
+          progress={@training.progress}
+          nights={@training.plan_nights}
+          definition={@definition}
+          assessment={@training.assessment}
+        />
         <SleepAbcsComponents.night_chart_panel
           nights={@training.plan_nights}
           tz={@child.timezone}
           tonight={@training.tonight}
           can_write={@can_write}
           definition={@definition}
-        />
-        <SleepAbcsComponents.progress_panel
-          progress={@training.progress}
-          nights={@training.plan_nights}
-          definition={@definition}
-          assessment={@training.assessment}
         />
       </:left>
       <:right>
@@ -539,13 +539,6 @@ defmodule TryggWeb.SleepPlanLive do
           unit_system={@unit_system}
           ready?={@eligibility.ready?}
         />
-        <SleepAbcsComponents.nap_panel
-          :if={@choice == :abcs}
-          readiness={@training.nap_readiness}
-          table={@training.table}
-          can_write={@can_write}
-        />
-        <SleepApproachesComponents.nap_master_plan :if={@choice in [:swap, :slip]} />
       </:right>
     </Layouts.columns>
     """

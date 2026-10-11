@@ -121,7 +121,7 @@ defmodule TryggWeb.SleepPlanMethodsLiveTest do
 
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
       assert has_element?(lv, "#swap-variant option[selected][value=chair]")
-      assert has_element?(lv, "#approach-reasons li", "your body")
+      assert has_element?(lv, "#approach-why", "your body")
     end
   end
 

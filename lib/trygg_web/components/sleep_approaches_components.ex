@@ -59,10 +59,6 @@ defmodule TryggWeb.SleepApproachesComponents do
         and the newborn guidance are the place to start.
       </p>
 
-      <ul id="approach-reasons" class="mb-3 list-disc space-y-1 pl-5 text-sm opacity-90">
-        <li :for={reason <- @recommendation.reasons}>{reason}</li>
-      </ul>
-
       <div class="grid gap-2">
         <button
           :for={card <- @cards}
@@ -94,10 +90,20 @@ defmodule TryggWeb.SleepApproachesComponents do
         </button>
       </div>
 
-      <p class="mt-3 text-xs opacity-70">
-        The book's advice: pick one, commit to it, and judge it by the trend, not one night. Not
-        medical advice. Talk to your pediatrician first.
+      <p :if={@recommendation.suggested != :tools} id="approach-why" class="mt-3 text-sm">
+        {@recommendation.why}
       </p>
+
+      <details :if={@recommendation.suggested != :tools} id="approach-reasons" class="mt-2">
+        <summary class="cursor-pointer text-sm text-primary">How to choose</summary>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm opacity-90">
+          <li :for={reason <- @recommendation.reasons}>{reason}</li>
+        </ul>
+        <p class="mt-2 text-xs opacity-70">
+          Pick one, commit to it, and judge it by the trend, not one night. Not medical advice. Talk
+          to your pediatrician first.
+        </p>
+      </details>
     </section>
     """
   end
@@ -499,12 +505,14 @@ defmodule TryggWeb.SleepApproachesComponents do
       <h2 class={heading_class()}>Night feeds</h2>
       <p class="text-sm">
         Learning to fall asleep alone isn't night weaning. A baby who has been eating a lot at night
-        will keep wanting to, for a while, and that's not them failing. Feed by the rules, not by
-        the loudest cry.
+        will keep wanting to for a while. Feed by the rules, not by the loudest cry.
       </p>
-      <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
-        <li :for={rule <- @rules}>{rule}</li>
-      </ul>
+      <details class="mt-2">
+        <summary class="cursor-pointer text-sm text-primary">The rules</summary>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+          <li :for={rule <- @rules}>{rule}</li>
+        </ul>
+      </details>
     </section>
     """
   end
@@ -524,15 +532,17 @@ defmodule TryggWeb.SleepApproachesComponents do
         Independent sleep is learned twice: once at bedtime, and again for naps. Do bedtime first, then
         use the same plan for naps.
       </p>
-      <ol class="mt-2 space-y-2 text-sm">
-        <li :for={{step, i} <- Enum.with_index(@steps, 1)}>
-          <span class="font-semibold">{i}. {step.name}.</span> {step.detail}
-        </li>
-      </ol>
-      <p class="mt-2 text-xs opacity-70">
-        Rocking, feeding or the pacifier at naps won't undo bedtime. Naps are your first hour in
-        the crib: a micro-nap is a win.
-      </p>
+      <details id="nap-master-steps" class="mt-2">
+        <summary class="cursor-pointer text-sm text-primary">The three steps</summary>
+        <ol class="mt-2 space-y-2 text-sm">
+          <li :for={{step, i} <- Enum.with_index(@steps, 1)}>
+            <span class="font-semibold">{i}. {step.name}.</span> {step.detail}
+          </li>
+        </ol>
+        <p class="mt-2 text-xs opacity-70">
+          Rocking, feeding or the pacifier at naps won't undo bedtime. A micro-nap is a win.
+        </p>
+      </details>
     </section>
     """
   end

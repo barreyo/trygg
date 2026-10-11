@@ -57,7 +57,7 @@ defmodule TryggWeb.SleepLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
 
       assert has_element?(lv, "#sleep-hero-phase", "Newborn")
-      assert has_element?(lv, "#sleep-phase-newborn[aria-current=step]")
+      assert has_element?(lv, "#roadmap-newborn[aria-current=step]")
       assert has_element?(lv, "#sleep-hero-next", "Foundations")
 
       assert has_element?(lv, "#cries-steps li", "Contain")
@@ -80,7 +80,7 @@ defmodule TryggWeb.SleepLiveTest do
       assert has_element?(lv, "#age-guide h2", "Birth to 6 weeks")
       assert has_element?(lv, "#age-guide-wake")
       assert has_element?(lv, "#newborn-nights li", "20 minutes")
-      assert has_element?(lv, "#witching-hours summary")
+      assert has_element?(lv, "#witching-hours li")
     end
 
     test "an older baby sees the typical day but not the newborn nights", %{
@@ -323,6 +323,32 @@ defmodule TryggWeb.SleepLiveTest do
       assert has_element?(lv, "#sleep-schedule-total")
     end
 
+    test "a finished nap is one line: when and how long, nothing else", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      assert has_element?(lv, "#plan-nap-1", "08:00–09:00 · 1h 0m")
+      refute has_element?(lv, "#plan-nap-1", "awake")
+    end
+
+    test "Right now says what's next, so the schedule needn't be read", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      assert has_element?(lv, "#sleep-right-now #sleep-next-up", "Nap 2")
+    end
+
+    test "no next-up line while they sleep", %{conn: conn, scope: scope, child: child} do
+      {:ok, _} = Log.start_timer(scope, child, :sleep)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      refute has_element?(lv, "#sleep-next-up")
+    end
+
     test "the next nap is due when they've been awake longer than usual", %{
       conn: conn,
       child: child
@@ -397,6 +423,56 @@ defmodule TryggWeb.SleepLiveTest do
       assert has_element?(lv, "#stat-cued", "1")
       assert has_element?(lv, "#stat-overtired", "1")
       assert has_element?(lv, "#stat-fed-to-sleep", "1 of 1")
+    end
+  end
+
+  describe "worth a look" do
+    defp panel(insights, findings, limit \\ 3) do
+      render_component(&TryggWeb.SleepPlanComponents.insights_panel/1,
+        insights: insights,
+        findings: findings,
+        child: %{id: 1},
+        limit: limit
+      )
+    end
+
+    defp insight(id), do: %{id: id, tone: :suggest, title: "Insight #{id}", detail: "d"}
+
+    defp finding(id, attrs \\ %{}),
+      do:
+        Map.merge(
+          %{id: id, title: "Finding #{id}", detail: "d", playbook: nil, points: []},
+          attrs
+        )
+
+    test "says all's well when there's nothing" do
+      assert panel([], []) =~ "sleep-insights-empty"
+    end
+
+    test "shows coach suggestions first and caps the glance at three" do
+      html = panel([insight(:a), insight(:b)], [finding(:x), finding(:y)])
+
+      assert html =~ "insight-a"
+      assert html =~ "insight-b"
+      assert html =~ "finding-x"
+      refute html =~ "finding-y"
+    end
+
+    test "findings fold what to try under them: a playbook or a few points" do
+      html =
+        panel([], [
+          finding(:early_wake, %{playbook: :early_morning}),
+          finding(:short_naps, %{points: ["Disrupt the cycle."]})
+        ])
+
+      assert html =~ "try-early_wake"
+      assert html =~ "Bedtime too late makes an overtired early riser"
+      assert html =~ "try-short_naps"
+      assert html =~ "Disrupt the cycle."
+    end
+
+    test "links on to Help for the rest" do
+      assert panel([], [finding(:x)]) =~ "/c/1/sleep/playbooks"
     end
   end
 end

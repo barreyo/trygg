@@ -365,56 +365,61 @@ defmodule TryggWeb.SleepAbcsComponents do
         Night 1 starts tonight. Each night you work through shows up here.
       </p>
 
-      <div :if={@nights != []} class="overflow-x-auto">
-        <table class="w-full min-w-[28rem] text-left text-sm">
-          <thead class="text-xs uppercase opacity-70">
-            <tr>
-              <th class="pb-1 pr-2">Night</th>
-              <th class="pb-1 pr-2">Down</th>
-              <th class="pb-1 pr-2">To sleep</th>
-              <th class="pb-1 pr-2">Wakings</th>
-              <th :if={@definition != :swap} class="pb-1 pr-2">Crying</th>
-              <th class="pb-1 pr-2">Longest sleep</th>
-              <th class="pb-1">Feeds</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for night <- Enum.reverse(@nights) do %>
-              <tr id={"abcs-night-#{night.number}"} class="border-t border-base-300 align-top">
-                <th scope="row" class="py-1.5 pr-2 font-medium">{night.number}</th>
-                <td class="py-1.5 pr-2 tabular-nums">{time_or_dash(night.bedtime, @tz)}</td>
-                <td class="py-1.5 pr-2 tabular-nums">
-                  {duration_or_dash(night.bedtime_to_sleep_seconds)}
-                </td>
-                <td class="py-1.5 pr-2 tabular-nums">{night.wakings}</td>
-                <td :if={@definition != :swap} class="py-1.5 pr-2 tabular-nums">
-                  {duration_or_dash(night.cry_seconds, true)}
-                </td>
-                <td class="py-1.5 pr-2 tabular-nums">
-                  {duration_or_dash(night.longest_sleep_seconds)}
-                </td>
-                <td class="py-1.5 tabular-nums">{night.night_feeds || "—"}</td>
+      <details :if={@nights != []} id="abcs-chart-log">
+        <summary class="cursor-pointer text-sm text-primary">
+          {length(@nights)} {if length(@nights) == 1, do: "night", else: "nights"} logged
+        </summary>
+        <div class="mt-2 overflow-x-auto">
+          <table class="w-full min-w-[28rem] text-left text-sm">
+            <thead class="text-xs uppercase opacity-70">
+              <tr>
+                <th class="pb-1 pr-2">Night</th>
+                <th class="pb-1 pr-2">Down</th>
+                <th class="pb-1 pr-2">To sleep</th>
+                <th class="pb-1 pr-2">Wakings</th>
+                <th :if={@definition != :swap} class="pb-1 pr-2">Crying</th>
+                <th class="pb-1 pr-2">Longest sleep</th>
+                <th class="pb-1">Feeds</th>
               </tr>
-              <tr :if={night.wakes != []} class="text-xs opacity-80">
-                <td></td>
-                <td colspan="6" class="pb-1.5">
-                  <span :for={wake <- night.wakes} class="mr-3 inline-block">
-                    {clock(wake.started_at, @tz)}: {visit_count(
-                      length(wake.pop_in_times),
-                      @definition
-                    )}{if wake.to_sleep_seconds,
-                      do: ", asleep in #{format_duration(wake.to_sleep_seconds)}"}
-                  </span>
-                </td>
-              </tr>
-              <tr :if={night.note} class="text-xs opacity-80">
-                <td></td>
-                <td colspan="6" class="pb-1.5 italic">{night.note}</td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              <%= for night <- Enum.reverse(@nights) do %>
+                <tr id={"abcs-night-#{night.number}"} class="border-t border-base-300 align-top">
+                  <th scope="row" class="py-1.5 pr-2 font-medium">{night.number}</th>
+                  <td class="py-1.5 pr-2 tabular-nums">{time_or_dash(night.bedtime, @tz)}</td>
+                  <td class="py-1.5 pr-2 tabular-nums">
+                    {duration_or_dash(night.bedtime_to_sleep_seconds)}
+                  </td>
+                  <td class="py-1.5 pr-2 tabular-nums">{night.wakings}</td>
+                  <td :if={@definition != :swap} class="py-1.5 pr-2 tabular-nums">
+                    {duration_or_dash(night.cry_seconds, true)}
+                  </td>
+                  <td class="py-1.5 pr-2 tabular-nums">
+                    {duration_or_dash(night.longest_sleep_seconds)}
+                  </td>
+                  <td class="py-1.5 tabular-nums">{night.night_feeds || "—"}</td>
+                </tr>
+                <tr :if={night.wakes != []} class="text-xs opacity-80">
+                  <td></td>
+                  <td colspan="6" class="pb-1.5">
+                    <span :for={wake <- night.wakes} class="mr-3 inline-block">
+                      {clock(wake.started_at, @tz)}: {visit_count(
+                        length(wake.pop_in_times),
+                        @definition
+                      )}{if wake.to_sleep_seconds,
+                        do: ", asleep in #{format_duration(wake.to_sleep_seconds)}"}
+                    </span>
+                  </td>
+                </tr>
+                <tr :if={night.note} class="text-xs opacity-80">
+                  <td></td>
+                  <td colspan="6" class="pb-1.5 italic">{night.note}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       <.form
         :if={@can_write and @nights != [] and @tonight.night >= 1 and not @tonight.finished?}
@@ -535,21 +540,24 @@ defmodule TryggWeb.SleepAbcsComponents do
     ~H"""
     <section id="abcs-controls" class={panel_class()}>
       <h2 class={heading_class()}>If something changes</h2>
-      <ul class="space-y-1.5 text-sm leading-snug">
-        <li>
-          <span class="font-semibold">Sick or in pain:</span>
-          meet the need and stop the plan. Start again once they're fully well.
-        </li>
-        <li>
-          <span class="font-semibold">A tooth breaking the skin:</span>
-          wait 24–48 hours before starting.
-        </li>
-        <li>
-          <span class="font-semibold">Early mornings:</span>
-          check the room is dark and the sound machine loud, and that bedtime is
-          no later than 7 pm. Never bring them into your bed.
-        </li>
-      </ul>
+      <details id="plan-if-changes">
+        <summary class="cursor-pointer text-sm text-primary">When to pause the plan</summary>
+        <ul class="space-y-1.5 text-sm leading-snug">
+          <li>
+            <span class="font-semibold">Sick or in pain:</span>
+            meet the need and stop the plan. Start again once they're fully well.
+          </li>
+          <li>
+            <span class="font-semibold">A tooth breaking the skin:</span>
+            wait 24–48 hours before starting.
+          </li>
+          <li>
+            <span class="font-semibold">Early mornings:</span>
+            check the room is dark and the sound machine loud, and that bedtime is
+            no later than 7 pm. Never bring them into your bed.
+          </li>
+        </ul>
+      </details>
 
       <div :if={@can_write} class="mt-3 flex flex-wrap gap-2">
         <.button

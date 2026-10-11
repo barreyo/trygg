@@ -9,6 +9,9 @@ defmodule TryggWeb.SleepPlaybooksComponents do
 
   import TryggWeb.CoreComponents
 
+  import TryggWeb.SleepPlanComponents, only: [what_to_try: 1]
+
+  alias Phoenix.LiveView.JS
   alias Trygg.Sleep.{BedtimePlan, NapConventions, Setbacks}
 
   ## What's worth a look ---------------------------------------------------------
@@ -29,10 +32,16 @@ defmodule TryggWeb.SleepPlaybooksComponents do
           <a
             :if={finding.playbook}
             href={"#playbook-#{finding.playbook}"}
-            class="text-xs text-primary underline"
+            phx-click={JS.set_attribute({"open", ""}, to: "#playbook-#{finding.playbook}")}
+            class="text-sm text-primary underline"
           >
-            What to try
+            See the playbook below
           </a>
+          <.what_to_try
+            :if={is_nil(finding.playbook)}
+            points={finding.points}
+            id={"try-#{finding.id}"}
+          />
         </li>
       </ul>
     </section>
@@ -56,19 +65,8 @@ defmodule TryggWeb.SleepPlaybooksComponents do
     ~H"""
     <section id="naps" class={panel_class()}>
       <h2 class={heading_class()}>Naps</h2>
-      <p class="text-sm">
-        You can't make them nap, but you have four jobs: soothe, be consistent, get the timing right,
-        and (from 3–6 months) let them learn to fall asleep alone.
-      </p>
 
-      <ol id="nap-conventions" class="mt-3 space-y-2">
-        <li :for={{convention, i} <- Enum.with_index(@conventions, 1)} class="text-sm">
-          <span class="font-semibold">{i}. {convention.name}.</span>
-          <span class="opacity-80">{convention.detail}</span>
-        </li>
-      </ol>
-
-      <div id="nap-checks" class="mt-3 space-y-1 text-sm">
+      <div id="nap-checks" class="space-y-1 text-sm">
         <p :if={@naps.place} id="nap-place">
           <.icon
             name={if @naps.place.ok?, do: "hero-check-circle", else: "hero-minus-circle"}
@@ -89,27 +87,47 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         </p>
       </div>
 
-      <h3 class="mt-4 text-sm font-semibold">Short naps</h3>
-      <ul id="short-nap-fixes" class="mt-1 space-y-1.5 text-sm">
-        <li :for={fix <- @fixes}>
-          <span class="font-semibold">{fix.name}.</span> <span class="opacity-80">{fix.detail}</span>
-        </li>
-      </ul>
-
-      <h3 class="mt-4 text-sm font-semibold">Dropping a nap</h3>
-      <p :if={@drop} id="nap-drop-now" class="mt-1 text-sm">
+      <p :if={@drop} id="nap-drop-now" class="mt-3 text-sm">
         <span class="font-medium">At {@drop.label}:</span> {@drop.text}
       </p>
-      <details id="nap-drop-signs" class="mt-2">
-        <summary class="cursor-pointer text-xs text-primary">Signs a nap is on its way out</summary>
-        <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
-          <li :for={sign <- @signs}>{sign}</li>
-        </ul>
-        <p class="mt-2 text-sm font-medium">While you get through it</p>
-        <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
-          <li :for={tip <- @tips}>{tip}</li>
-        </ul>
-      </details>
+
+      <div class="mt-3 space-y-2">
+        <details id="nap-conventions-wrap" class="rounded-box border border-base-300 p-3">
+          <summary class="cursor-pointer text-sm font-semibold">The four jobs</summary>
+          <p class="mt-2 text-sm">
+            You can't make them nap, but you can soothe, be consistent, get the timing right and, from
+            3–6 months, let them learn to fall asleep alone.
+          </p>
+          <ol id="nap-conventions" class="mt-2 space-y-2">
+            <li :for={{convention, i} <- Enum.with_index(@conventions, 1)} class="text-sm">
+              <span class="font-semibold">{i}. {convention.name}.</span>
+              <span class="opacity-80">{convention.detail}</span>
+            </li>
+          </ol>
+        </details>
+
+        <details id="short-naps" class="rounded-box border border-base-300 p-3">
+          <summary class="cursor-pointer text-sm font-semibold">Short naps</summary>
+          <ul id="short-nap-fixes" class="mt-2 space-y-1.5 text-sm">
+            <li :for={fix <- @fixes}>
+              <span class="font-semibold">{fix.name}.</span>
+              <span class="opacity-80">{fix.detail}</span>
+            </li>
+          </ul>
+        </details>
+
+        <details id="nap-drop-signs" class="rounded-box border border-base-300 p-3">
+          <summary class="cursor-pointer text-sm font-semibold">Dropping a nap</summary>
+          <p class="mt-2 text-sm font-medium">Signs a nap is on its way out</p>
+          <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
+            <li :for={sign <- @signs}>{sign}</li>
+          </ul>
+          <p class="mt-2 text-sm font-medium">While you get through it</p>
+          <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
+            <li :for={tip <- @tips}>{tip}</li>
+          </ul>
+        </details>
+      </div>
     </section>
     """
   end
@@ -125,11 +143,12 @@ defmodule TryggWeb.SleepPlaybooksComponents do
 
   attr :form, :map, required: true
   attr :rows, :list, required: true
+  attr :open, :boolean, default: false
 
   def shift_planner(assigns) do
     ~H"""
-    <section id="shift-planner" class={panel_class()}>
-      <h2 class={heading_class()}>Move bedtime</h2>
+    <details id="shift-planner" class={panel_class()} open={@open}>
+      <summary class={[heading_class(), "cursor-pointer"]}>Move bedtime</summary>
       <p class="text-sm">
         15 minutes a day, a little at a time. Leave the wake time alone if they're getting enough sleep;
         if bedtime is very late, wake them 15 minutes earlier each morning and shift naps with it, and keep lights
@@ -162,17 +181,18 @@ defmodule TryggWeb.SleepPlaybooksComponents do
           </tr>
         </tbody>
       </table>
-    </section>
+    </details>
     """
   end
 
   attr :form, :map, required: true
   attr :plan, :map, required: true
+  attr :open, :boolean, default: false
 
   def dst_planner(assigns) do
     ~H"""
-    <section id="dst-planner" class={panel_class()}>
-      <h2 class={heading_class()}>Clock change</h2>
+    <details id="dst-planner" class={panel_class()} open={@open}>
+      <summary class={[heading_class(), "cursor-pointer"]}>Clock change</summary>
       <.form for={@form} id="dst-form" phx-change="dst_change" class="mt-2">
         <div class="grid grid-cols-2 gap-3">
           <.input
@@ -212,17 +232,18 @@ defmodule TryggWeb.SleepPlaybooksComponents do
       <ul id="dst-tips" class="mt-3 list-disc space-y-1 pl-5 text-sm">
         <li :for={tip <- @plan.tips}>{tip}</li>
       </ul>
-    </section>
+    </details>
     """
   end
 
   attr :form, :map, required: true
   attr :plan, :map, required: true
+  attr :open, :boolean, default: false
 
   def travel_planner(assigns) do
     ~H"""
-    <section id="travel-planner" class={panel_class()}>
-      <h2 class={heading_class()}>Travel</h2>
+    <details id="travel-planner" class={panel_class()} open={@open}>
+      <summary class={[heading_class(), "cursor-pointer"]}>Travel</summary>
       <.form for={@form} id="travel-form" phx-change="travel_change" class="mt-2">
         <div class="grid grid-cols-3 gap-3">
           <.input field={@form[:hours]} type="number" min="0" max="12" label="Time zones" />
@@ -253,7 +274,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
       <ul id="travel-tips" class="mt-3 list-disc space-y-1 pl-5 text-sm">
         <li :for={tip <- @plan.tips}>{tip}</li>
       </ul>
-    </section>
+    </details>
     """
   end
 

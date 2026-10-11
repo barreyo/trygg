@@ -248,7 +248,11 @@ defmodule TryggWeb.SleepPlaybooksLive do
             <.findings_panel findings={@playbooks.findings} />
             <.naps_panel naps={@playbooks.naps} drop={@playbooks.drop} />
             <.shift_planner form={@shift_form} rows={@shift_rows} />
-            <.dst_planner form={@dst_form} plan={@dst_plan} />
+            <.dst_planner
+              form={@dst_form}
+              plan={@dst_plan}
+              open={Enum.any?(@playbooks.findings, &(&1.id == :dst))}
+            />
             <.travel_planner form={@travel_form} plan={@travel_plan} />
           </:left>
           <:right>

@@ -33,7 +33,8 @@ defmodule Trygg.Sleep.Approaches do
       sleep), `:cuddler` (held to sleep), `:motion` (rocked or patted), `:independent`
       (mostly settling alone) or `nil` without data.
     * `variant` — the SWAP variant that fits that type.
-    * `reasons` — why, in a sentence or two each.
+    * `reasons` — why, in a sentence or two each; `why` is the one about this
+      baby (or a hint to note how they fall asleep).
   """
   def recommend(ctx) do
     age = ctx[:age_days]
@@ -64,7 +65,13 @@ defmodule Trygg.Sleep.Approaches do
            ]}
       end
 
-    %{suggested: suggested, type: type, variant: variant, reasons: reasons ++ type_reasons(type)}
+    %{
+      suggested: suggested,
+      type: type,
+      variant: variant,
+      reasons: reasons ++ type_reasons(type),
+      why: hd(type_reasons(type))
+    }
   end
 
   @doc "The kind of baby the log suggests, or `nil` without enough data."

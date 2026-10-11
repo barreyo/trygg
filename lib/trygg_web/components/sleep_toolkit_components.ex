@@ -18,11 +18,12 @@ defmodule TryggWeb.SleepToolkitComponents do
 
   def sleep_subnav(assigns) do
     ~H"""
-    <nav id="sleep-subnav" class="mb-4 flex gap-2 overflow-x-auto" aria-label="Sleep sections">
+    <nav id="sleep-subnav" class="mb-4 grid grid-cols-5 gap-1.5" aria-label="Sleep sections">
       <.button
         id="subnav-today"
         navigate={"/c/#{@child.id}/sleep"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :today, do: "primary"}
         aria-current={@current == :today && "page"}
       >
@@ -32,6 +33,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         id="subnav-toolkit"
         navigate={"/c/#{@child.id}/sleep/toolkit"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :toolkit, do: "primary"}
         aria-current={@current == :toolkit && "page"}
       >
@@ -41,6 +43,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         id="subnav-plan"
         navigate={"/c/#{@child.id}/sleep/plan"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :plan, do: "primary"}
         aria-current={@current == :plan && "page"}
       >
@@ -50,19 +53,21 @@ defmodule TryggWeb.SleepToolkitComponents do
         id="subnav-playbooks"
         navigate={"/c/#{@child.id}/sleep/playbooks"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :playbooks, do: "primary"}
         aria-current={@current == :playbooks && "page"}
       >
-        Playbooks
+        Help
       </.button>
       <.button
         id="subnav-night"
         navigate={"/c/#{@child.id}/sleep/night"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :night, do: "primary"}
         aria-current={@current == :night && "page"}
       >
-        <.icon name="hero-moon" class="size-4" /> Night mode
+        <.icon name="hero-moon" class="size-4" />Night
       </.button>
     </nav>
     """
@@ -222,9 +227,11 @@ defmodule TryggWeb.SleepToolkitComponents do
         (100–120 minutes before bed).
       </p>
 
-      <div :if={@guide_day} id="guide-day" class="mt-4">
-        <h3 class="text-sm font-semibold">A day by the guide ({@table.label})</h3>
-        <p class="text-xs opacity-70">
+      <details :if={@guide_day} id="guide-day" class="mt-4">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          A day by the guide ({@table.label})
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
           {@table.naps} naps, awake {format_duration(elem(@table.wake_window, 0) * 60)}–{format_duration(
             elem(@table.wake_window, 1) * 60
           )} between, and {format_duration(elem(@table.daytime_goal, 0) * 60)}–{format_duration(
@@ -249,7 +256,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         <p class="mt-2 text-xs opacity-70">
           Built from this morning's wake-up. A routine to practise, not a schedule to follow exactly.
         </p>
-      </div>
+      </details>
     </section>
     """
   end
@@ -546,9 +553,14 @@ defmodule TryggWeb.SleepToolkitComponents do
             <h3 class="text-sm font-semibold">{tool.name}</h3>
             <span class={["badge badge-sm", tool_badge(tool.state)]}>{tool_state(tool.state)}</span>
           </div>
-          <p class="mt-1 text-sm">{tool.headline}</p>
+          <p :if={tool.state in [:stop, :consider]} class="mt-1 text-sm font-medium">
+            {tool.headline}
+          </p>
           <details class="mt-1">
-            <summary class="cursor-pointer text-xs text-primary">How</summary>
+            <summary class="cursor-pointer text-xs text-primary">
+              {if tool.state in [:stop, :consider], do: "How", else: "What to do"}
+            </summary>
+            <p :if={tool.state not in [:stop, :consider]} class="mt-1 text-sm">{tool.headline}</p>
             <ul class="mt-1 list-disc space-y-1 pl-5 text-xs opacity-80">
               <li :for={point <- tool.points}>{point}</li>
             </ul>
@@ -598,13 +610,31 @@ defmodule TryggWeb.SleepToolkitComponents do
           {@safe_sleep.done} of {@safe_sleep.total}
         </span>
       </h2>
-      <p class="text-xs opacity-70">
-        What lowers the risk of SIDS and accidents. Run through it, show it to your pediatrician,
-        and give it to anyone who looks after them.
-      </p>
-      <ul id="safe-sleep-checklist" class="mt-2 space-y-1.5">
-        <.check_item :for={item <- @safe_sleep.items} item={item} can_write={@can_write} />
-      </ul>
+      <div
+        class="mb-2 h-2 overflow-hidden rounded-full bg-base-300"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax={@safe_sleep.total}
+        aria-valuenow={@safe_sleep.done}
+      >
+        <div
+          class="h-full rounded-full bg-success"
+          style={"width: #{round(@safe_sleep.done / max(@safe_sleep.total, 1) * 100)}%"}
+        >
+        </div>
+      </div>
+      <details id="safe-sleep-list">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          Run through the list
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
+          What lowers the risk of SIDS and accidents. Show it to your pediatrician, and give it to
+          anyone who looks after them.
+        </p>
+        <ul id="safe-sleep-checklist" class="mt-2 space-y-1.5">
+          <.check_item :for={item <- @safe_sleep.items} item={item} can_write={@can_write} />
+        </ul>
+      </details>
 
       <details id="cosleeping" class="mt-3">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
@@ -631,18 +661,20 @@ defmodule TryggWeb.SleepToolkitComponents do
     <section id="toolkit-checklists" class={panel_class()}>
       <h2 class={heading_class()}>Checklists</h2>
 
-      <h3 class="text-sm font-semibold">
-        Success checklist
-        <span id="success-count" class="font-normal opacity-70">
-          {@checklists.success_done} of {@checklists.success_total}
-        </span>
-      </h3>
-      <ul id="success-checklist" class="mt-2 space-y-1.5">
-        <.check_item :for={item <- @checklists.success} item={item} can_write={@can_write} />
-      </ul>
+      <details id="success">
+        <summary class="cursor-pointer text-sm font-semibold">
+          Success checklist
+          <span id="success-count" class="font-normal opacity-70">
+            {@checklists.success_done} of {@checklists.success_total}
+          </span>
+        </summary>
+        <ul id="success-checklist" class="mt-2 space-y-1.5">
+          <.check_item :for={item <- @checklists.success} item={item} can_write={@can_write} />
+        </ul>
+      </details>
 
-      <details id="troubleshooting" class="mt-4">
-        <summary class="cursor-pointer text-sm font-semibold text-primary">
+      <details id="troubleshooting" class="mt-3">
+        <summary class="cursor-pointer text-sm font-semibold">
           Troubleshooting: when nights are hard
         </summary>
         <p class="mt-1 text-xs opacity-70">Tick each one you've checked.</p>

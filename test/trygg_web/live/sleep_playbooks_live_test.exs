@@ -34,7 +34,7 @@ defmodule TryggWeb.SleepPlaybooksLiveTest do
 
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
       assert has_element?(lv, "#subnav-playbooks[href='#{~p"/c/#{child}/sleep/playbooks"}']")
-      assert has_element?(lv, "#playbooks-card")
+      assert has_element?(lv, "#insights-more[href='#{~p"/c/#{child}/sleep/playbooks"}']")
     end
 
     test "when sleep isn't tracked it sends you to Today", %{conn: conn} do

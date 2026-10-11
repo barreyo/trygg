@@ -30,7 +30,7 @@ defmodule TryggWeb.SleepLive do
         socket
         |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
         |> assign(summary: nil, habits: nil, phase: nil, timeline: [], plan: nil, insights: [])
-        |> assign(nights: nil, night_wake: nil, age_guide: nil)
+        |> assign(nights: nil, night_wake: nil, age_guide: nil, findings: [])
         |> assign(pending_cue: nil, pending_cue_at: nil)
         |> Loading.init()
         |> load()
@@ -222,6 +222,7 @@ defmodule TryggWeb.SleepLive do
     %{
       plan: plan,
       insights: insights,
+      findings: findings,
       habits: habits,
       phase: phase,
       nights: nights,
@@ -236,6 +237,7 @@ defmodule TryggWeb.SleepLive do
       night_wake: NightWakes.active(scope, child),
       plan: plan,
       insights: insights,
+      findings: findings,
       habits: habits,
       nights: nights,
       age_guide: age_guide,
@@ -266,7 +268,7 @@ defmodule TryggWeb.SleepLive do
       <.loadable id="sleep-content" loaded={@loaded?} failed={@load_failed?}>
         <:skeleton><.sleep_skeleton /></:skeleton>
         <.night_wake_banner :if={@night_wake} wake={@night_wake} child={@current_child} />
-        <.phase_hero phase={@phase} timeline={@timeline} child_name={@current_child.name} />
+        <.phase_hero phase={@phase} child_name={@current_child.name} />
 
         <Layouts.columns id="sleep-columns">
           <:left>
@@ -277,20 +279,22 @@ defmodule TryggWeb.SleepLive do
               can_write={@can_write}
               tz={@current_child.timezone}
               track_assist={!!(@phase && @phase.id != :newborn)}
+              plan={@plan}
             />
             <.schedule_panel plan={@plan} tz={@current_child.timezone} />
-            <.insights_panel insights={@insights} />
+            <.insights_panel insights={@insights} findings={@findings} child={@current_child} />
           </:left>
           <:right>
             <.overnight_panel nights={@nights} tz={@current_child.timezone} />
-            <.habits_panel habits={@habits} />
             <.age_guide_panel guide={@age_guide} phase={@phase} />
-            <.playbooks_card child={@current_child} />
-            <.cries_panel :if={@phase && @phase.id == :newborn} />
-            <.newborn_nights_panel :if={@phase && @phase.id == :newborn} />
-            <.cue_guide />
-            <.rhythm_reference :if={@phase && @phase.id == :newborn} />
-            <.roadmap :if={@timeline != []} timeline={@timeline} />
+            <.habits_panel habits={@habits} />
+            <.reference_group>
+              <.cries_panel :if={@phase && @phase.id == :newborn} />
+              <.newborn_nights_panel :if={@phase && @phase.id == :newborn} />
+              <.rhythm_reference :if={@phase && @phase.id == :newborn} />
+              <.cue_guide />
+              <.roadmap :if={@timeline != []} timeline={@timeline} />
+            </.reference_group>
           </:right>
         </Layouts.columns>
       </.loadable>
