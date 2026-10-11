@@ -769,7 +769,6 @@ defmodule TryggWeb.LogComponents do
           variant="outline"
           size="sm"
           phx-click="delete_entry"
-          data-confirm="Delete this entry?"
           class="btn-error w-full mt-2"
         >
           Delete

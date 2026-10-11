@@ -31,6 +31,7 @@ import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
+import SheetDrag from "./hooks/sheet_drag"
 import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
 import OfflineContext from "./hooks/offline_context"
@@ -55,6 +56,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushNotifications,
     PushPrompt,
     ModalBack,
+    SheetDrag,
     PullToRefresh,
     ChildSwipe,
     OfflineContext,
