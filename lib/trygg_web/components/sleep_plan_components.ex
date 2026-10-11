@@ -247,7 +247,7 @@ defmodule TryggWeb.SleepPlanComponents do
             </div>
             <div class={[
               "min-w-0 flex-1",
-              if(item.state == :done, do: "pb-2 opacity-70", else: "pb-4")
+              if(item.state == :done, do: "min-h-10 pt-1 opacity-70", else: "pt-1 pb-4")
             ]}>
               <div class="flex items-baseline justify-between gap-3">
                 <p class="font-semibold leading-tight">{item_title(item)}</p>
@@ -528,7 +528,11 @@ defmodule TryggWeb.SleepPlanComponents do
 
   defp guide_item(assigns) do
     ~H"""
-    <details id={@id} class="fold rounded-box border border-base-300 bg-base-100 px-3 pb-3" {@rest}>
+    <details
+      id={@id}
+      class="fold rounded-box border border-base-300 bg-base-100 px-3 open:pb-3"
+      {@rest}
+    >
       <summary class="cursor-pointer text-sm font-semibold">{@title}</summary>
       <div class="mt-2">{render_slot(@inner_block)}</div>
     </details>
@@ -630,10 +634,10 @@ defmodule TryggWeb.SleepPlanComponents do
           class="flex items-baseline justify-between gap-2"
         >
           <span>{line.label}</span>
-          <span class="text-right tabular-nums">
+          <span class="inline-flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5 text-right tabular-nums">
             <span class="font-semibold">{compare_value(line)}</span>
             <span class="text-xs opacity-70">typical {compare_range(line)}</span>
-            <span class={["badge badge-sm ml-1", verdict_badge(line.verdict)]}>
+            <span class={["badge badge-sm", verdict_badge(line.verdict)]}>
               {verdict_text(line.verdict)}
             </span>
           </span>
@@ -676,8 +680,13 @@ defmodule TryggWeb.SleepPlanComponents do
   defp range({lo, lo}), do: "#{lo}"
   defp range({lo, hi}), do: "#{lo}–#{hi}"
 
-  defp mins({lo, lo}), do: format_duration(lo * 60)
-  defp mins({lo, hi}), do: "#{format_duration(lo * 60)}–#{format_duration(hi * 60)}"
+  defp mins({lo, lo}), do: short_minutes(lo)
+  defp mins({lo, hi}), do: "#{short_minutes(lo)}–#{short_minutes(hi)}"
+
+  # 45m, 1h, 1h 30m: no "1h 0m".
+  defp short_minutes(m) when m < 60, do: "#{m}m"
+  defp short_minutes(m) when rem(m, 60) == 0, do: "#{div(m, 60)}h"
+  defp short_minutes(m), do: "#{div(m, 60)}h #{rem(m, 60)}m"
 
   defp hours({lo, hi}), do: "#{lo}–#{hi} h"
 

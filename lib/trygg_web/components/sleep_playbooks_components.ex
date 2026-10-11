@@ -92,7 +92,10 @@ defmodule TryggWeb.SleepPlaybooksComponents do
       </p>
 
       <div class="mt-3 space-y-2">
-        <details id="nap-conventions-wrap" class="fold rounded-box border border-base-300 px-3 pb-3">
+        <details
+          id="nap-conventions-wrap"
+          class="fold rounded-box border border-base-300 px-3 open:pb-3"
+        >
           <summary class="cursor-pointer text-sm font-semibold">The four jobs</summary>
           <p class="mt-2 text-sm">
             You can't make them nap, but you can soothe, be consistent, get the timing right and, from
@@ -106,7 +109,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
           </ol>
         </details>
 
-        <details id="short-naps" class="fold rounded-box border border-base-300 px-3 pb-3">
+        <details id="short-naps" class="fold rounded-box border border-base-300 px-3 open:pb-3">
           <summary class="cursor-pointer text-sm font-semibold">Short naps</summary>
           <ul id="short-nap-fixes" class="mt-2 space-y-1.5 text-sm">
             <li :for={fix <- @fixes}>
@@ -116,7 +119,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
           </ul>
         </details>
 
-        <details id="nap-drop-signs" class="fold rounded-box border border-base-300 px-3 pb-3">
+        <details id="nap-drop-signs" class="fold rounded-box border border-base-300 px-3 open:pb-3">
           <summary class="cursor-pointer text-sm font-semibold">Dropping a nap</summary>
           <p class="mt-2 text-sm font-medium">Signs a nap is on its way out</p>
           <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
@@ -148,7 +151,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
   def shift_planner(assigns) do
     ~H"""
     <details id="shift-planner" class={["fold", panel_class()]} open={@open}>
-      <summary class={[heading_class(), "cursor-pointer"]}>Move bedtime</summary>
+      <summary class="text-sm font-semibold tracking-wide uppercase opacity-70">Move bedtime</summary>
       <p class="text-sm">
         15 minutes a day, a little at a time. Leave the wake time alone if they're getting enough sleep;
         if bedtime is very late, wake them 15 minutes earlier each morning and shift naps with it, and keep lights
@@ -192,7 +195,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
   def dst_planner(assigns) do
     ~H"""
     <details id="dst-planner" class={["fold", panel_class()]} open={@open}>
-      <summary class={[heading_class(), "cursor-pointer"]}>Clock change</summary>
+      <summary class="text-sm font-semibold tracking-wide uppercase opacity-70">Clock change</summary>
       <.form for={@form} id="dst-form" phx-change="dst_change" class="mt-2">
         <div class="grid grid-cols-2 gap-3">
           <.input
@@ -243,7 +246,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
   def travel_planner(assigns) do
     ~H"""
     <details id="travel-planner" class={["fold", panel_class()]} open={@open}>
-      <summary class={[heading_class(), "cursor-pointer"]}>Travel</summary>
+      <summary class="text-sm font-semibold tracking-wide uppercase opacity-70">Travel</summary>
       <.form for={@form} id="travel-form" phx-change="travel_change" class="mt-2">
         <div class="grid grid-cols-3 gap-3">
           <.input field={@form[:hours]} type="number" min="0" max="12" label="Time zones" />
@@ -290,7 +293,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <details
           :for={book <- @playbooks}
           id={"playbook-#{book.id}"}
-          class="fold rounded-box border border-base-300 px-3 pb-3"
+          class="fold rounded-box border border-base-300 px-3 open:pb-3"
         >
           <summary class="cursor-pointer text-sm font-semibold">{book.title}</summary>
           <p class="mt-2 text-sm">{book.summary}</p>
@@ -317,7 +320,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <details
           :for={item <- @items}
           id={"medical-#{item.id}"}
-          class="fold rounded-box border border-base-300 px-3 pb-3"
+          class="fold rounded-box border border-base-300 px-3 open:pb-3"
         >
           <summary class="cursor-pointer text-sm font-semibold">{item.title}</summary>
           <ul class="mt-2 list-disc space-y-1 pl-5 text-sm opacity-90">
