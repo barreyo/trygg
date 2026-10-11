@@ -115,11 +115,11 @@ defmodule TryggWeb.SleepPlaybooksComponents do
   end
 
   defp catnap_text(%{days: 0}),
-    do: "No nap has ended close to bedtime lately. Good: it keeps bedtime defended."
+    do: "They've had enough time awake before bed lately. Good: it keeps bedtime defended."
 
   defp catnap_text(%{days: n}),
     do:
-      "A nap ended within 90 minutes of bedtime on #{n} of the last two weeks. Late catnaps work against bedtime."
+      "On #{n} of the last 7 evenings they were awake less than the guide's minimum before bed. Late catnaps work against bedtime."
 
   ## Planners ----------------------------------------------------------------------
 

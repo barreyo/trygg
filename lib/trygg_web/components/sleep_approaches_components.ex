@@ -420,7 +420,7 @@ defmodule TryggWeb.SleepApproachesComponents do
           </li>
           <li id="slip-expect">
             <span class="font-semibold">Expect</span>
-            about {@tonight.expected.label} of crying at bedtime tonight, but it varies.
+            roughly {@tonight.expected.label} of crying at bedtime tonight, but it varies.
           </li>
           <li id="slip-night-wakings">
             <span class="font-semibold">Night wakings:</span>

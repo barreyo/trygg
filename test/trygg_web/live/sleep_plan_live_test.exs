@@ -374,7 +374,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
       {:ok, wake} = NightWakes.record(scope, wake, "pop_in", 1)
       {:ok, _} = NightWakes.asleep(scope, wake, 2)
 
-      assert has_element?(lv, "#abcs-chart", "1 pop-ins")
+      assert has_element?(lv, "#abcs-chart", "1 pop-in,")
     end
 
     test "viewers see the plan but no controls", %{conn: conn, scope: owner, child: child} do

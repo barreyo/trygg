@@ -153,26 +153,40 @@ defmodule Trygg.Sleep.NapConventions do
   def drop_for(_), do: nil
 
   @doc """
-  What the log can say about the first three conventions. `ctx` is
-  `%{child, days}`: `days` are recent `%Trygg.Reports.Day{}`s, from which the
-  naps (and the place noted on each, `data["location"]`) and bedtimes come.
+  What the log can say about the conventions, from the sleep entries of the last
+  couple of weeks. `ctx` is `%{child, entries, today, min_window_minutes}`:
+  `entries` are the child's entries (only the sleeps count), `today` the local
+  date, and `min_window_minutes` how long they should be awake before bedtime at
+  this age (`Trygg.Sleep.AgeGuide`; `nil` to skip that check).
 
   Returns `%{place, catnaps}`:
 
-    * `place` — `nil` without 5 naps with a place noted, else `%{share, where,
-      count, ok?}`: the share of naps in the most common place and whether it
-      meets the 80% goal.
-    * `catnaps` — `%{days, ok?}`: how many of the recent days had a nap ending
-      within 90 minutes of bedtime (a nap that late works against bedtime).
+    * `place` — `nil` without 5 daytime sleeps with a place noted, else `%{share,
+      where, count, ok?}`: the share in the most common place and whether it meets
+      the 80% goal.
+    * `catnaps` — `%{days, ok?}`: on how many of the last 7 evenings the nap
+      before bed ended with less than `min_window_minutes` to go to the night's
+      sleep. Read from the entries, not from `Trygg.Reports.Day`, because a nap
+      that close to bed is folded into the night there.
   """
   def assess(%{child: %Child{} = child} = ctx) do
-    days = ctx[:days] || []
-    entries = days |> Enum.flat_map(& &1.naps) |> Enum.map(& &1.entry)
-    %{place: place(entries), catnaps: catnaps(child, days)}
+    sleeps = for e <- ctx[:entries] || [], e.type == :sleep, e.ended_at != nil, do: e
+
+    %{
+      place: place(child, sleeps),
+      catnaps: catnaps(child, sleeps, ctx[:today], ctx[:min_window_minutes])
+    }
   end
 
-  defp place(naps) do
-    located = for nap <- naps, loc = nap.data["location"], is_binary(loc), do: loc
+  # Daytime sleeps are the ones that start between 6 am and 6 pm.
+  defp place(child, sleeps) do
+    located =
+      for sleep <- sleeps,
+          hour = local(child, sleep.started_at).hour,
+          hour in 6..17,
+          loc = sleep.data["location"],
+          is_binary(loc),
+          do: loc
 
     if length(located) < 5 do
       nil
@@ -183,17 +197,46 @@ defmodule Trygg.Sleep.NapConventions do
     end
   end
 
-  defp catnaps(child, days) do
-    late =
-      Enum.count(days, fn day ->
-        day.bedtime != nil and
-          Enum.any?(day.naps, fn nap ->
-            not nap.running? and nap.end != nil and
-              DateTime.diff(day.bedtime, nap.end, :second) in 0..(90 * 60)
-          end)
+  defp catnaps(_child, _sleeps, _today, nil), do: %{days: 0, ok?: true}
+  defp catnaps(_child, _sleeps, nil, _min), do: %{days: 0, ok?: true}
+
+  defp catnaps(child, sleeps, today, min_minutes) do
+    by_date = Enum.group_by(sleeps, &(local(child, &1.started_at) |> DateTime.to_date()))
+
+    short =
+      Enum.count(1..7, fn back ->
+        day = Map.get(by_date, Date.add(today, 1 - back), [])
+        short_window?(child, day, min_minutes)
       end)
 
-    _ = child
-    %{days: late, ok?: late <= 1}
+    %{days: short, ok?: short <= 1}
   end
+
+  # The night's sleep starts after 5:30 pm and runs at least 90 minutes; the nap
+  # before it is the last daytime sleep to end before that.
+  defp short_window?(child, day, min_minutes) do
+    night =
+      day
+      |> Enum.filter(fn s ->
+        local = local(child, s.started_at)
+        local.hour * 60 + local.minute >= 17 * 60 + 30 and duration(s) >= 90 * 60
+      end)
+      |> Enum.min_by(& &1.started_at, DateTime, fn -> nil end)
+
+    with %{started_at: bed} <- night,
+         %{ended_at: ended} <-
+           day
+           |> Enum.filter(
+             &(DateTime.compare(&1.ended_at, bed) != :gt and duration(&1) < 3 * 3600)
+           )
+           |> Enum.filter(&(local(child, &1.started_at).hour >= 10))
+           |> Enum.max_by(& &1.ended_at, DateTime, fn -> nil end) do
+      DateTime.diff(bed, ended, :second) < min_minutes * 60
+    else
+      _ -> false
+    end
+  end
+
+  defp duration(sleep), do: DateTime.diff(sleep.ended_at, sleep.started_at, :second)
+  defp local(child, at), do: DateTime.shift_zone!(at, child.timezone)
 end

@@ -30,7 +30,7 @@ defmodule Trygg.Sleep.SlipTest do
     assert %{lo: 45, hi: 90} = Slip.expected(1)
     assert %{lo: 20, hi: 45} = Slip.expected(2)
     assert %{lo: 0, hi: 25} = Slip.expected(3)
-    assert Slip.expected(6).label == "Under 25 minutes"
+    assert Slip.expected(6).label == "under 25 minutes"
   end
 
   test "there are ten pre-flight items with their own ids" do

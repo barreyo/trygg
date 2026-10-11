@@ -399,10 +399,10 @@ defmodule TryggWeb.SleepAbcsComponents do
                 <td></td>
                 <td colspan="6" class="pb-1.5">
                   <span :for={wake <- night.wakes} class="mr-3 inline-block">
-                    {clock(wake.started_at, @tz)}: {length(wake.pop_in_times)} {if @definition ==
-                                                                                     :swap,
-                                                                                   do: "times in",
-                                                                                   else: "pop-ins"}{if wake.to_sleep_seconds,
+                    {clock(wake.started_at, @tz)}: {visit_count(
+                      length(wake.pop_in_times),
+                      @definition
+                    )}{if wake.to_sleep_seconds,
                       do: ", asleep in #{format_duration(wake.to_sleep_seconds)}"}
                   </span>
                 </td>
@@ -491,7 +491,11 @@ defmodule TryggWeb.SleepAbcsComponents do
         {elem(@assessment, 1)}
       </p>
 
-      <p :if={@definition != :swap and @progress.trend} id="abcs-trend" class="mt-3 text-sm">
+      <p
+        :if={@definition != :swap and is_nil(@assessment) and @progress.trend}
+        id="abcs-trend"
+        class="mt-3 text-sm"
+      >
         {trend_text(@progress.trend)}
       </p>
       <p :if={@definition == :abcs} class="mt-2 text-xs opacity-70">
@@ -501,6 +505,12 @@ defmodule TryggWeb.SleepAbcsComponents do
     </section>
     """
   end
+
+  # "1 pop-in", "2 pop-ins"; "1 time in", "2 times in" on a gradual plan.
+  defp visit_count(1, :swap), do: "1 time in"
+  defp visit_count(n, :swap), do: "#{n} times in"
+  defp visit_count(1, _definition), do: "1 pop-in"
+  defp visit_count(n, _definition), do: "#{n} pop-ins"
 
   defp trend_text(seconds) when seconds < -300,
     do: "Crying is down #{format_duration(abs(seconds))} from the first night."

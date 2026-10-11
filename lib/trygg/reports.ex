@@ -410,7 +410,8 @@ defmodule Trygg.Reports do
     age_days = phase && phase.age_days
     s = summary(scope, child, @outlook_window, now)
     nights = nights(scope, child, now, count: 14)
-    {days, _entries} = load_days(scope, child, Date.add(today, -13), today, now)
+    {days, entries} = load_days(scope, child, Date.add(today, -13), today, now)
+    band = Trygg.Sleep.AgeGuide.band(age_days)
 
     %{
       phase: phase,
@@ -421,10 +422,17 @@ defmodule Trygg.Reports do
           age_days: age_days,
           nights: nights,
           days: days,
+          entries: entries,
           insights: s,
           today: today
         }),
-      naps: Trygg.Sleep.NapConventions.assess(%{child: child, days: days}),
+      naps:
+        Trygg.Sleep.NapConventions.assess(%{
+          child: child,
+          entries: entries,
+          today: today,
+          min_window_minutes: band && elem(band.before_bed, 0)
+        }),
       dst: Trygg.Sleep.Setbacks.next_dst_change(child, today),
       usual: %{
         bed: s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes),

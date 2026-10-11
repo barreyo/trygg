@@ -100,7 +100,7 @@ defmodule Trygg.Sleep.Slip do
   def expected(1), do: %{label: "45–90 minutes", lo: 45, hi: 90}
   def expected(2), do: %{label: "20–45 minutes", lo: 20, hi: 45}
   def expected(3), do: %{label: "0–25 minutes", lo: 0, hi: 25}
-  def expected(n) when is_integer(n) and n > 3, do: %{label: "Under 25 minutes", lo: 0, hi: 25}
+  def expected(n) when is_integer(n) and n > 3, do: %{label: "under 25 minutes", lo: 0, hi: 25}
 
   @doc """
   What the nights so far say, from `Trygg.Reports.PlanNights` entries (oldest

@@ -240,7 +240,8 @@ defmodule Trygg.Sleep.NightWakes do
 
   @doc """
   A summary of finished wakings: `%{count, settled, fed, stopped, settled_at}`
-  where `settled_at` maps a step number to how many settled there.
+  where `settled_at` maps a step number to how many settled there. Check-in
+  wakings (`:abcs`, a plan's nights) have no step and count in `settled` only.
   """
   def summarize(wakes) do
     finished = Enum.reject(wakes, &NightWake.active?/1)
@@ -252,7 +253,7 @@ defmodule Trygg.Sleep.NightWakes do
       stopped: Enum.count(finished, &(&1.outcome == :stopped)),
       settled_at:
         finished
-        |> Enum.filter(&(&1.outcome == :settled))
+        |> Enum.filter(&(&1.outcome == :settled and is_integer(&1.settled_step)))
         |> Enum.frequencies_by(& &1.settled_step)
     }
   end

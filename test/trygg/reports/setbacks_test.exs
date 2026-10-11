@@ -134,15 +134,37 @@ defmodule Trygg.Reports.SetbacksTest do
     refute :nap_drop in ids(Setbacks.detect(ctx(age_days: 150, days: days)))
   end
 
-  test "a late nap on three days" do
-    mk = fn i ->
-      date = Date.add(@today, -i)
-      n = %{nap(1, 30) | end: at(date, 17, 45)}
-      day(i, naps: [n], bedtime: at(date, 19))
-    end
+  test "too little time awake before bed on three evenings" do
+    entries =
+      for i <- 1..5 do
+        date = Date.add(@today, -i)
+        nap = at(date, 16, 40)
+        night = at(date, 19)
 
-    days = for i <- 7..1//-1, do: mk.(i)
-    assert :late_catnap in ids(Setbacks.detect(ctx(days: days)))
+        [
+          %Trygg.Log.Entry{
+            type: :sleep,
+            started_at: DateTime.add(nap, -45 * 60),
+            ended_at: nap,
+            data: %{}
+          },
+          %Trygg.Log.Entry{
+            type: :sleep,
+            started_at: night,
+            ended_at: DateTime.add(night, 10 * 3600),
+            data: %{}
+          }
+        ]
+      end
+      |> List.flatten()
+
+    # At 6 months the guide asks for about 3 hours awake before bed.
+    [finding] = Setbacks.detect(ctx(age_days: 215, entries: entries))
+    assert finding.id == :late_catnap
+    assert finding.detail =~ "180 minutes"
+
+    # At 3–6 months it's 2 hours, and 140 minutes is enough.
+    assert Setbacks.detect(ctx(age_days: 150, entries: entries)) == []
   end
 
   test "a wandering bedtime" do

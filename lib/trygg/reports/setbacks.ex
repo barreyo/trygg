@@ -30,7 +30,8 @@ defmodule Trygg.Reports.Setbacks do
       %{child, age_days, nights, days, insights, today}
 
   where `nights` is a `Trygg.Reports.Nights` summary, `days` the recent
-  `%Day{}`s (oldest first) and `insights` a `Trygg.Reports.Insights` summary.
+  `%Day{}`s (oldest first), `entries` the log entries they were built from and
+  `insights` a `Trygg.Reports.Insights` summary.
   Each finding is `%{id, title, detail, playbook}`; `playbook` is a
   `Trygg.Sleep.Setbacks` id or `nil`. Most pressing first.
   """
@@ -43,7 +44,7 @@ defmodule Trygg.Reports.Setbacks do
       early_wake(child, age, ctx.nights),
       night_gap(age, ctx.nights),
       sleep_debt(age, ctx.days),
-      late_catnap(child, age, ctx.days),
+      late_catnap(child, age, ctx),
       short_naps(age, ctx.days),
       nap_drop(age, ctx.days),
       bedtime_drift(age, ctx.insights)
@@ -161,20 +162,26 @@ defmodule Trygg.Reports.Setbacks do
     end
   end
 
-  defp late_catnap(_child, age, _days) when not is_integer(age) or age < @min_age_days, do: nil
+  defp late_catnap(_child, age, _ctx) when not is_integer(age) or age < @min_age_days, do: nil
 
-  defp late_catnap(child, _age, days) do
-    recent = Enum.take(days, -@recent_nights)
-    %{catnaps: %{days: late}} = NapConventions.assess(%{child: child, days: recent})
-
-    if late >= 3 do
+  defp late_catnap(child, age, ctx) do
+    with %{before_bed: {min, _max}} <- AgeGuide.band(age),
+         %{catnaps: %{days: late}} when late >= 3 <-
+           NapConventions.assess(%{
+             child: child,
+             entries: ctx[:entries] || [],
+             today: ctx.today,
+             min_window_minutes: min
+           }) do
       %{
         id: :late_catnap,
-        title: "Naps ending close to bedtime",
+        title: "Not much time awake before bed",
         detail:
-          "On #{late} of the last #{length(recent)} days a nap ended within 90 minutes of bedtime. A late catnap, even a short one in the car, eats the build-up to bedtime.",
+          "On #{late} of the last 7 evenings the last nap ended less than #{min} minutes before they went down for the night. A late catnap, even a short one in the car, eats the build-up to bedtime.",
         playbook: nil
       }
+    else
+      _ -> nil
     end
   end
 
