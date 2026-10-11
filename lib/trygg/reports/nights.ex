@@ -27,7 +27,7 @@ defmodule Trygg.Reports.Nights do
   # The recent-vs-earlier comparison needs this many nights on each side.
   @trend_nights 3
 
-  @doc "How many nights `summarize/3` covers at most."
+  @doc "How many nights `summarize/4` covers by default."
   def count, do: @nights
 
   @doc """
@@ -43,7 +43,8 @@ defmodule Trygg.Reports.Nights do
   second longest), `trend_seconds` how much the last 3 nights' longest sleep
   beats the 3 before them (`nil` without six nights).
   """
-  def summarize(%Child{}, days, entries) when is_list(days) and is_list(entries) do
+  def summarize(%Child{}, days, entries, opts \\ []) when is_list(days) and is_list(entries) do
+    count = Keyword.get(opts, :count, @nights)
     sleeps = Enum.filter(entries, &(&1.type == :sleep))
     feed_entries = Enum.filter(entries, &(&1.type in [:feeding, :breastfeeding]))
     feeds = Enum.map(feed_entries, & &1.started_at)
@@ -54,7 +55,7 @@ defmodule Trygg.Reports.Nights do
       |> Enum.flat_map(fn [evening, morning] ->
         night(evening, morning, sleeps, feeds, feed_entries)
       end)
-      |> Enum.take(-@nights)
+      |> Enum.take(-count)
       |> Enum.reverse()
 
     %{

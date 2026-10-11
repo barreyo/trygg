@@ -254,4 +254,126 @@ defmodule Trygg.Sleep.NightWakesTest do
     membership_fixture(child, user, :viewer)
     Trygg.AccountsFixtures.user_scope_fixture(user)
   end
+
+  describe "ABCs check-ins" do
+    alias Trygg.Sleep.Checkins
+
+    test "a waking starts with the crying already begun", %{owner: owner, child: child} do
+      assert {:ok, wake} = NightWakes.start(owner, child, :abcs)
+
+      assert wake.method == :abcs
+      assert wake.kind == :waking
+      assert [%{"kind" => "cry"}] = wake.events
+      assert %{phase: :crying, pop_ins: 0} = Checkins.state(wake.events, DateTime.utc_now())
+    end
+
+    test "the bedtime put-down starts with no events", %{owner: owner, child: child} do
+      assert {:ok, wake} = NightWakes.start(owner, child, :abcs, kind: :bedtime)
+      assert wake.kind == :bedtime
+      assert wake.events == []
+    end
+
+    test "records pop-ins, calming and crying again, and broadcasts", %{
+      owner: owner,
+      child: child
+    } do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+      flush()
+
+      {:ok, wake} = NightWakes.record(owner, wake, "pop_in", 1)
+      assert Enum.map(wake.events, & &1["kind"]) == ["cry", "pop_in"]
+      assert_receive {:night_wake, :advanced, %{events: [_, _]}}
+
+      {:ok, wake} = NightWakes.record(owner, wake, "calm", 2)
+      {:ok, wake} = NightWakes.record(owner, wake, "cry", 3)
+      assert Enum.map(wake.events, & &1["kind"]) == ["cry", "pop_in", "calm", "cry"]
+    end
+
+    test "a double tap records one event", %{owner: owner, child: child, member: member} do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+      flush()
+
+      {:ok, _} = NightWakes.record(owner, wake, "pop_in", 1)
+      {:ok, again} = NightWakes.record(member, wake, "pop_in", 1)
+
+      assert length(again.events) == 2
+      assert_receive {:night_wake, :advanced, _}
+      refute_receive {:night_wake, :advanced, _}, 50
+    end
+
+    test "recording needs a known kind, and a caregiver", %{owner: owner, child: child} do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+
+      assert_raise FunctionClauseError, fn ->
+        apply(NightWakes, :record, [owner, wake, "shout", 1])
+      end
+
+      viewer = user_viewer(child)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        NightWakes.record(viewer, wake, "pop_in", 1)
+      end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn -> NightWakes.asleep(viewer, wake, 1) end
+    end
+
+    test "falling asleep ends it as settled with the crying time", %{owner: owner, child: child} do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+      # Make the crying a known length: it began 12 minutes ago.
+      back = DateTime.add(DateTime.utc_now(), -12 * 60, :second)
+
+      Repo.update_all(NightWake,
+        set: [events: [Checkins.event("cry", back)], started_at: DateTime.truncate(back, :second)]
+      )
+
+      wake = Repo.get!(NightWake, wake.id)
+      flush()
+
+      assert {:ok, ended} = NightWakes.asleep(owner, wake, 1)
+      assert ended.outcome == :settled
+      assert %DateTime{} = ended.ended_at
+      assert ended.cry_seconds in 719..722
+      assert List.last(ended.events)["kind"] == "asleep"
+      assert_receive {:night_wake, :finished, %{outcome: :settled}}
+      assert NightWakes.active(owner, child) == nil
+    end
+
+    test "falling asleep twice ends it once", %{owner: owner, child: child, member: member} do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+      flush()
+
+      {:ok, first} = NightWakes.asleep(owner, wake, 1)
+      {:ok, second} = NightWakes.asleep(member, wake, 1)
+
+      assert second.id == first.id
+      assert length(second.events) == 2
+      assert_receive {:night_wake, :finished, _}
+      refute_receive {:night_wake, :finished, _}, 50
+    end
+
+    test "stopping without a result still totals the crying", %{owner: owner, child: child} do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+      back = DateTime.add(DateTime.utc_now(), -5 * 60, :second)
+      Repo.update_all(NightWake, set: [events: [Checkins.event("cry", back)]])
+
+      {:ok, ended} = NightWakes.finish(owner, Repo.get!(NightWake, wake.id), :stopped)
+      assert ended.outcome == :stopped
+      assert ended.cry_seconds in 299..302
+    end
+
+    test "a bedtime put-down with no crying falls asleep with zero crying", %{
+      owner: owner,
+      child: child
+    } do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs, kind: :bedtime)
+      assert {:ok, ended} = NightWakes.asleep(owner, wake, 0)
+      assert ended.cry_seconds == 0
+      assert ended.outcome == :settled
+    end
+
+    test "links the waking to a plan", %{owner: owner, child: child} do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs, plan_id: nil)
+      assert wake.plan_id == nil
+    end
+  end
 end

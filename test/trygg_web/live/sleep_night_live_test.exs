@@ -291,4 +291,279 @@ defmodule TryggWeb.SleepNightLiveTest do
       assert has_element?(lv, "#open-night-mode[href='#{~p"/c/#{child}/sleep/night"}']")
     end
   end
+
+  describe "ABCs check-ins" do
+    alias Trygg.Sleep.{Abcs, NightWake, Phase, Plans}
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+
+      child =
+        child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -170), timezone: "Etc/UTC"})
+
+      {:ok, child} =
+        Families.update_sleep_toolkit(scope, child, %{sleep_training_cleared_on: Date.utc_today()})
+
+      checks = Map.new(Abcs.preflight_ids(), &{&1, Date.to_iso8601(Date.utc_today())})
+      {:ok, child} = Families.update_sleep_toolkit(scope, child, %{sleep_checks: checks})
+
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    # A plan whose current night is `night` right now.
+    defp start_plan(scope, child, night, attrs \\ %{}) do
+      local = DateTime.shift_zone!(DateTime.utc_now(), child.timezone)
+
+      evening =
+        if local.hour < 12,
+          do: Date.add(DateTime.to_date(local), -1),
+          else: DateTime.to_date(local)
+
+      {:ok, plan} =
+        Plans.start(
+          scope,
+          child,
+          Phase.for_child(child),
+          Map.put(attrs, :started_on, Date.add(evening, -(night - 1)))
+        )
+
+      plan
+    end
+
+    test "without a plan a 5-month-old gets S.I.T. B.A.C.K., not check-ins", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      assert has_element?(lv, "#night-start", "S.I.T. B.A.C.K.")
+      refute has_element?(lv, "#abcs-put-down")
+    end
+
+    test "with a plan it offers to put down or to start a waking", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+
+      assert has_element?(lv, "#night-idle", "ABCs of Sleep")
+      assert has_element?(lv, "#abcs-put-down")
+      assert has_element?(lv, "#abcs-cry")
+      refute has_element?(lv, "#night-start")
+    end
+
+    test "putting down starts a quiet bedtime that waits for crying", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      plan = start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+
+      lv |> element("#abcs-put-down") |> render_click()
+
+      assert has_element?(lv, ~s(#night-step[data-phase="waiting"]))
+      assert has_element?(lv, "#abcs-waiting")
+
+      assert %{method: :abcs, kind: :bedtime, plan_id: plan_id, events: []} =
+               NightWakes.active(scope, child)
+
+      assert plan_id == plan.id
+    end
+
+    test "crying starts the pop-in countdown: 5 minutes first", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-put-down") |> render_click()
+      lv |> element("#abcs-record-cry") |> render_click()
+
+      assert has_element?(lv, ~s(#night-step[data-phase="crying"]))
+      assert has_element?(lv, "#abcs-state", "pop-in (1)")
+
+      [%{"at" => at}] = NightWakes.active(scope, child).events
+      {:ok, cried, _} = DateTime.from_iso8601(at)
+      ends = DateTime.to_unix(cried) * 1000 + 300_000
+      assert has_element?(lv, ~s(#night-countdown[phx-hook=NightTimer][data-ends-at="#{ends}"]))
+    end
+
+    test "a pop-in moves the next one to 10 minutes later", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-cry") |> render_click()
+      lv |> element("#abcs-record-popin") |> render_click()
+
+      assert has_element?(lv, "#abcs-cry-total", "pop-ins: 1")
+      assert has_element?(lv, "#abcs-state", "pop-in (2)")
+      assert %{events: [_, %{"kind" => "pop_in", "at" => at}]} = NightWakes.active(scope, child)
+      {:ok, went_in, _} = DateTime.from_iso8601(at)
+      ends = DateTime.to_unix(went_in) * 1000 + 600_000
+      assert has_element?(lv, ~s(#night-countdown[data-ends-at="#{ends}"]))
+    end
+
+    test "calming waits, and crying again resumes", %{conn: conn, scope: scope, child: child} do
+      start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-cry") |> render_click()
+      lv |> element("#abcs-record-calm") |> render_click()
+
+      assert has_element?(lv, ~s(#night-step[data-phase="calming"]))
+      assert has_element?(lv, "#abcs-calming", "Wait")
+      refute has_element?(lv, "#night-countdown")
+      refute has_element?(lv, "#abcs-record-popin")
+
+      lv |> element("#abcs-record-cry") |> render_click()
+      assert has_element?(lv, ~s(#night-step[data-phase="crying"]))
+    end
+
+    test "falling asleep ends it and reports the crying", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-cry") |> render_click()
+      lv |> element("#abcs-asleep") |> render_click()
+
+      assert has_element?(lv, "#night-idle")
+      assert has_element?(lv, "#night-last", "Asleep")
+      assert NightWakes.active(scope, child) == nil
+
+      assert [%NightWake{outcome: :settled, cry_seconds: seconds}] =
+               NightWakes.recent(scope, child)
+
+      assert is_integer(seconds)
+    end
+
+    test "the comfort rule follows the night: touch on night 1, voice from night 3", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      plan = start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-cry") |> render_click()
+      assert has_element?(lv, "#abcs-popin-how", "soothing touch")
+
+      {:ok, _} = Plans.finish(scope, plan, :stopped)
+      {:ok, wake} = NightWakes.active(scope, child) |> then(&{:ok, &1})
+      {:ok, _} = NightWakes.finish(scope, wake, :stopped)
+
+      start_plan(scope, child, 3)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-cry") |> render_click()
+      assert has_element?(lv, "#abcs-popin-how", "voice only")
+    end
+
+    test "tonight's night feeds are listed", %{conn: conn, scope: scope, child: child} do
+      start_plan(scope, child, 1, %{
+        feed_kind: :nursing,
+        feed_times: [1350, 210],
+        feed_amounts: [15, 15]
+      })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+
+      assert has_element?(lv, "#night-weaning", "22:30: 15 min")
+      assert has_element?(lv, "#night-weaning", "asleep 5–10 minutes")
+    end
+
+    test "from 11 hours after the put-down it's morning: get them once quiet" do
+      now = ~U[2026-10-11 07:00:00Z]
+
+      wake = %NightWake{
+        kind: :waking,
+        method: :abcs,
+        started_at: now,
+        events: [Trygg.Sleep.Checkins.event("cry", now)]
+      }
+
+      render = fn bedtime ->
+        render_component(&TryggWeb.SleepAbcsComponents.abcs_screen/1,
+          wake: wake,
+          tonight: %{night: 1},
+          bedtime_at: bedtime,
+          can_write: true,
+          now: now,
+          tz: "Etc/UTC"
+        )
+      end
+
+      assert render.(DateTime.add(now, -11 * 3600, :second)) =~ "been 11 hours"
+      assert render.(DateTime.add(now, -12 * 3600, :second)) =~ "id=\"abcs-morning\""
+      refute render.(DateTime.add(now, -10 * 3600, :second)) =~ "abcs-morning"
+      refute render.(nil) =~ "abcs-morning"
+    end
+
+    test "no morning banner before 11 hours", %{conn: conn, scope: scope, child: child} do
+      plan = start_plan(scope, child, 1)
+      {:ok, put_down} = NightWakes.start(scope, child, :abcs, kind: :bedtime, plan_id: plan.id)
+      {:ok, _} = NightWakes.asleep(scope, put_down, 0)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      lv |> element("#abcs-cry") |> render_click()
+      refute has_element?(lv, "#abcs-morning")
+    end
+
+    test "either caregiver can run the pop-ins, and a double tap counts once", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      partner = user_fixture(%{first_name: "Sam"})
+      membership_fixture(child, partner, :caregiver)
+      partner_scope = user_scope_fixture(partner)
+      plan = start_plan(scope, child, 1)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+
+      {:ok, wake} = NightWakes.start(partner_scope, child, :abcs, plan_id: plan.id)
+      assert has_element?(lv, ~s(#night-step[data-phase="crying"]))
+      assert has_element?(lv, "#night-started-by", "by Sam")
+
+      {:ok, _} = NightWakes.record(partner_scope, wake, "pop_in", 1)
+      assert has_element?(lv, "#abcs-cry-total", "pop-ins: 1")
+
+      # This screen is up to date; a stale tap from the old state does nothing.
+      render_click(lv, "record", %{"kind" => "pop_in", "seen" => "1"})
+      assert has_element?(lv, "#abcs-cry-total", "pop-ins: 1")
+    end
+
+    test "viewers can watch but not run it", %{conn: conn, scope: owner, child: child} do
+      plan = start_plan(owner, child, 1)
+      %{conn: conn, scope: viewer} = register_and_log_in_user(%{conn: conn})
+      membership_fixture(child, viewer.user, :viewer)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      refute has_element?(lv, "#abcs-put-down")
+
+      {:ok, _wake} = NightWakes.start(owner, child, :abcs, plan_id: plan.id)
+      assert has_element?(lv, ~s(#night-step[data-phase="crying"]))
+      refute has_element?(lv, "#abcs-record-popin")
+      refute has_element?(lv, "#abcs-asleep")
+    end
+
+    test "stopping the plan returns night mode to the age's method", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      plan = start_plan(scope, child, 1)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/night")
+      assert has_element?(lv, "#abcs-put-down")
+
+      {:ok, _} = Plans.finish(scope, plan, :stopped)
+      assert has_element?(lv, "#night-start", "S.I.T. B.A.C.K.")
+      refute has_element?(lv, "#abcs-put-down")
+    end
+  end
 end

@@ -13,7 +13,7 @@ defmodule TryggWeb.SleepToolkitComponents do
   alias Trygg.Units
 
   @doc "Links between the Sleep tab's pages."
-  attr :current, :atom, required: true, values: [:today, :toolkit, :night]
+  attr :current, :atom, required: true, values: [:today, :toolkit, :plan, :night]
   attr :child, :map, required: true
 
   def sleep_subnav(assigns) do
@@ -36,6 +36,15 @@ defmodule TryggWeb.SleepToolkitComponents do
         aria-current={@current == :toolkit && "page"}
       >
         Toolkit
+      </.button>
+      <.button
+        id="subnav-plan"
+        navigate={"/c/#{@child.id}/sleep/plan"}
+        size="sm"
+        variant={if @current == :plan, do: "primary"}
+        aria-current={@current == :plan && "page"}
+      >
+        Plan
       </.button>
       <.button
         id="subnav-night"
