@@ -1155,6 +1155,13 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
  */
 .flash-pop { animation: undo-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
 
+/* A bar drains along the toast's bottom edge for the time it has left, so it's
+   clear it will go on its own; it holds while a pointer is over the toast. */
+.flash-timer { transform-origin: left; animation: undo-drain linear forwards; }
+@media (hover: hover) {
+  .toast:hover .flash-timer { animation-play-state: paused; }
+}
+
 /* The prompt waits a few seconds after it's shown before appearing, hidden (and
    untappable) until then. */
 @keyframes install-in {
@@ -1165,6 +1172,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 
 @media (prefers-reduced-motion: reduce) {
   .flash-pop { animation: trygg-fade-in 150ms ease-out backwards; }
+  .flash-timer { display: none; }
   .install-prompt { animation: install-in-calm 200ms ease-out 4s backwards; }
 }
 @keyframes install-in-calm {
