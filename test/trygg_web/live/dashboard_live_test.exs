@@ -1723,6 +1723,172 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "sleep coaching" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "a newborn sees the Sleep plan with soothing steps and what's next", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#sleep-plan #sleep-plan-phase", "Newborn")
+      assert has_element?(lv, "#sleep-plan #open-cries")
+      assert has_element?(lv, "#sleep-plan-next", "Foundations")
+      assert has_element?(lv, "#cue-guide-overtired")
+    end
+
+    test "the C.R.I.E.S. sheet lists the five steps", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#open-cries") |> render_click()
+      assert has_element?(lv, "#quick-sheet #cries-steps li", "Contain")
+      assert has_element?(lv, "#cries-s", "Suck")
+      assert lv |> element("#cries-steps") |> render() |> String.split("<li") |> length() == 6
+
+      lv |> element("#quick-sheet button", "Close") |> render_click()
+      refute has_element?(lv, "#quick-sheet")
+    end
+
+    test "soothing steps are for newborns only; older babies don't get the button", %{
+      conn: conn,
+      scope: scope
+    } do
+      older = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -100)})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{older}")
+
+      assert has_element?(lv, "#sleep-plan-phase", "Foundations")
+      refute has_element?(lv, "#open-cries")
+    end
+
+    test "no Sleep plan when sleep isn't tracked, or before the baby is born", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, child} = Families.update_tracked_types(scope, child, [:diaper])
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#sleep-plan")
+
+      expecting =
+        child_fixture(scope, %{
+          birth_date: nil,
+          expected_birth_date: Date.add(Date.utc_today(), 30)
+        })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{expecting}")
+      refute has_element?(lv, "#sleep-plan")
+    end
+
+    test "a cue tapped before Start sleep is saved on that sleep", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#cue-chip-ready") |> render_click()
+      assert has_element?(lv, "#cue-chip-ready[aria-pressed=true]")
+      assert has_element?(lv, "#cue-chip-tired[aria-pressed=false]")
+
+      lv |> element("#log-sleep") |> render_click()
+      assert [%{type: :sleep, data: %{"cue" => "ready"}}] = Log.running_timers(scope, child)
+      assert has_element?(lv, "#cue-chip-ready[aria-pressed=true]")
+    end
+
+    test "tapping the selected cue again clears it", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#cue-chip-tired") |> render_click()
+      lv |> element("#cue-chip-tired") |> render_click()
+      refute has_element?(lv, "#cue-chip-tired[aria-pressed=true]")
+
+      lv |> element("#log-sleep") |> render_click()
+      assert [%{data: data}] = Log.running_timers(scope, child)
+      refute Map.has_key?(data, "cue")
+    end
+
+    test "a cue can be set, changed and cleared while the baby sleeps", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element("#log-sleep") |> render_click()
+
+      lv |> element("#cue-chip-overtired") |> render_click()
+      assert [%{data: %{"cue" => "overtired"}}] = Log.running_timers(scope, child)
+
+      lv |> element("#cue-chip-tired") |> render_click()
+      assert [%{data: %{"cue" => "tired"}}] = Log.running_timers(scope, child)
+
+      lv |> element("#cue-chip-tired") |> render_click()
+      assert [%{data: data}] = Log.running_timers(scope, child)
+      refute Map.has_key?(data, "cue")
+    end
+
+    test "the cue survives stopping the sleep", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element("#log-sleep") |> render_click()
+      lv |> element("#cue-chip-ready") |> render_click()
+
+      lv |> element("#stop-sleep") |> render_click()
+      lv |> form("#sleep-form", sleep: %{}) |> render_submit()
+
+      assert [%{type: :sleep, ended_at: %DateTime{}, data: %{"cue" => "ready"}}] =
+               Log.list_entries(scope, child)
+    end
+
+    test "a sleep logged from earlier can carry a cue", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      now = DateTime.utc_now()
+      started = now |> DateTime.add(-60, :minute) |> Calendar.strftime("%Y-%m-%dT%H:%M")
+      ended = now |> DateTime.add(-30, :minute) |> Calendar.strftime("%Y-%m-%dT%H:%M")
+
+      lv |> element("button", "Log from earlier") |> render_click()
+      lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
+
+      lv
+      |> form("#sleep-form", sleep: %{started_at: started, ended_at: ended, cue: "overtired"})
+      |> render_submit()
+
+      assert [%{type: :sleep, data: %{"cue" => "overtired"}}] = Log.list_entries(scope, child)
+    end
+
+    test "the card reports how many sleeps started right after a feed", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, _feed} =
+        Log.create_entry(scope, child, :feeding, %{
+          "started_at" => DateTime.add(DateTime.utc_now(), -3, :minute),
+          "data" => %{"amount_ml" => 60}
+        })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#sleep-plan-feed-sleep")
+
+      lv |> element("#log-sleep") |> render_click()
+      assert has_element?(lv, "#sleep-plan-feed-sleep", "1 of 1 sleeps today")
+    end
+
+    test "cues noted are summarised on the card", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#sleep-plan-cues") == false
+
+      lv |> element("#cue-chip-overtired") |> render_click()
+      lv |> element("#log-sleep") |> render_click()
+
+      assert has_element?(lv, "#sleep-plan-cues", "1 of 1 sleeps this week")
+      assert has_element?(lv, "#sleep-plan-cues", "1 started overtired")
+    end
+  end
+
   describe "push notification prompt" do
     setup %{conn: conn} do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})

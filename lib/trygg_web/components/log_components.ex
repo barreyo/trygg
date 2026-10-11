@@ -12,6 +12,7 @@ defmodule TryggWeb.LogComponents do
   alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Log.Entry
+  alias Trygg.Sleep.Cue
   alias Trygg.Units
 
   @doc """
@@ -380,7 +381,7 @@ defmodule TryggWeb.LogComponents do
 
   @doc "Secondary line for an entry (location, colour, note), or nil."
   def entry_detail(%Entry{type: :sleep, data: data, note: note}, _units) do
-    [location_label(data["location"]), note] |> compact_join(" · ")
+    [location_label(data["location"]), Cue.short(data["cue"]), note] |> compact_join(" · ")
   end
 
   def entry_detail(%Entry{type: :breastfeeding, data: data, note: note}, _units) do

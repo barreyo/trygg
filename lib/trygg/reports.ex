@@ -20,6 +20,7 @@ defmodule Trygg.Reports do
   alias Trygg.Reports.PredictionLedger
   alias Trygg.Reports.Rhythm
   alias Trygg.Reports.Shifts
+  alias Trygg.Reports.SleepHabits
 
   # Long enough to reconstruct last night's cluster (and a late bedtime).
   @lookback_hours 36
@@ -135,6 +136,24 @@ defmodule Trygg.Reports do
       diapers: %{flags: s.diapers.flags, dry_seconds: s.diapers.dry_seconds},
       alerts: s.alerts
     }
+  end
+
+  @doc """
+  Sleep cues and the feed-to-sleep pattern over the last
+  7 local days, for the Home Sleep plan card. See
+  `Trygg.Reports.SleepHabits`. Requires `:viewer`.
+  """
+  def sleep_habits(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+    {start, _} = Child.day_bounds(child, Date.add(today, 1 - SleepHabits.window_days()))
+    since = DateTime.add(start, -SleepHabits.lookback_seconds(), :second)
+
+    entries =
+      Log.list_entries(scope, child, types: [:sleep, :feeding, :breastfeeding], since: since)
+
+    SleepHabits.summarize(child, entries, today, now)
   end
 
   @doc """

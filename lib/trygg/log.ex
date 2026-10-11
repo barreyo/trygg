@@ -607,6 +607,27 @@ defmodule Trygg.Log do
     })
   end
 
+  @doc """
+  Sets (or, with `nil`, clears) how sleepy the child looked when `entry`, a
+  sleep, started — see `Trygg.Sleep.Cue`. Other `data`, timing and the note are
+  left as they were. Requires `:caregiver`.
+  """
+  def set_sleep_cue(%Scope{} = scope, %Entry{type: :sleep} = entry, cue) do
+    data =
+      case cue do
+        nil -> Map.delete(entry.data || %{}, "cue")
+        cue -> Map.put(entry.data || %{}, "cue", cue)
+      end
+
+    update_entry(scope, entry, %{
+      "type" => "sleep",
+      "started_at" => entry.started_at,
+      "ended_at" => entry.ended_at,
+      "data" => data,
+      "note" => entry.note
+    })
+  end
+
   ## Photos -----------------------------------------------------------
 
   @doc "The largest photo, in bytes, an entry will accept."

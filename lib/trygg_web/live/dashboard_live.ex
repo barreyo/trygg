@@ -7,12 +7,16 @@ defmodule TryggWeb.DashboardLive do
   alias Trygg.Log.Entry
   alias TryggWeb.UndoDelete
   alias Trygg.Reports.Alerts
+  alias Trygg.Sleep.{Cue, Phase}
   alias Trygg.Units
   alias TryggWeb.{Loading, RemoteUpdate}
 
   @recent_limit 20
   @tick_ms 60_000
   @nudge_minutes [-5, -15, -30]
+  # A cue tapped before a sleep starts is dropped if the sleep doesn't follow
+  # within this long, so a stale one never labels a later sleep.
+  @cue_ttl_seconds 30 * 60
   @note_suggestions ["Peaceful", "Restless", "Short one", "Woke a lot"]
 
   ## Mount / redirect -----------------------------------------------------
@@ -48,6 +52,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:vapid_public_key, Push.vapid_public_key())
       |> assign(:dismissed_notices, MapSet.new())
       |> assign(summary: nil, outlook: nil, weight_reminder: nil, rhythm_center: nil)
+      |> assign(habits: nil, sleep_phase: nil, pending_cue: nil, pending_cue_at: nil)
       |> assign(:entries_empty?, false)
       |> stream(:entries, [])
       |> allow_upload(:photo,
@@ -138,7 +143,12 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_info(:tick, socket) do
     Process.send_after(self(), :tick, @tick_ms)
-    {:noreply, socket |> assign(:now_tick, System.system_time(:second)) |> refresh_summary()}
+
+    {:noreply,
+     socket
+     |> assign(:now_tick, System.system_time(:second))
+     |> expire_pending_cue()
+     |> refresh_summary()}
   end
 
   def handle_info({:undo_expired, ref}, socket),
@@ -183,13 +193,37 @@ defmodule TryggWeb.DashboardLive do
 
   @impl true
   def handle_event("start_sleep", _params, socket) do
+    attrs =
+      case socket.assigns.pending_cue do
+        nil -> %{}
+        cue -> %{"data" => %{"cue" => cue}}
+      end
+
     socket =
-      case Log.start_timer(socket.assigns.current_scope, socket.assigns.current_child, :sleep) do
-        {:ok, _} -> splash(socket, "sleep_start")
-        _ -> socket
+      case Log.start_timer(
+             socket.assigns.current_scope,
+             socket.assigns.current_child,
+             :sleep,
+             attrs
+           ) do
+        {:ok, _} ->
+          socket |> assign(pending_cue: nil, pending_cue_at: nil) |> splash("sleep_start")
+
+        _ ->
+          socket
       end
 
     {:noreply, socket}
+  end
+
+  # Tap a sleepy-cue chip. While awake it's remembered for the sleep about to
+  # start; during a sleep it's saved on that sleep. Tapping the set one clears it.
+  def handle_event("set_cue", %{"cue" => cue}, socket) do
+    if socket.assigns.can_write and Cue.valid?(cue) do
+      {:noreply, set_cue(socket, Log.running(socket.assigns.summary, :sleep), cue)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("start_breastfeeding", _params, socket) do
@@ -319,6 +353,10 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, sheet: :earlier, sheet_form: nil)}
   end
 
+  def handle_event("open_sheet", %{"kind" => "cries"}, socket) do
+    {:noreply, assign(socket, sheet: :cries, sheet_form: nil)}
+  end
+
   def handle_event("open_sheet", %{"kind" => "layout"}, socket) do
     types = Enum.map(socket.assigns.current_child.tracked_types, &to_string/1)
 
@@ -400,6 +438,7 @@ defmodule TryggWeb.DashboardLive do
         %{
           "started_at" => Child.to_local_input(child, started),
           "ended_at" => Child.to_local_input(child, ended),
+          "cue" => "",
           "note" => ""
         },
         as: :sleep
@@ -619,6 +658,31 @@ defmodule TryggWeb.DashboardLive do
   defp settle_feed(socket, {:error, _}),
     do: put_flash(socket, :error, "Pick an amount first.")
 
+  ## Sleepy cues -----------------------------------------------------------
+
+  defp set_cue(socket, nil, cue) do
+    if socket.assigns.pending_cue == cue,
+      do: assign(socket, pending_cue: nil, pending_cue_at: nil),
+      else: assign(socket, pending_cue: cue, pending_cue_at: System.system_time(:second))
+  end
+
+  defp set_cue(socket, %Entry{} = nap, cue) do
+    new = if nap.data["cue"] == cue, do: nil, else: cue
+
+    case Log.set_sleep_cue(socket.assigns.current_scope, nap, new) do
+      {:ok, _} -> socket
+      {:error, _} -> put_flash(socket, :error, "Couldn't save that.")
+    end
+  end
+
+  defp expire_pending_cue(%{assigns: %{pending_cue_at: at}} = socket) when is_integer(at) do
+    if System.system_time(:second) - at > @cue_ttl_seconds,
+      do: assign(socket, pending_cue: nil, pending_cue_at: nil),
+      else: socket
+  end
+
+  defp expire_pending_cue(socket), do: socket
+
   ## Sleep save logic ----------------------------------------------------
 
   defp save_sleep(socket, :sleep_stop, params) do
@@ -671,6 +735,7 @@ defmodule TryggWeb.DashboardLive do
             %{
               "started_at" => started,
               "ended_at" => ended,
+              "data" => %{"cue" => blank(params["cue"])},
               "note" => blank(params["note"])
             },
             consume_photo(socket)
@@ -830,6 +895,7 @@ defmodule TryggWeb.DashboardLive do
       summary: Log.summary(scope, child),
       outlook: Reports.outlook(scope, child),
       weight_reminder: Growth.weight_check_reminder(scope, child),
+      habits: Reports.sleep_habits(scope, child),
       dismissed_notices: Notices.dismissed(scope, child)
     }
   end
@@ -839,6 +905,8 @@ defmodule TryggWeb.DashboardLive do
     |> assign(:summary, summary)
     |> assign(:outlook, status.outlook)
     |> assign(:weight_reminder, status.weight_reminder)
+    |> assign(:habits, status.habits)
+    |> assign(:sleep_phase, Phase.for_child(socket.assigns.current_child))
     |> assign(:dismissed_notices, status.dismissed_notices)
     |> assign_rhythm_center()
     |> push_offline_snapshot(socket.assigns.current_scope, socket.assigns.current_child, summary)
@@ -1034,6 +1102,7 @@ defmodule TryggWeb.DashboardLive do
   # Accessible name of each sheet — the same words as its on-screen heading.
   defp sheet_label(:earlier), do: "Log from earlier"
   defp sheet_label(:layout), do: "Customize Today"
+  defp sheet_label(:cries), do: "When they cry"
   defp sheet_label(:bottle), do: "Log a bottle"
   defp sheet_label(:sleep_stop), do: "How did they sleep?"
   defp sheet_label(:sleep_start), do: "When did they fall asleep?"
@@ -1237,8 +1306,17 @@ defmodule TryggWeb.DashboardLive do
                 current_child={@current_child}
                 unit_system={@unit_system}
                 can_write={@can_write}
+                pending_cue={@pending_cue}
               />
             </section>
+
+            <%!-- Sleep coaching for the child's age: cues, the feed → sleep
+               pattern, soothing steps and what unlocks next. --%>
+            <.sleep_plan_card
+              :if={@habits && @sleep_phase && :sleep in @current_child.tracked_types}
+              phase={@sleep_phase}
+              habits={@habits}
+            />
 
             <%!-- The odd ones out — rare enough to stay small --%>
             <div :if={@can_write} class="mt-3 flex items-center justify-center gap-1">
@@ -1412,6 +1490,7 @@ defmodule TryggWeb.DashboardLive do
   attr :current_child, :map, required: true
   attr :unit_system, :atom, required: true
   attr :can_write, :boolean, required: true
+  attr :pending_cue, :string, default: nil
 
   # One at-a-glance card with its log buttons. Home renders these in the order
   # of the child's `tracked_types`, which is how caregivers arrange Home.
@@ -1505,7 +1584,12 @@ defmodule TryggWeb.DashboardLive do
               <.icon name="hero-stop" class="size-5" /> Stop
             </.button>
             <.timer_nudges type={:sleep} edit_start? />
+            <.cue_chips
+              selected={Log.running(@summary, :sleep).data["cue"]}
+              label="How did they look going down?"
+            />
           <% else %>
+            <.cue_chips selected={@pending_cue} label="Showing cues?" />
             <.button
               id="log-sleep"
               variant="primary"
@@ -1657,6 +1741,8 @@ defmodule TryggWeb.DashboardLive do
               Cancel
             </.button>
           </div>
+        <% :cries -> %>
+          <.cries_sheet />
         <% :layout -> %>
           <h3 class="font-semibold text-lg mb-1">Customize Today</h3>
           <p class="text-sm opacity-70 mb-4">
@@ -1876,6 +1962,12 @@ defmodule TryggWeb.DashboardLive do
           >
             <.time_field form={@form} field={:started_at} label="Fell asleep" />
             <.time_field form={@form} field={:ended_at} label="Woke up" />
+            <.input
+              field={@form[:cue]}
+              type="select"
+              label="How did they look going down? (optional)"
+              options={[{"Not noted", ""} | Enum.map(Cue.all(), &{&1.title, &1.id})]}
+            />
             <.note_field form={@form} />
             <.photo_field upload={@photo_upload} />
             <.sheet_buttons save="Add sleep" uploading?={photo_uploading?(@photo_upload)} />

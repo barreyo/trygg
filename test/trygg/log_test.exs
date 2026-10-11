@@ -407,6 +407,53 @@ defmodule Trygg.LogTest do
     end
   end
 
+  describe "sleepy cue on a sleep" do
+    test "a valid cue is kept and an unknown one is dropped", %{scope: scope, child: child} do
+      assert {:ok, %{data: %{"cue" => "ready"}}} =
+               Log.create_entry(scope, child, :sleep, %{"data" => %{"cue" => "ready"}})
+
+      assert {:ok, %{data: data}} =
+               Log.create_entry(scope, child, :sleep, %{"data" => %{"cue" => "hungry"}})
+
+      assert data == %{}
+    end
+
+    test "start_timer/4 records the cue and keeps it through stop_timer/3", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, nap} = Log.start_timer(scope, child, :sleep, %{"data" => %{"cue" => "tired"}})
+      assert nap.data == %{"cue" => "tired"}
+
+      {:ok, stopped} = Log.stop_timer(scope, nap, %{"data" => %{"location" => "crib"}})
+      assert stopped.data == %{"cue" => "tired", "location" => "crib"}
+    end
+
+    test "set_sleep_cue/3 sets and clears it, leaving the rest alone", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, nap} = Log.start_timer(scope, child, :sleep, %{"data" => %{"location" => "crib"}})
+
+      assert {:ok, set} = Log.set_sleep_cue(scope, nap, "overtired")
+      assert set.data == %{"location" => "crib", "cue" => "overtired"}
+      assert set.ended_at == nil
+      assert set.started_at == nap.started_at
+
+      assert {:ok, cleared} = Log.set_sleep_cue(scope, set, nil)
+      assert cleared.data == %{"location" => "crib"}
+    end
+
+    test "set_sleep_cue/3 needs a caregiver" do
+      %{owner_scope: owner, child: child, member_scope: viewer} = shared_child_fixture(:viewer)
+      {:ok, nap} = Log.start_timer(owner, child, :sleep)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.set_sleep_cue(viewer, nap, "ready")
+      end
+    end
+  end
+
   describe "breastfeeding pattern data" do
     test "stores supported patterns, permits missing values, and rejects unknown values", %{
       scope: scope,
