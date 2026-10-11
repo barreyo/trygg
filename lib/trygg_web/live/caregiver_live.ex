@@ -34,11 +34,11 @@ defmodule TryggWeb.CaregiverLive do
             <div class="flex-1 min-w-0">
               <div class="flex min-w-0 items-baseline gap-1">
                 <span class="truncate">{m.user.email}</span>
-                <span :if={m.user_id == @current_scope.user.id} class="shrink-0 opacity-60">
+                <span :if={m.user_id == @current_scope.user.id} class="shrink-0 opacity-70">
                   (you)
                 </span>
               </div>
-              <div class="text-xs opacity-60">{m.role}</div>
+              <div class="text-xs opacity-70">{m.role}</div>
             </div>
             <.button
               :if={@is_owner and m.user_id != @current_scope.user.id}
@@ -62,7 +62,7 @@ defmodule TryggWeb.CaregiverLive do
               <.icon name="hero-envelope" class="size-5 opacity-50" />
               <div class="flex-1 min-w-0">
                 <div class="truncate">{i.email}</div>
-                <div class="text-xs opacity-60">
+                <div class="text-xs opacity-70">
                   {i.role} · invited {relative_time(i.inserted_at)}
                 </div>
               </div>
@@ -106,7 +106,7 @@ defmodule TryggWeb.CaregiverLive do
 
       <section id="api-access" class="mt-10">
         <h3 class="text-sm font-semibold opacity-70 mb-1">API access</h3>
-        <p class="text-xs opacity-60 mb-3">
+        <p class="text-xs opacity-70 mb-3">
           A token lets a script or app read and log for this whole family over the
           REST API, as you. Send it as <code>Authorization: Bearer &lt;token&gt;</code>
           to <code>{url(~p"/api/v1/children")}</code>.
@@ -145,7 +145,7 @@ defmodule TryggWeb.CaregiverLive do
             <.icon name="hero-key" class="size-5 opacity-50" />
             <div class="flex-1 min-w-0">
               <div class="truncate">{t.name}</div>
-              <div class="text-xs opacity-60">
+              <div class="text-xs opacity-70">
                 …{t.hint} · {token_access(t)} · {token_usage(t)}<span :if={
                   t.created_by_id != @current_scope.user.id
                 }> · {t.created_by.email}</span>

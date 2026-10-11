@@ -123,7 +123,7 @@ defmodule TryggWeb.Layouts do
             <div class="font-semibold text-lg truncate">
               {@title || "Trygg"}
             </div>
-            <div :if={@subtitle} class="text-xs opacity-60 truncate">
+            <div :if={@subtitle} class="text-xs opacity-70 truncate">
               {@subtitle}
             </div>
           </div>
@@ -430,7 +430,7 @@ defmodule TryggWeb.Layouts do
       class={[
         "relative flex flex-col items-center gap-1 py-2.5 transition-colors",
         "hover:bg-base-300 active:bg-base-300",
-        if(@active, do: "text-primary", else: "text-base-content/60")
+        if(@active, do: "text-primary", else: "text-base-content/70")
       ]}
     >
       <span
@@ -570,9 +570,9 @@ defmodule TryggWeb.Layouts do
         <span class="flex-1 min-w-0 leading-tight">
           <span class="font-semibold text-lg truncate flex items-center gap-1">
             <span class="truncate">{@current_child.name}</span>
-            <.icon name="hero-chevron-down" class="size-4 opacity-60 shrink-0" />
+            <.icon name="hero-chevron-down" class="size-4 opacity-70 shrink-0" />
           </span>
-          <span class="text-xs opacity-60 truncate block">
+          <span class="text-xs opacity-70 truncate block">
             {@age || "Tap to switch child"}
           </span>
         </span>
@@ -591,7 +591,7 @@ defmodule TryggWeb.Layouts do
           {child_initial(@current_child)}
         </span>
         <span class="font-medium text-sm truncate">{@current_child.name}</span>
-        <.icon name="hero-chevron-down" class="size-3.5 opacity-60 shrink-0" />
+        <.icon name="hero-chevron-down" class="size-3.5 opacity-70 shrink-0" />
       </button>
 
       <div
@@ -604,7 +604,7 @@ defmodule TryggWeb.Layouts do
           @variant == :compact && "w-72"
         ]}
       >
-        <p class="px-2.5 pt-1.5 pb-1 text-xs font-medium uppercase tracking-wide opacity-60">
+        <p class="px-2.5 pt-1.5 pb-1 text-xs font-medium uppercase tracking-wide opacity-70">
           Switch child
         </p>
         <.link
@@ -628,7 +628,7 @@ defmodule TryggWeb.Layouts do
           </span>
           <span class="flex-1 min-w-0 leading-tight">
             <span class="font-semibold truncate block">{c.name}</span>
-            <span :if={Child.caption(c)} class="text-sm opacity-60 truncate block">
+            <span :if={Child.caption(c)} class="text-sm opacity-70 truncate block">
               {Child.caption(c)}
             </span>
           </span>

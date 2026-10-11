@@ -189,7 +189,7 @@ defmodule TryggWeb.ReportsLive do
               class={[
                 "text-sm text-center mt-2 tabular-nums min-h-5",
                 @caption && "font-medium",
-                !@caption && "opacity-60 text-xs"
+                !@caption && "opacity-70 text-xs"
               ]}
             >
               {@caption || "Tap a block for details"}
@@ -254,7 +254,7 @@ defmodule TryggWeb.ReportsLive do
                rather than letting it grow a screen and a half tall. --%>
           <div class="md:max-w-sm md:mx-auto">
             <.week_calendar id="week-calendar" days={@days} child={@child} today_date={@today_date} />
-            <p class="text-xs opacity-60 text-center mt-2">Tap a day to open it</p>
+            <p class="text-xs opacity-70 text-center mt-2">Tap a day to open it</p>
           </div>
         </:right>
       </Layouts.columns>
@@ -317,7 +317,7 @@ defmodule TryggWeb.ReportsLive do
               <.outlook prediction={@insights.prediction} next_feed={@insights.feeding.next_feed} />
             </div>
 
-            <p :if={!@insights.ready?} id="trends-sparse" class="opacity-60 text-sm text-center py-2">
+            <p :if={!@insights.ready?} id="trends-sparse" class="opacity-70 text-sm text-center py-2">
               Keep logging — insights appear after {@insights.min_sample} days.
             </p>
 
@@ -347,7 +347,7 @@ defmodule TryggWeb.ReportsLive do
                 <.icon name="hero-moon" class="size-5 opacity-70" /> Sleep
               </h2>
               <div id="day-night-def" class="flex items-center gap-1 text-xs">
-                <span class="opacity-60">Day</span>
+                <span class="opacity-70">Day</span>
                 <span class="font-semibold tabular-nums">
                   {Child.format_clock(@child.day_start)} – {Child.format_clock(@child.night_start)}
                 </span>
@@ -398,7 +398,7 @@ defmodule TryggWeb.ReportsLive do
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
                     <h3 class="font-semibold text-sm">Sleep trend</h3>
-                    <p id="trend-window" class="text-xs opacity-60 tabular-nums mt-0.5">
+                    <p id="trend-window" class="text-xs opacity-70 tabular-nums mt-0.5">
                       {@window_label}
                     </p>
                   </div>
@@ -460,7 +460,7 @@ defmodule TryggWeb.ReportsLive do
             <div class="rounded-box border border-base-300 overflow-hidden">
               <div class="bg-base-200/40 px-3 py-2">
                 <h3 class="font-semibold text-sm">Typical day</h3>
-                <p class="text-xs opacity-60">When they're usually asleep over 24 hours</p>
+                <p class="text-xs opacity-70">When they're usually asleep over 24 hours</p>
               </div>
               <div class="p-3">
                 <.heat_strip
@@ -517,35 +517,35 @@ defmodule TryggWeb.ReportsLive do
     ~H"""
     <ul class="text-sm space-y-1">
       <li :if={@prediction.morning_wake} id="outlook-wake">
-        <span class="opacity-60">
+        <span class="opacity-70">
           {if @prediction.morning_wake.actual?, do: "Woke", else: "Typical wake"}
         </span>
         <span class="font-semibold tabular-nums">{@prediction.morning_wake.label}</span>
       </li>
       <li :if={@prediction.next_nap} id="outlook-next-nap">
-        <span class="opacity-60">Next nap ≈</span>
+        <span class="opacity-70">Next nap ≈</span>
         <span class="font-semibold tabular-nums">{@prediction.next_nap.label}</span>
-        <span :if={@prediction.next_nap.range} class="opacity-60 tabular-nums">
+        <span :if={@prediction.next_nap.range} class="opacity-70 tabular-nums">
           ({@prediction.next_nap.range.label})
         </span>
-        <span class="opacity-60">{"· " <> in_label(@prediction.next_nap.in_seconds)}</span>
-        <span :if={@prediction.next_nap.source == :age_prior} class="opacity-60">
+        <span class="opacity-70">{"· " <> in_label(@prediction.next_nap.in_seconds)}</span>
+        <span :if={@prediction.next_nap.source == :age_prior} class="opacity-70">
           · typical for age
         </span>
       </li>
       <li :if={@prediction.wake_pressure && @prediction.wake_pressure.state} id="outlook-awake">
-        <span class="opacity-60">Awake</span>
+        <span class="opacity-70">Awake</span>
         <span class="font-semibold tabular-nums">
           {format_duration(@prediction.wake_pressure.awake_seconds)}
         </span>
-        <span class="opacity-60">
+        <span class="opacity-70">
           · usually {format_duration(@prediction.wake_pressure.typical_seconds)}{pressure_note(
             @prediction.wake_pressure
           )}
         </span>
       </li>
       <li :if={@prediction.bedtime} id="outlook-bedtime">
-        <span class="opacity-60">
+        <span class="opacity-70">
           {if @prediction.bedtime.estimate?, do: "Bedtime ≈", else: "Bedtime"}
         </span>
         <span class="font-semibold tabular-nums">{@prediction.bedtime.label}</span>
@@ -553,7 +553,7 @@ defmodule TryggWeb.ReportsLive do
       <li :if={
         @prediction.morning_wake == nil and @prediction.next_nap == nil and @prediction.bedtime == nil
       }>
-        <span class="opacity-60">Not enough sleep history to predict yet.</span>
+        <span class="opacity-70">Not enough sleep history to predict yet.</span>
       </li>
       <.next_feed_line next_feed={@next_feed} />
     </ul>
@@ -574,10 +574,10 @@ defmodule TryggWeb.ReportsLive do
   defp next_feed_line(assigns) do
     ~H"""
     <li id="outlook-next-feed">
-      <span class="opacity-60">Next feed ≈</span>
+      <span class="opacity-70">Next feed ≈</span>
       <span class="font-semibold tabular-nums">{@next_feed.label}</span>
-      <span :if={@next_feed.range} class="opacity-60 tabular-nums">({@next_feed.range.label})</span>
-      <span class="opacity-60">{"· " <> in_label(@next_feed.in_seconds)}</span>
+      <span :if={@next_feed.range} class="opacity-70 tabular-nums">({@next_feed.range.label})</span>
+      <span class="opacity-70">{"· " <> in_label(@next_feed.in_seconds)}</span>
     </li>
     """
   end
@@ -606,10 +606,10 @@ defmodule TryggWeb.ReportsLive do
     <div id="trend-feeding" class="rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">Feeding</h3>
-        <p class="text-xs opacity-60">Bottle volume per day and how far apart feeds fall</p>
+        <p class="text-xs opacity-70">Bottle volume per day and how far apart feeds fall</p>
       </div>
       <div class="p-3 space-y-3">
-        <p :if={!@feeding.ready?} id="feeding-sparse" class="opacity-60 text-sm text-center py-2">
+        <p :if={!@feeding.ready?} id="feeding-sparse" class="opacity-70 text-sm text-center py-2">
           Log a few more bottles and the rhythm will show up here.
         </p>
         <div
@@ -618,19 +618,19 @@ defmodule TryggWeb.ReportsLive do
         >
           <div id="feeding-day-interval" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{interval_label(@feeding.intervals.day)}</div>
-            <div class="opacity-60 text-xs">between feeds, day</div>
+            <div class="opacity-70 text-xs">between feeds, day</div>
           </div>
           <div
             id="feeding-night-interval"
             class="rounded-box bg-base-200 border border-base-300 py-2"
           >
             <div class="font-semibold tabular-nums">{interval_label(@feeding.intervals.night)}</div>
-            <div class="opacity-60 text-xs">between feeds, night</div>
+            <div class="opacity-70 text-xs">between feeds, night</div>
           </div>
           <div id="feeding-per-day" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{count_label(@feeding.count)}</div>
-            <div class="opacity-60 text-xs">feeds / day</div>
-            <div :if={@feeding.typical} class="opacity-60 text-xs tabular-nums">
+            <div class="opacity-70 text-xs">feeds / day</div>
+            <div :if={@feeding.typical} class="opacity-70 text-xs tabular-nums">
               typical {range_label(@feeding.typical.feeds_per_day)}
             </div>
           </div>
@@ -638,10 +638,10 @@ defmodule TryggWeb.ReportsLive do
             <div class="font-semibold tabular-nums">
               {volume_label(@feeding.per_feed.median, @unit_system)}
             </div>
-            <div class="opacity-60 text-xs">per feed</div>
+            <div class="opacity-70 text-xs">per feed</div>
             <div
               :if={@feeding.typical && @feeding.typical.ml_per_feed}
-              class="opacity-60 text-xs tabular-nums"
+              class="opacity-70 text-xs tabular-nums"
             >
               typical {volume_range_label(@feeding.typical.ml_per_feed, @unit_system)}
             </div>
@@ -692,20 +692,20 @@ defmodule TryggWeb.ReportsLive do
     <div id="trend-feed-length" class="rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">Feed length</h3>
-        <p class="text-xs opacity-60">Timed from the diaper change just before each feed</p>
+        <p class="text-xs opacity-70">Timed from the diaper change just before each feed</p>
       </div>
       <div class="p-3 space-y-3">
         <p
           :if={!@duration.mean}
           id="feed-length-sparse"
-          class="opacity-60 text-sm text-center py-2"
+          class="opacity-70 text-sm text-center py-2"
         >
           Log a diaper change just before a few feeds and their length will show up here.
         </p>
         <div :if={@duration.mean} class="grid grid-cols-2 gap-2 text-center text-sm">
           <div id="feeding-duration" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{format_duration(@duration.mean)}</div>
-            <div class="opacity-60 text-xs">average, {@duration.n} feeds</div>
+            <div class="opacity-70 text-xs">average, {@duration.n} feeds</div>
           </div>
           <div
             id="feeding-duration-trend"
@@ -714,7 +714,7 @@ defmodule TryggWeb.ReportsLive do
             <div class="font-semibold tabular-nums">
               {feed_length_trend_value(@duration.trend)}
             </div>
-            <div class="opacity-60 text-xs">{feed_length_trend_sub(@duration.trend)}</div>
+            <div class="opacity-70 text-xs">{feed_length_trend_sub(@duration.trend)}</div>
           </div>
         </div>
         <.count_bar_chart
@@ -787,21 +787,21 @@ defmodule TryggWeb.ReportsLive do
     <div id="trend-diapers" class="rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">Diapers</h3>
-        <p class="text-xs opacity-60">Wet diapers per day against their usual</p>
+        <p class="text-xs opacity-70">Wet diapers per day against their usual</p>
       </div>
       <div class="p-3 space-y-3">
         <div class="grid grid-cols-3 gap-2 text-center text-sm">
           <div id="diapers-wet-usual" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{count_label(@diapers.baseline.wet)}</div>
-            <div class="opacity-60 text-xs">wet / day</div>
+            <div class="opacity-70 text-xs">wet / day</div>
           </div>
           <div id="diapers-dirty-usual" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{count_label(@diapers.baseline.dirty)}</div>
-            <div class="opacity-60 text-xs">dirty / day</div>
+            <div class="opacity-70 text-xs">dirty / day</div>
           </div>
           <div id="diapers-today" class="rounded-box bg-base-200 border border-base-300 py-2">
             <div class="font-semibold tabular-nums">{today_wet_label(@diapers.today)}</div>
-            <div class="opacity-60 text-xs">wet today</div>
+            <div class="opacity-70 text-xs">wet today</div>
           </div>
         </div>
         <.count_bar_chart
@@ -814,7 +814,7 @@ defmodule TryggWeb.ReportsLive do
           }
           label="Wet diapers per day"
         />
-        <p class="text-xs opacity-60 leading-snug">
+        <p class="text-xs opacity-70 leading-snug">
           Guidance floor: at least {@diapers.min_wet} wet diapers a day and no more than {div(
             @diapers.max_dry_seconds,
             3600
@@ -847,16 +847,16 @@ defmodule TryggWeb.ReportsLive do
     <div id="trend-changes" class="rounded-box border border-base-300 overflow-hidden">
       <div class="bg-base-200/40 px-3 py-2">
         <h3 class="font-semibold text-sm">Changes</h3>
-        <p class="text-xs opacity-60">The last 3 days against the two weeks before</p>
+        <p class="text-xs opacity-70">The last 3 days against the two weeks before</p>
       </div>
       <div class="p-3">
-        <p :if={!@shifts.ready?} id="changes-sparse" class="opacity-60 text-sm text-center py-2">
+        <p :if={!@shifts.ready?} id="changes-sparse" class="opacity-70 text-sm text-center py-2">
           Needs about {@shifts.min_baseline + 3} days of sleep logs to compare against.
         </p>
         <p
           :if={@shifts.ready? and @findings == [] and !@shifts.growth_burst.active?}
           id="changes-none"
-          class="opacity-60 text-sm text-center py-2"
+          class="opacity-70 text-sm text-center py-2"
         >
           No notable changes in the last 3 days.
         </p>
@@ -910,7 +910,7 @@ defmodule TryggWeb.ReportsLive do
     ~H"""
     <.sheet_frame id="day-night-sheet" close="close_sheet" label="Day and night">
       <h3 class="font-semibold text-lg mb-3">Day and night</h3>
-      <p class="text-sm opacity-60 mb-3">
+      <p class="text-sm opacity-70 mb-3">
         Used to split day vs night sleep and to shade the calendar.
       </p>
       <.form for={@form} id="day-night-form" phx-submit="save_schedule" class="space-y-3">

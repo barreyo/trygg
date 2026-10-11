@@ -69,7 +69,7 @@ defmodule TryggWeb.LogComponents do
         </div>
         <div :if={@badge} id={@badge_id} class="text-right shrink-0">
           <div class="text-lg font-semibold leading-tight tabular-nums">{@badge}</div>
-          <div :if={@badge_label} class="text-xs opacity-60">{@badge_label}</div>
+          <div :if={@badge_label} class="text-xs opacity-70">{@badge_label}</div>
         </div>
       </div>
       <div :if={@today} class="text-xs opacity-70 leading-snug break-words tabular-nums">
@@ -265,7 +265,7 @@ defmodule TryggWeb.LogComponents do
             </div>
             <div
               :if={entry_detail(@entry, @unit_system)}
-              class="mt-0.5 text-sm opacity-60 leading-tight truncate"
+              class="mt-0.5 text-sm opacity-70 leading-tight truncate"
             >
               {entry_detail(@entry, @unit_system)}
             </div>
@@ -279,13 +279,13 @@ defmodule TryggWeb.LogComponents do
           </div>
           <div
             :if={Entry.logged_by_integration?(@entry)}
-            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-60 truncate max-w-24"
+            class="mt-0.5 flex items-center justify-end gap-1 text-xs opacity-70 truncate max-w-24"
             title={"Logged by an integration: #{@entry.logged_via}"}
             data-logged-by="integration"
           >
             <.icon name="hero-bolt" class="size-3 shrink-0" /> Other
           </div>
-          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-60 truncate max-w-24">
+          <div :if={@entry.logged_by} class="mt-0.5 text-xs opacity-70 truncate max-w-24">
             {User.capitalize_name(@entry.logged_by.first_name)}
           </div>
         </div>
@@ -317,7 +317,7 @@ defmodule TryggWeb.LogComponents do
   defp entry_icon_color(:feeding), do: "text-info"
   defp entry_icon_color(:sleep), do: "text-primary"
   defp entry_icon_color(:breastfeeding), do: "text-info"
-  defp entry_icon_color(_), do: "opacity-60"
+  defp entry_icon_color(_), do: "opacity-70"
 
   # {emoji, stored kind, label} — the single source of truth for how each
   # diaper kind is shown, used by the quick buttons, the "log from earlier"
@@ -634,7 +634,7 @@ defmodule TryggWeb.LogComponents do
   def photo_field(assigns) do
     ~H"""
     <div class="fieldset mb-2" phx-drop-target={@upload.ref}>
-      <span class="label mb-1">Photo <span class="opacity-60">(optional)</span></span>
+      <span class="label mb-1">Photo <span class="font-normal">(optional)</span></span>
 
       <div :if={@current_src && @upload.entries == []} class="mb-2 space-y-1">
         <img

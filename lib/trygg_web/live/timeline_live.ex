@@ -88,7 +88,7 @@ defmodule TryggWeb.TimelineLive do
         class="loading-dim"
       >
         <:skeleton><.entry_rows_skeleton count={8} show_date /></:skeleton>
-        <p :if={@entries_empty?} class="opacity-60 text-sm py-10 text-center">Nothing here yet.</p>
+        <p :if={@entries_empty?} class="opacity-70 text-sm py-10 text-center">Nothing here yet.</p>
 
         <div id="entries" phx-update="stream" class="divide-y divide-base-300">
           <.entry_row

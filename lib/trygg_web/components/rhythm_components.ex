@@ -143,7 +143,7 @@ defmodule TryggWeb.RhythmComponents do
         </div>
       </div>
 
-      <p :if={!@rhythm.ready?} class="mt-3 text-center text-xs opacity-60">
+      <p :if={!@rhythm.ready?} class="mt-3 text-center text-xs opacity-70">
         Still learning {@child_name}'s daily rhythm — this fills in as you log.
       </p>
     </section>

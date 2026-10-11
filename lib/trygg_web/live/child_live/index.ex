@@ -41,7 +41,7 @@ defmodule TryggWeb.ChildLive.Index do
               </div>
               <div class="flex-1 min-w-0">
                 <div class="font-semibold truncate">{child.name}</div>
-                <div class="text-sm opacity-60">{age_line(child)}</div>
+                <div class="text-sm opacity-70">{age_line(child)}</div>
               </div>
               <span class="badge badge-ghost badge-sm">{child.role}</span>
             </.link>
@@ -52,7 +52,7 @@ defmodule TryggWeb.ChildLive.Index do
               class="flex items-center px-4 border-l border-base-300 hover:bg-base-300 transition-colors"
               aria-label={"Edit #{child.name}"}
             >
-              <.icon name="hero-pencil-square" class="size-5 opacity-60" />
+              <.icon name="hero-pencil-square" class="size-5 opacity-70" />
             </.link>
           </li>
         </ul>
@@ -112,7 +112,7 @@ defmodule TryggWeb.ChildLive.Index do
             label="Due date"
             required
           />
-          <p :if={not entering_demo?(assigns)} class="text-xs opacity-60 -mt-2">
+          <p :if={not entering_demo?(assigns)} class="text-xs opacity-70 -mt-2">
             You can set everything up and start tracking now. It's all practice until {@form[:name].value ||
               "the baby"} arrives — then the practice log clears.
           </p>
@@ -139,7 +139,7 @@ defmodule TryggWeb.ChildLive.Index do
               options={Enum.map(0..6, &{"+#{&1}", &1})}
             />
           </div>
-          <p id="gestation-help" class="text-xs opacity-60 -mt-2">{gestation_help(@child)}</p>
+          <p id="gestation-help" class="text-xs opacity-70 -mt-2">{gestation_help(@child)}</p>
           <p
             :if={@live_action == :edit and Child.expecting?(@child)}
             class="text-xs text-warning -mt-2"
@@ -205,7 +205,7 @@ defmodule TryggWeb.ChildLive.Index do
             <.icon name="hero-exclamation-circle" class="size-5" />
             {msg}
           </p>
-          <p class="text-xs opacity-60">
+          <p class="text-xs opacity-70">
             What the Today screen shows and offers to log, for everyone caring for {@form[:name].value ||
               "the baby"}. Hidden entries stay in the full log and reports.
           </p>
@@ -216,7 +216,7 @@ defmodule TryggWeb.ChildLive.Index do
           type="checkbox"
           label="Vitamin D drop reminder"
         />
-        <p :if={@live_action == :edit} id="vitamin-d-help" class="text-xs opacity-60 -mt-2">
+        <p :if={@live_action == :edit} id="vitamin-d-help" class="text-xs opacity-70 -mt-2">
           Caregivers get a notification if no drop has been logged by 18:00 in {@child.name}'s
           time zone. Tick it on a bottle. Turn this off once it's no longer needed.
         </p>
