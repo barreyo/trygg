@@ -49,6 +49,10 @@ defmodule Trygg.Families.Child do
     field :vitamin_d_reminder, :boolean, default: false
     field :vitamin_d_reminded_on, :date
 
+    # Sleep nudges (nap window, a feed that may be due, bedtime routine) as
+    # push notifications, sent by `Trygg.Sleep.Nudges`. Opt-in.
+    field :sleep_nudges, :boolean, default: false
+
     # Which trackers show on Home (glance cards, log buttons, recent list).
     # Shared by every caregiver; at least one must stay on.
     field :tracked_types,
@@ -81,6 +85,7 @@ defmodule Trygg.Families.Child do
       :day_start,
       :night_start,
       :vitamin_d_reminder,
+      :sleep_nudges,
       :tracked_types,
       :gestation_weeks,
       :gestation_extra_days

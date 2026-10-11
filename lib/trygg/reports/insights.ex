@@ -66,6 +66,9 @@ defmodule Trygg.Reports.Insights do
       it so the model re-locks faster on the new pattern).
     * `:bias` — `%{next_nap: seconds, bedtime: seconds}` signed mean error to
       correct out, applied at half strength and capped.
+    * `:cue_factor` — a multiplier (about 0.85–1.15) on predicted wake windows
+      from `Trygg.Reports.SleepHabits.cue_adjustment/3`: below 1 when sleeps
+      noted as "ready" come earlier than the history's wake windows.
   """
   def summarize(%Child{} = child, days, %Day{} = today, %DateTime{} = now, opts \\ [])
       when is_list(days) do
@@ -92,7 +95,10 @@ defmodule Trygg.Reports.Insights do
       corrected_age_days: Norms.corrected_age_days(child, today.date)
     }
 
-    recent_stats = Map.put(recent_stats, :transition?, transition?(weighted, today.date))
+    recent_stats =
+      recent_stats
+      |> Map.put(:transition?, transition?(weighted, today.date))
+      |> Map.put(:cue_factor, opts[:cue_factor] || 1.0)
 
     %{
       sample_days: length(days),
@@ -573,6 +579,7 @@ defmodule Trygg.Reports.Insights do
       end
 
     Map.merge(base, %{
+      cue_factor: stats[:cue_factor] || 1.0,
       anchor_ts: last_wake,
       morning_wake: morning,
       bedtime: bedtime,
@@ -945,7 +952,21 @@ defmodule Trygg.Reports.Insights do
       |> Norms.wake_window_range()
       |> position_scaled_prior(ordinal, expected)
 
-    blend_wake(wake_row(stats, ordinal), prior)
+    wake_row(stats, ordinal)
+    |> blend_wake(prior)
+    |> apply_cue_factor(stats[:cue_factor], stats[:corrected_age_days])
+  end
+
+  defp apply_cue_factor(est, factor, _age) when is_nil(est) or factor in [nil, 1, 1.0], do: est
+
+  defp apply_cue_factor(%{typical: t, range: range} = est, factor, age) do
+    floor = Norms.min_wake_window_seconds(age)
+
+    %{
+      est
+      | typical: max(t * factor, floor),
+        range: range && {max(elem(range, 0) * factor, floor), max(elem(range, 1) * factor, floor)}
+    }
   end
 
   defp position_scaled_prior(nil, _ordinal, _expected), do: nil

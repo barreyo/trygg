@@ -220,6 +220,16 @@ defmodule TryggWeb.ChildLive.Index do
           Caregivers get a notification if no drop has been logged by 18:00 in {@child.name}'s
           time zone. Tick it on a bottle. Turn this off once it's no longer needed.
         </p>
+        <.input
+          :if={@live_action == :edit}
+          field={@form[:sleep_nudges]}
+          type="checkbox"
+          label="Sleep nudges"
+        />
+        <p :if={@live_action == :edit} id="sleep-nudges-help" class="text-xs opacity-70 -mt-2">
+          Caregivers get a notification when {@child.name}'s nap window opens, when a feed may be
+          due during a long nap, and when it's time to start the bedtime routine (from about 8 weeks).
+        </p>
 
         <div class="flex gap-2 pt-2">
           <.button

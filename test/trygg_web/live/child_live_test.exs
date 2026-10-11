@@ -153,6 +153,26 @@ defmodule TryggWeb.ChildLiveTest do
     refute Families.get_child!(scope, child.id).vitamin_d_reminder
   end
 
+  test "sleep nudges can be turned on and off", %{conn: conn, scope: scope} do
+    child = child_fixture(scope)
+    refute child.sleep_nudges
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+    assert has_element?(lv, "#sleep-nudges-help")
+
+    {:error, {:live_redirect, _}} =
+      lv |> form("#child-form", child: %{sleep_nudges: "true"}) |> render_submit()
+
+    assert Families.get_child!(scope, child.id).sleep_nudges
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/children/#{child}/edit")
+
+    {:error, {:live_redirect, _}} =
+      lv |> form("#child-form", child: %{sleep_nudges: "false"}) |> render_submit()
+
+    refute Families.get_child!(scope, child.id).sleep_nudges
+  end
+
   test "the list updates live when a child is added from another session", %{
     conn: conn,
     scope: scope

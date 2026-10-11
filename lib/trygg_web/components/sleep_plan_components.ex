@@ -249,6 +249,99 @@ defmodule TryggWeb.SleepPlanComponents do
     """
   end
 
+  ## Overnight ------------------------------------------------------------------
+
+  @doc """
+  How the last few nights went. `nights` is a `Trygg.Reports.Nights.summarize/3`
+  map.
+  """
+  attr :nights, :map, required: true
+  attr :tz, :string, required: true
+
+  def overnight_panel(assigns) do
+    assigns = assign(assigns, :longest, longest_seconds(assigns.nights))
+
+    ~H"""
+    <section id="sleep-overnight" class={panel_class()}>
+      <h2 class={heading_class()}>Overnight</h2>
+
+      <%= if @nights.nights == [] do %>
+        <p id="sleep-overnight-empty" class="text-sm opacity-80">
+          Log a night or two and you'll see the longest stretches, wakings and feeds here.
+        </p>
+      <% else %>
+        <p class="mb-2 text-sm opacity-70">
+          Last night, {Calendar.strftime(local(@nights.last.wake, @tz), "%a %-d %b")}
+        </p>
+        <dl class="grid grid-cols-2 gap-2">
+          <.stat id="night-slept" label="Slept" value={format_duration(@nights.last.asleep_seconds)} />
+          <.stat
+            id="night-longest"
+            label="Longest sleep"
+            value={format_duration(@nights.last.longest_sleep_seconds)}
+          />
+          <.stat id="night-wakings" label="Wakings" value={@nights.last.wakings} />
+          <.stat id="night-feeds" label="Night feeds" value={@nights.last.feeds} />
+        </dl>
+
+        <ol id="overnight-bars" class="mt-4 space-y-1.5" aria-label="Longest unbroken sleep, by night">
+          <li
+            :for={night <- Enum.reverse(@nights.nights)}
+            id={"night-#{night.date}"}
+            class="flex items-center gap-2 text-sm"
+          >
+            <span class="w-9 shrink-0 opacity-70">
+              {Calendar.strftime(local(night.wake, @tz), "%a")}
+            </span>
+            <span class="h-3 flex-1 overflow-hidden rounded-full bg-base-300">
+              <span
+                class="block h-full rounded-full bg-primary"
+                style={"width: #{bar_percent(night.longest_sleep_seconds, @longest)}%"}
+              ></span>
+            </span>
+            <span class="w-14 shrink-0 text-right tabular-nums">
+              {format_duration(night.longest_sleep_seconds)}
+            </span>
+          </li>
+        </ol>
+        <p class="mt-1 text-xs opacity-70">Longest unbroken sleep each night.</p>
+
+        <p :if={trend_line(@nights)} id="overnight-trend" class="mt-3 text-sm">
+          {trend_line(@nights)}
+        </p>
+        <p :if={@nights.best_baseline_seconds} id="overnight-baseline" class="mt-3 text-sm">
+          Best baseline between feeds:
+          <span class="font-semibold">{format_duration(@nights.best_baseline_seconds)}</span>
+          <span class="block text-xs opacity-70">
+            The longest they've gone on at least two of these nights. It's where stretching night feeds
+            would start from about 13 weeks; for now it's just worth knowing.
+          </span>
+        </p>
+      <% end %>
+    </section>
+    """
+  end
+
+  defp longest_seconds(%{nights: []}), do: 1
+
+  defp longest_seconds(%{nights: nights}),
+    do: nights |> Enum.map(& &1.longest_sleep_seconds) |> Enum.max() |> max(1)
+
+  defp bar_percent(seconds, longest), do: round(seconds / longest * 100)
+
+  defp local(%DateTime{} = at, tz), do: DateTime.shift_zone!(at, tz)
+
+  defp trend_line(%{trend_seconds: nil}), do: nil
+
+  defp trend_line(%{trend_seconds: seconds}) when abs(seconds) < 600,
+    do: "Longest sleeps are steady compared with the 3 nights before."
+
+  defp trend_line(%{trend_seconds: seconds}) when seconds > 0,
+    do: "Longest sleeps are up about #{format_duration(seconds)} on the 3 nights before."
+
+  defp trend_line(%{trend_seconds: seconds}),
+    do: "Longest sleeps are down about #{format_duration(abs(seconds))} on the 3 nights before."
+
   ## Habits --------------------------------------------------------------------
 
   @doc "This week's cue and feed → sleep numbers (`Trygg.Reports.SleepHabits`)."
@@ -264,7 +357,7 @@ defmodule TryggWeb.SleepPlanComponents do
           Log a few sleeps and the patterns show up here.
         </p>
       <% else %>
-        <dl class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <dl class="grid grid-cols-2 gap-2">
           <.stat id="stat-sleeps" label="Sleeps" value={@habits.week.sleeps} />
           <.stat id="stat-cued" label="With a cue noted" value={@habits.week.cued} />
           <.stat id="stat-overtired" label="Started overtired" value={@habits.week.overtired} />

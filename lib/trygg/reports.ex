@@ -18,6 +18,7 @@ defmodule Trygg.Reports do
   alias Trygg.Reports.Diapers
   alias Trygg.Reports.Feeding
   alias Trygg.Reports.Insights
+  alias Trygg.Reports.Nights
   alias Trygg.Reports.PredictionLedger
   alias Trygg.Reports.Rhythm
   alias Trygg.Reports.Shifts
@@ -66,14 +67,21 @@ defmodule Trygg.Reports do
     shift_from = Date.add(today, 1 - @shift_days)
     fetch_from = if Date.before?(shift_from, from), do: shift_from, else: from
 
-    all_days = days_unchecked(scope, child, fetch_from, today, now)
+    {all_days, entries} = load_days(scope, child, fetch_from, today, now)
     days = Enum.drop(all_days, Date.diff(from, fetch_from))
     today_day = List.last(days) || Day.build(child, today, [], now)
 
     weight = recent_weight(scope, child)
+    cues = SleepHabits.cue_adjustment(child, entries, today)
 
     insights =
-      Insights.summarize(child, days, today_day, now, PredictionLedger.prediction_opts(child.id))
+      Insights.summarize(
+        child,
+        days,
+        today_day,
+        now,
+        Keyword.put(PredictionLedger.prediction_opts(child.id), :cue_factor, cues && cues.factor)
+      )
 
     feeding = Feeding.summarize(child, days, now, weight: weight)
     diapers = Diapers.summarize(child, days, now)
@@ -96,7 +104,8 @@ defmodule Trygg.Reports do
       growth: growth,
       alerts: alerts,
       rhythm: Rhythm.summarize(child, days, today_day, now),
-      today: today_day
+      today: today_day,
+      cue_adjustment: cues
     })
   end
 
@@ -141,6 +150,19 @@ defmodule Trygg.Reports do
   end
 
   @doc """
+  How the last few nights went (`Trygg.Reports.Nights`): bedtime and wake,
+  sleep, wakings, the longest unbroken sleep and the longest stretch between
+  feeds. Requires `:viewer`.
+  """
+  def nights(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    today = Child.local_today(child)
+    # One more day than the nights shown: each night needs the morning after it.
+    {days, entries} = load_days(scope, child, Date.add(today, -Nights.count()), today, now)
+    Nights.summarize(child, days, entries)
+  end
+
+  @doc """
   Today's whole sleep day and what to do about it: the ordered schedule from
   `Trygg.Reports.DayPlan` (what happened, what's running, what's predicted
   from the current conditions) and the insights and suggestions from
@@ -157,12 +179,15 @@ defmodule Trygg.Reports do
     habits = sleep_habits(scope, child, now)
     phase = Trygg.Sleep.Phase.for_child(child)
 
+    nights = nights(scope, child, now)
+
     context = %{
       child: child,
       phase: phase,
       prediction: s.prediction,
       today: s.today,
       habits: habits,
+      nights: nights,
       last_feed_at: opts[:last_feed_at],
       now: now
     }
@@ -171,7 +196,10 @@ defmodule Trygg.Reports do
       plan: DayPlan.build(child, s.today, s.prediction, now),
       insights: Trygg.Sleep.Coach.insights(context),
       habits: habits,
-      phase: phase
+      nights: nights,
+      phase: phase,
+      prediction: s.prediction,
+      today: s.today
     }
   end
 
@@ -233,7 +261,13 @@ defmodule Trygg.Reports do
     end
   end
 
-  defp days_unchecked(scope, child, from_date, to_date, now) do
+  defp days_unchecked(scope, child, from_date, to_date, now),
+    do: scope |> load_days(child, from_date, to_date, now) |> elem(0)
+
+  # The `%Day{}`s from `from_date` through `to_date` and the entries they were
+  # built from (the window plus the lookback before it), for callers that need
+  # both.
+  defp load_days(scope, child, from_date, to_date, now) do
     now = DateTime.truncate(now, :second)
     {start, _} = Child.day_bounds(child, from_date)
     {_, finish} = Child.day_bounds(child, to_date)
@@ -241,8 +275,11 @@ defmodule Trygg.Reports do
 
     entries = Log.list_entries(scope, child, since: since, until: finish)
 
-    from_date
-    |> Date.range(to_date)
-    |> Enum.map(&Day.build(child, &1, entries, now))
+    days =
+      from_date
+      |> Date.range(to_date)
+      |> Enum.map(&Day.build(child, &1, entries, now))
+
+    {days, entries}
   end
 end

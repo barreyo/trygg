@@ -53,6 +53,25 @@ defmodule Trygg.Push.Notifier do
     :ok
   end
 
+  @doc """
+  Sends a sleep nudge (`Trygg.Sleep.Nudges`) to `user`'s devices. `nudge` is a
+  `%{kind, title, body}` map. Opens the Sleep tab. No-op (returns `:ok`) when
+  push is disabled or `user` has no subscriptions.
+  """
+  @spec deliver_sleep_nudge(Child.t(), User.t(), map()) :: :ok
+  def deliver_sleep_nudge(%Child{} = child, %User{} = user, %{kind: kind} = nudge) do
+    if Push.enabled?() do
+      Push.enqueue(user, %{
+        title: nudge.title,
+        body: nudge.body,
+        url: "/c/#{child.id}/sleep",
+        tag: "sleep-#{kind}-#{child.id}"
+      })
+    end
+
+    :ok
+  end
+
   defp body(child, %{never_measured?: true}) do
     "No weight has been logged for #{child.name} yet. Add the first one when you can."
   end

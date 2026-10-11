@@ -30,6 +30,7 @@ defmodule TryggWeb.SleepLive do
         socket
         |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
         |> assign(summary: nil, habits: nil, phase: nil, timeline: [], plan: nil, insights: [])
+        |> assign(nights: nil)
         |> assign(pending_cue: nil, pending_cue_at: nil)
         |> Loading.init()
         |> load()
@@ -190,24 +191,20 @@ defmodule TryggWeb.SleepLive do
   defp fetch(scope, child) do
     summary = Log.summary(scope, child)
 
-    %{plan: plan, insights: insights, habits: habits, phase: phase} =
-      Reports.sleep_plan(scope, child, DateTime.utc_now(), last_feed_at: last_feed_at(summary))
+    %{plan: plan, insights: insights, habits: habits, phase: phase, nights: nights} =
+      Reports.sleep_plan(scope, child, DateTime.utc_now(),
+        last_feed_at: Log.last_feed_at(summary)
+      )
 
     %{
       summary: summary,
       plan: plan,
       insights: insights,
       habits: habits,
+      nights: nights,
       phase: phase,
       timeline: Phase.timeline(child)
     }
-  end
-
-  # When the last feed (a bottle or a nursing session) ended.
-  defp last_feed_at(%{last_feeding: bottle, last_breastfeeding: nursing}) do
-    [bottle && bottle.started_at, nursing && (nursing.ended_at || nursing.started_at)]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.max(DateTime, fn -> nil end)
   end
 
   defp apply_data(socket, data) do
@@ -245,6 +242,7 @@ defmodule TryggWeb.SleepLive do
             <.insights_panel insights={@insights} />
           </:left>
           <:right>
+            <.overnight_panel nights={@nights} tz={@current_child.timezone} />
             <.habits_panel habits={@habits} />
             <.cries_panel :if={@phase && @phase.id == :newborn} />
             <.cue_guide />

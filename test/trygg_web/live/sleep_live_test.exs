@@ -251,7 +251,6 @@ defmodule TryggWeb.SleepLiveTest do
         sleep.(date, ~T[15:30:00], ~T[16:30:00], date)
       end
 
-      sleep.(Date.add(today, -1), ~T[20:00:00], ~T[07:00:00], today)
       sleep.(today, ~T[08:00:00], ~T[09:00:00], today)
 
       %{conn: conn, scope: scope, child: child}
@@ -279,6 +278,22 @@ defmodule TryggWeb.SleepLiveTest do
       assert has_element?(lv, "#insight-past-window", "C.R.I.E.S.")
     end
 
+    test "summarises last night and charts the longest sleep of each night", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      assert has_element?(lv, "#sleep-overnight #night-slept", "11h 0m")
+      assert has_element?(lv, "#night-longest", "11h 0m")
+      assert has_element?(lv, "#night-wakings", "0")
+      assert has_element?(lv, "#night-feeds", "0")
+
+      # Five finished nights, one bar each.
+      assert lv |> element("#overnight-bars") |> render() |> String.split("<li") |> length() == 6
+      assert has_element?(lv, "#overnight-trend") == false
+    end
+
     test "a sleep started now becomes the running nap, with the rest of the day after it", %{
       conn: conn,
       child: child
@@ -303,6 +318,7 @@ defmodule TryggWeb.SleepLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
       assert has_element?(lv, "#sleep-habits-empty")
       assert has_element?(lv, "#sleep-schedule-empty")
+      assert has_element?(lv, "#sleep-overnight-empty")
       assert has_element?(lv, "#sleep-insights")
     end
 

@@ -68,4 +68,54 @@ defmodule Trygg.ReportsTest do
     assert child.day_start == ~T[08:00:00]
     assert child.night_start == ~T[20:00:00]
   end
+
+  describe "learning from sleepy cues" do
+    # Three past days of naps where the "ready" cue comes after 60 minutes awake
+    # but the typical wake window is 75 (median of 60, 90, 60, 105).
+    defp log_cue_days(scope, child) do
+      today = Date.utc_today()
+
+      for back <- 3..1//-1 do
+        date = Date.add(today, -back)
+        at = fn h, m -> DateTime.new!(date, Time.new!(h, m, 0), "Etc/UTC") end
+
+        for {from, to, cue} <- [
+              {at.(8, 0), at.(8, 45), nil},
+              {at.(9, 45), at.(10, 30), "ready"},
+              {at.(12, 0), at.(12, 45), nil},
+              {at.(13, 45), at.(14, 30), "ready"},
+              {at.(16, 15), at.(17, 0), nil}
+            ] do
+          data = if cue, do: %{"cue" => cue}, else: %{}
+
+          entry_fixture(scope, child, %{
+            :type => :sleep,
+            "started_at" => from,
+            "ended_at" => to,
+            "data" => data
+          })
+        end
+      end
+    end
+
+    test "summary/4 reports the adjustment and applies it to the prediction", %{
+      scope: scope,
+      child: child
+    } do
+      log_cue_days(scope, child)
+
+      summary = Reports.summary(scope, child, 14)
+
+      assert %{factor: factor, n_ready: 6, ready_seconds: 3600, overall_seconds: 4500} =
+               summary.cue_adjustment
+
+      assert_in_delta factor, 0.9, 0.001
+      assert summary.prediction.cue_factor == factor
+    end
+
+    test "no adjustment without enough cued sleeps", %{scope: scope, child: child} do
+      assert Reports.summary(scope, child, 14).cue_adjustment == nil
+      assert Reports.summary(scope, child, 14).prediction.cue_factor == 1.0
+    end
+  end
 end

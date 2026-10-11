@@ -110,4 +110,73 @@ defmodule Trygg.Reports.SleepHabitsTest do
       assert %{today: %{sleeps: 0}, week: %{sleeps: 0}, cue_windows: %{}} = summarize([])
     end
   end
+
+  describe "cue_adjustment/3" do
+    # Builds sleeps of 30 minutes each, every one starting `awake` minutes after
+    # the last ended, with the given cue.
+    defp sleeps_with(samples) do
+      {entries, _end} =
+        samples
+        |> Enum.with_index(1)
+        |> Enum.map_reduce(at(6, 0, Date.add(@today, -2)), fn {{awake, cue}, _id}, prev_end ->
+          started = DateTime.add(prev_end, awake * 60, :second)
+          finished = DateTime.add(started, 30 * 60, :second)
+          data = if cue, do: %{"cue" => cue}, else: %{}
+          {sleep(started, finished, data), finished}
+        end)
+
+      entries
+    end
+
+    defp adjustment(entries), do: SleepHabits.cue_adjustment(@child, entries, @today)
+
+    test "ready cues after a shorter stretch awake than usual pull windows earlier" do
+      # An opening sleep to measure from, then 5 ready sleeps after 75 minutes
+      # and 7 after 90 (median overall 90, median ready 75).
+      samples = [{0, nil}] ++ List.duplicate({75, "ready"}, 5) ++ List.duplicate({90, nil}, 7)
+
+      assert %{factor: factor, ready_seconds: 4500, overall_seconds: 5400, n_ready: 5} =
+               adjustment(sleeps_with(samples))
+
+      # ratio 0.833 shrunk by 5 / (5 + 6): about 0.92.
+      assert_in_delta factor, 0.924, 0.005
+    end
+
+    test "ready cues after a longer stretch pull windows later, within bounds" do
+      samples = [{0, nil}] ++ List.duplicate({100, "ready"}, 6) ++ List.duplicate({60, nil}, 6)
+      assert %{factor: factor} = adjustment(sleeps_with(samples))
+      assert factor > 1.0 and factor <= 1.15
+    end
+
+    test "never beyond 0.85 to 1.15" do
+      samples = [{0, nil}] ++ List.duplicate({20, "ready"}, 12) ++ List.duplicate({120, nil}, 12)
+      assert %{factor: 0.85} = adjustment(sleeps_with(samples))
+    end
+
+    test "needs four ready sleeps and eight with a known wake window" do
+      few_ready = [{0, nil}] ++ List.duplicate({75, "ready"}, 3) ++ List.duplicate({90, nil}, 9)
+      assert adjustment(sleeps_with(few_ready)) == nil
+
+      few_sleeps = [{0, nil}] ++ List.duplicate({75, "ready"}, 4) ++ List.duplicate({90, nil}, 2)
+      assert adjustment(sleeps_with(few_sleeps)) == nil
+
+      assert adjustment([]) == nil
+    end
+
+    test "only the last 14 days count" do
+      old =
+        for e <- sleeps_with([{0, nil}] ++ List.duplicate({75, "ready"}, 12)),
+            do: shift_days(e, -20)
+
+      assert adjustment(old) == nil
+    end
+
+    defp shift_days(entry, days) do
+      %{
+        entry
+        | started_at: DateTime.add(entry.started_at, days * 86_400, :second),
+          ended_at: DateTime.add(entry.ended_at, days * 86_400, :second)
+      }
+    end
+  end
 end

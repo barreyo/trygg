@@ -37,7 +37,8 @@ config :trygg, Oban,
      crontab: [
        {"0 */6 * * *", Trygg.Growth.WeightReminderWorker},
        {"*/30 * * * *", Trygg.Reports.PredictionWorker},
-       {"*/15 * * * *", Trygg.Log.VitaminDReminderWorker}
+       {"*/15 * * * *", Trygg.Log.VitaminDReminderWorker},
+       {"*/5 * * * *", Trygg.Sleep.NudgeWorker}
      ]}
   ]
 
