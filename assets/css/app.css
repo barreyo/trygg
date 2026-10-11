@@ -260,6 +260,15 @@ html { overscroll-behavior-y: none; }
   background-color: color-mix(in oklab, var(--color-diaper-pee) 16%, transparent);
 }
 
+/*
+ * Night mode for the full-screen log splash. Both selectors are needed: an
+ * explicit dark theme, and "system" (no data-theme) while the OS is dark.
+ */
+:root[data-theme="dark"] { --night-dim: 0.45; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --night-dim: 0.45; }
+}
+
 /* Little "Zzz" drifting up next to a child who's asleep in the log */
 @keyframes trygg-snooze {
   0%   { opacity: 0; transform: translateY(3px) scale(0.7); }
@@ -352,6 +361,30 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 @media (prefers-reduced-motion: reduce) {
   .undo-toast { animation: trygg-fade-in 150ms ease-out backwards; }
   .undo-toast-timer { display: none; }
+}
+
+/*
+ * Bottom sheets — see `sheet_frame/1` and the `SheetDrag` hook. On a phone the
+ * panel rises from the bottom edge on a gentle ease-out (the way iOS sheets
+ * do); from `sm` up it's a centred card that eases in. The dim fades in with
+ * it. Dragging and the exit are handled in JS / `phx-remove`.
+ */
+@keyframes sheet-rise {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+@keyframes sheet-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.sheet-panel { animation: sheet-rise 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards; }
+.sheet-backdrop { animation: trygg-fade-in 250ms ease-out backwards; }
+@media (min-width: 640px) {
+  .sheet-panel { animation: sheet-pop 240ms cubic-bezier(0.32, 0.72, 0, 1) backwards; }
+}
+/* Reduced motion: nothing travels, the sheet just fades in */
+@media (prefers-reduced-motion: reduce) {
+  .sheet-panel { animation: trygg-fade-in 150ms ease-out backwards; }
 }
 
 /*
@@ -629,6 +662,10 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
  * the reduced-motion block can simply turn the pieces still.
  */
 .log-splash {
+  /* How much black goes over the scene's gradient. 0 by day; at night (see
+     `--night-dim` below) the bright scenes would flood a dark room, so they
+     are pulled down and the white milk / rays fade with them. */
+  --splash-dim: var(--night-dim, 0);
   position: fixed;
   inset: 0;
   z-index: 200;
@@ -642,7 +679,9 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 }
 .log-splash:not(.is-playing) { background: transparent; }
 .log-splash.is-playing {
-  background: linear-gradient(160deg, var(--splash-a), var(--splash-b));
+  background:
+    linear-gradient(rgb(0 0 0 / var(--splash-dim)), rgb(0 0 0 / var(--splash-dim))),
+    linear-gradient(160deg, var(--splash-a), var(--splash-b));
   animation: splash-in 200ms ease-out both;
 }
 .log-splash.is-leaving { animation: splash-out 260ms ease-in both; }
@@ -651,7 +690,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 .log-splash[data-kind="diaper_poo"]   { --splash-a: oklch(52% 0.09 55);  --splash-b: oklch(36% 0.07 45); }
 .log-splash[data-kind="diaper_mixed"] { --splash-a: oklch(70% 0.18 50);  --splash-b: oklch(54% 0.17 30); }
 .log-splash[data-kind="bottle"]       { --splash-a: oklch(86% 0.07 235); --splash-b: oklch(70% 0.12 245); }
-.log-splash[data-kind="sleep_start"]  { --splash-a: #1c1650;             --splash-b: #3d2a7a; }
+.log-splash[data-kind="sleep_start"]  { --splash-a: #1c1650;             --splash-b: #3d2a7a; --splash-dim: 0; }
 .log-splash[data-kind="sleep_stop"]   { --splash-a: oklch(88% 0.12 85);  --splash-b: oklch(78% 0.15 50); }
 .log-splash[data-kind="breastfeeding_start"] { --splash-a: oklch(91% 0.08 350); --splash-b: oklch(82% 0.12 15); }
 .log-splash[data-kind="breastfeeding_stop"]  { --splash-a: oklch(91% 0.08 350); --splash-b: oklch(82% 0.12 15); }
@@ -715,7 +754,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   inset: auto -10% -120% -10%;
   height: 120%;
   background: #fff;
-  opacity: 0.9;
+  opacity: calc(0.9 * (1 - var(--splash-dim)));
   border-radius: 45% 55% 0 0 / 14% 14% 0 0;
   animation: splash-milk 1300ms 150ms ease-out both;
 }
@@ -726,7 +765,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   width: 150vmax;
   height: 150vmax;
   margin: -75vmax 0 0 -75vmax;
-  background: repeating-conic-gradient(rgb(255 255 255 / 0.32) 0 10deg, transparent 10deg 30deg);
+  background: repeating-conic-gradient(rgb(255 255 255 / calc(0.32 * (1 - var(--splash-dim)))) 0 10deg, transparent 10deg 30deg);
   animation: splash-spin 6s linear infinite;
 }
 

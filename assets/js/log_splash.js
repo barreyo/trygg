@@ -12,9 +12,14 @@
 // `.log-splash` rules in app.css.
 
 const PLAY_MS = 1600
+const PLAY_MS_REPEAT = 1000 // a second splash soon after the last one is shorter
 const PLAY_MS_REDUCED = 1000
+const REPEAT_WINDOW_MS = 30000
 const LEAVE_MS = 260
 const LOCK_MS = 1500
+// Taps this soon after the scene starts are swallowed (a double tap); after it,
+// a tap dismisses the scene so the next action isn't stuck behind a celebration.
+const TAP_GUARD_MS = 450
 
 // Each scene has a pool of captions; one is picked at random per splash, never
 // the same one twice in a row. Keep them short: they sit on one or two lines.
@@ -99,6 +104,8 @@ let layer = null
 let playTimer = null
 let leaveTimer = null
 let lockTimer = null
+let playStartedAt = 0
+let lastPlayEndedAt = 0
 const lastCaption = {}
 
 // A random caption for `kind`, different from the last one shown for it.
@@ -144,12 +151,24 @@ function dismiss() {
   layer = null
 }
 
+// Fade the scene out, then drop it.
+function leave() {
+  if (!layer || layer.classList.contains("is-leaving")) return
+  clearTimeout(playTimer)
+  lastPlayEndedAt = Date.now()
+  layer.classList.add("is-leaving")
+  leaveTimer = setTimeout(dismiss, LEAVE_MS)
+}
+
 function ensureLayer() {
   if (layer && layer.isConnected) return layer
   layer = document.createElement("div")
   layer.id = "log-splash"
   layer.className = "log-splash"
   layer.setAttribute("aria-hidden", "true")
+  layer.addEventListener("click", () => {
+    if (layer.classList.contains("is-playing") && Date.now() - playStartedAt > TAP_GUARD_MS) leave()
+  })
   document.body.append(layer)
   return layer
 }
@@ -175,11 +194,10 @@ function play(kind) {
   void el.offsetWidth
   el.classList.add("is-playing")
 
-  const ms = reducedMotion() ? PLAY_MS_REDUCED : PLAY_MS
-  playTimer = setTimeout(() => {
-    el.classList.add("is-leaving")
-    leaveTimer = setTimeout(dismiss, LEAVE_MS)
-  }, ms - LEAVE_MS)
+  playStartedAt = Date.now()
+  const repeat = playStartedAt - lastPlayEndedAt < REPEAT_WINDOW_MS
+  const ms = reducedMotion() ? PLAY_MS_REDUCED : repeat ? PLAY_MS_REPEAT : PLAY_MS
+  playTimer = setTimeout(leave, ms - LEAVE_MS)
 }
 
 window.addEventListener("phx:log-splash", ({detail}) => play(detail.kind))
