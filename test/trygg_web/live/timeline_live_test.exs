@@ -156,6 +156,44 @@ defmodule TryggWeb.TimelineLiveTest do
     assert Log.list_entries(scope, child) == []
   end
 
+  test "a deleted entry can be undone from the toast", %{conn: conn, scope: scope, child: child} do
+    entry = entry_fixture(scope, child, type: :diaper)
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+    lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+    lv |> element("#edit-entry-delete") |> render_click()
+
+    assert Log.list_entries(scope, child) == []
+    assert has_element?(lv, "#undo-delete")
+
+    lv |> element("#undo-delete") |> render_click()
+
+    assert [%{id: id}] = Log.list_entries(scope, child)
+    assert id == entry.id
+    refute has_element?(lv, "#undo-delete")
+    assert has_element?(lv, ~s([id$="#{entry.id}"]))
+  end
+
+  test "the undo offer lapses once its window has passed", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    entry = entry_fixture(scope, child, type: :diaper)
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+    lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+    lv |> element("#edit-entry-delete") |> render_click()
+    assert has_element?(lv, "#undo-delete")
+
+    # The undo toast's id carries the offer's ref; expire exactly that one.
+    [_, ref] = Regex.run(~r/id="undo-toast-(\d+)"/, render(lv))
+    send(lv.pid, {:undo_expired, String.to_integer(ref)})
+
+    refute has_element?(lv, "#undo-delete")
+    assert Log.list_entries(scope, child) == []
+  end
+
   test "a photo added while editing shows in the log feed", %{
     conn: conn,
     scope: scope,

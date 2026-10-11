@@ -98,7 +98,7 @@ defmodule TryggWeb.Layouts do
 
       <header
         :if={!@immersive}
-        class="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 pt-[env(safe-area-inset-top)]"
+        class="material sticky top-0 z-30 border-b border-base-300 pt-[env(safe-area-inset-top)]"
       >
         <div class={[@column_class, "flex items-center gap-2 px-4 min-h-14 py-1.5"]}>
           <%!-- On a tab page the back arrow only leads Home, which the sidebar
@@ -301,7 +301,7 @@ defmodule TryggWeb.Layouts do
     ~H"""
     <nav
       id="bottom-nav"
-      class="fixed bottom-0 inset-x-0 z-30 bg-base-200 border-t border-base-300 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      class="material [--material-tint:var(--color-base-200)] fixed bottom-0 inset-x-0 z-30 border-t border-base-300 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       <div class="mx-auto max-w-md md:max-w-lg grid grid-cols-4 text-center text-xs">
         <.nav_item

@@ -384,11 +384,87 @@ defmodule TryggWeb.CoreComponents do
       phx-window-keydown={@close}
       phx-key="escape"
       phx-hook={@modal_back && "ModalBack"}
-      data-close-event={@modal_back && @close}
+      data-close-event={@close}
+      phx-remove={sheet_exit(@id)}
     >
-      <div class="absolute inset-0 bg-black/60" phx-click={@close}></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain">
+      <div
+        id={"#{@id}-backdrop"}
+        class="sheet-backdrop absolute inset-0 bg-black/60"
+        phx-click={@close}
+      >
+      </div>
+      <div
+        id={"#{@id}-panel"}
+        phx-hook="SheetDrag"
+        class="sheet-panel relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain"
+      >
+        <%!-- Grab handle: the `SheetDrag` hook's drag zone (phones only). A tall,
+             full-width strip so it's easy to hit; the visible pill is small. --%>
+        <div
+          data-sheet-handle
+          aria-hidden="true"
+          class="-mx-5 -mt-5 mb-1 flex h-9 touch-none cursor-grab items-center justify-center sm:hidden"
+        >
+          <span class="h-1.5 w-10 rounded-full bg-base-content/20"></span>
+        </div>
         {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+
+  # The way out when the server removes a sheet: the panel drops away and the
+  # backdrop fades, instead of the whole thing vanishing in one frame. Runs from
+  # `phx-remove` on the (outer) frame, which holds the removal until it's done.
+  defp sheet_exit(id) do
+    %JS{}
+    |> JS.transition(
+      {"transition-all ease-in duration-200", "translate-y-0", "translate-y-full"},
+      to: "##{id}-panel",
+      time: 200
+    )
+    |> JS.transition(
+      {"transition-opacity ease-in duration-200", "opacity-100", "opacity-0"},
+      to: "##{id}-backdrop",
+      time: 200
+    )
+  end
+
+  @doc """
+  A floating "Deleted · Undo" pill above the tab bar, for `TryggWeb.UndoDelete`.
+  Tapping Undo pushes `undo_delete`; a thin bar drains to show how long is left.
+
+  ## Examples
+
+      <.undo_toast undo={@undo} label="Entry deleted" />
+  """
+  attr :undo, :map, default: nil, doc: "the `TryggWeb.UndoDelete` offer, or nil"
+  attr :label, :string, default: "Deleted"
+
+  def undo_toast(assigns) do
+    ~H"""
+    <div
+      :if={@undo}
+      id={"undo-toast-#{@undo.ref}"}
+      role="status"
+      phx-remove={
+        JS.transition(
+          {"transition-all ease-in duration-150", "opacity-100", "opacity-0 translate-y-2"},
+          time: 150
+        )
+      }
+      class="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-40 flex justify-center px-4 lg:bottom-6"
+    >
+      <div class="undo-toast pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-full bg-neutral py-1.5 pl-5 pr-1.5 text-neutral-content shadow-lg">
+        <span class="text-sm font-semibold">{@label}</span>
+        <.button id="undo-delete" type="button" variant="primary" size="sm" phx-click="undo_delete">
+          Undo
+        </.button>
+        <span
+          class="undo-toast-timer absolute inset-x-0 bottom-0 h-0.5 bg-primary"
+          style={"animation-duration: #{TryggWeb.UndoDelete.window_ms()}ms"}
+          aria-hidden="true"
+        ></span>
       </div>
     </div>
     """

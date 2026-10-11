@@ -31,6 +31,7 @@ import Theme from "./hooks/theme"
 import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
+import SheetDrag from "./hooks/sheet_drag"
 import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
 import OfflineContext from "./hooks/offline_context"
@@ -55,6 +56,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushNotifications,
     PushPrompt,
     ModalBack,
+    SheetDrag,
     PullToRefresh,
     ChildSwipe,
     OfflineContext,
@@ -87,7 +89,16 @@ window.addEventListener("phx:page-loading-stop", _info => {
 document.addEventListener("click", e => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
   const tab = e.target.closest && e.target.closest("[data-nav-tab]")
-  if (!tab || tab.getAttribute("aria-current") === "page") return
+  if (!tab) return
+  // Tapping the tab you're already on scrolls back to the top, like a native
+  // tab bar, instead of reloading the page it points at.
+  if (tab.getAttribute("aria-current") === "page") {
+    e.preventDefault()
+    e.stopPropagation()
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    window.scrollTo({top: 0, behavior: calm ? "auto" : "smooth"})
+    return
+  }
   tab.closest("nav").querySelectorAll("[data-pending]").forEach(el => el.removeAttribute("data-pending"))
   tab.setAttribute("data-pending", "")
 })

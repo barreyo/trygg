@@ -1,5 +1,6 @@
 defmodule Trygg.LogTest do
   use Trygg.DataCase, async: true
+  use Oban.Testing, repo: Trygg.Repo
 
   alias Trygg.Families
   alias Trygg.Families.Child
@@ -103,6 +104,88 @@ defmodule Trygg.LogTest do
 
       {:ok, _} = Log.delete_entry(scope, entry)
       refute Log.summary(scope, child).vitamin_d_given_today?
+    end
+  end
+
+  describe "undoing a delete" do
+    test "restore_entry puts the entry back with its id and timestamps", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, entry} = feed(scope, child, %{})
+      {:ok, deleted} = Log.delete_entry(scope, entry, undoable: true)
+      assert Repo.get(Entry, entry.id) == nil
+
+      assert {:ok, restored} = Log.restore_entry(scope, deleted)
+      assert restored.id == entry.id
+      assert restored.started_at == entry.started_at
+      assert restored.inserted_at == entry.inserted_at
+      assert restored.logged_by_id == scope.user.id
+      assert %Entry{} = Repo.get(Entry, entry.id)
+    end
+
+    test "restore_entry broadcasts the entry as created", %{scope: scope, child: child} do
+      {:ok, entry} = feed(scope, child, %{})
+      {:ok, deleted} = Log.delete_entry(scope, entry, undoable: true)
+
+      Families.subscribe(child.id)
+      {:ok, _} = Log.restore_entry(scope, deleted)
+      assert_receive {:log, :created, %Entry{id: id}} when id == entry.id
+    end
+
+    test "a running timer is not restored once another has started", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, first} = Log.start_timer(scope, child, :sleep)
+      {:ok, deleted} = Log.delete_entry(scope, first, undoable: true)
+      {:ok, _second} = Log.start_timer(scope, child, :sleep)
+
+      assert {:error, :already_running} = Log.restore_entry(scope, deleted)
+      assert Repo.get(Entry, first.id) == nil
+    end
+
+    test "an undoable delete keeps the photo until the cleanup job runs", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, attrs} = Log.store_photo(child, tiny_png(), "image/png")
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
+
+      {:ok, _} = Log.delete_entry(scope, entry, undoable: true)
+      assert {:ok, _} = Trygg.Storage.get(attrs["photo_key"])
+      assert_enqueued(worker: Trygg.Log.PhotoCleanupWorker, args: %{key: attrs["photo_key"]})
+
+      assert :ok = perform_job(Trygg.Log.PhotoCleanupWorker, %{key: attrs["photo_key"]})
+      assert {:error, _} = Trygg.Storage.get(attrs["photo_key"])
+    end
+
+    test "the cleanup job leaves the photo of a restored entry alone", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, attrs} = Log.store_photo(child, tiny_png(), "image/png")
+
+      {:ok, entry} =
+        Log.create_entry(scope, child, :diaper, Map.merge(%{"data" => %{"kind" => "pee"}}, attrs))
+
+      {:ok, deleted} = Log.delete_entry(scope, entry, undoable: true)
+      {:ok, _} = Log.restore_entry(scope, deleted)
+
+      assert :ok = perform_job(Trygg.Log.PhotoCleanupWorker, %{key: attrs["photo_key"]})
+      assert {:ok, _} = Trygg.Storage.get(attrs["photo_key"])
+    end
+
+    test "a read-only member cannot restore", %{scope: scope, child: child} do
+      {:ok, entry} = feed(scope, child, %{})
+      {:ok, deleted} = Log.delete_entry(scope, entry, undoable: true)
+      stranger = user_scope_fixture()
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.restore_entry(stranger, deleted)
+      end
     end
   end
 

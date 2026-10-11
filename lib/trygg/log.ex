@@ -462,8 +462,14 @@ defmodule Trygg.Log do
     result
   end
 
-  @doc "Deletes an entry. Requires `:caregiver` for the entry's child."
-  def delete_entry(%Scope{} = scope, %Entry{} = entry) do
+  @doc """
+  Deletes an entry. Requires `:caregiver` for the entry's child.
+
+  Pass `undoable: true` when the caller will offer `restore_entry/2`: the
+  photo's bytes are then kept for a minute, and a `PhotoCleanupWorker` job
+  discards them afterwards unless an entry references the photo again by then.
+  """
+  def delete_entry(%Scope{} = scope, %Entry{} = entry, opts \\ []) do
     Families.authorize!(scope, %Child{id: entry.child_id}, :caregiver)
 
     result =
@@ -471,10 +477,54 @@ defmodule Trygg.Log do
       |> Repo.delete()
       |> broadcast(entry.child_id, :deleted)
 
-    with {:ok, _} <- result, do: discard_photo(entry.photo_key)
+    with {:ok, _} <- result do
+      if Keyword.get(opts, :undoable, false),
+        do: schedule_photo_cleanup(entry.photo_key),
+        else: discard_photo(entry.photo_key)
+    end
 
     result
   end
+
+  @doc """
+  Puts back an entry that `delete_entry/3` just removed, with the same id and
+  timestamps, so it reappears where it was. Requires `:caregiver`.
+
+  A running timer is not restored if another of the same type has been started
+  since (`{:error, :already_running}`): there can only be one.
+  """
+  def restore_entry(%Scope{} = scope, %Entry{} = entry) do
+    Families.authorize!(scope, %Child{id: entry.child_id}, :caregiver)
+
+    if entry.type in @timer_types and is_nil(entry.ended_at) and
+         running_of_type(%Child{id: entry.child_id}, entry.type) do
+      {:error, :already_running}
+    else
+      %{entry | origin: nil}
+      |> Ecto.reset_fields([:child, :logged_by])
+      |> Ecto.put_meta(state: :built)
+      |> Repo.insert()
+      |> broadcast(entry.child_id, :created)
+    end
+  end
+
+  @doc """
+  Deletes a photo's bytes unless an entry references it again. What a
+  `PhotoCleanupWorker` runs once the undo window for a delete has passed.
+  """
+  def discard_unreferenced_photo(key) when is_binary(key) do
+    if Repo.exists?(from e in Entry, where: e.photo_key == ^key),
+      do: :ok,
+      else: discard_photo(key)
+  end
+
+  defp schedule_photo_cleanup(key) when is_binary(key) and key != "" do
+    %{key: key}
+    |> Trygg.Log.PhotoCleanupWorker.new(schedule_in: 60)
+    |> Oban.insert()
+  end
+
+  defp schedule_photo_cleanup(_), do: :ok
 
   ## Timers ---------------------------------------------------------------
 

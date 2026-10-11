@@ -121,13 +121,19 @@ defmodule TryggWeb.RhythmComponents do
             id={"#{@id}-elapsed"}
             phx-hook="Timer"
             data-since={@center.since_unix}
-            class={["text-3xl font-bold leading-tight tabular-nums", tone_text(@center.tone)]}
+            class={[
+              "text-3xl font-bold leading-tight tracking-tight tabular-nums",
+              tone_text(@center.tone)
+            ]}
           >
             &nbsp;
           </span>
           <span
             :if={@center[:big]}
-            class={["text-3xl font-bold leading-tight tabular-nums", tone_text(@center.tone)]}
+            class={[
+              "text-3xl font-bold leading-tight tracking-tight tabular-nums",
+              tone_text(@center.tone)
+            ]}
           >
             {@center.big}
           </span>
