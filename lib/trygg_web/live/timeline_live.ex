@@ -31,7 +31,7 @@ defmodule TryggWeb.TimelineLive do
       flash={@flash}
       current_scope={@current_scope}
       current_child={@current_child}
-      current_tab={:log}
+      current_tab={:home}
       children={@children}
       child_switch_to={:log}
       title="Log"

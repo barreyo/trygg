@@ -151,9 +151,24 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Today")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/sleep"}']", "Sleep")
-      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
+      refute has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/log"}']")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/vitals"}']", "Vitals")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
+    end
+
+    test "the full log is reached from Today, not from a tab", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "a[href='#{~p"/c/#{child}/log"}']", "Full log")
+
+      {:ok, log, _html} = live_loaded(conn, ~p"/c/#{child}/log")
+
+      assert has_element?(
+               log,
+               "#bottom-nav a[aria-current=page][href='#{~p"/c/#{child}"}']",
+               "Today"
+             )
+
+      assert has_element?(log, "header a[aria-label=Back][href='#{~p"/c/#{child}"}']")
     end
 
     test "has a desktop sidebar with the same tabs, marking the current one", %{
@@ -163,7 +178,7 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Today")
-      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
+      refute has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/log"}']")
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
 
       assert has_element?(

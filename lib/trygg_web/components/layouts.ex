@@ -308,7 +308,7 @@ defmodule TryggWeb.Layouts do
     >
       <div class={[
         "mx-auto max-w-md md:max-w-lg grid text-center text-xs",
-        if(sleep_tab?(@current_child), do: "grid-cols-5", else: "grid-cols-4")
+        if(sleep_tab?(@current_child), do: "grid-cols-4", else: "grid-cols-3")
       ]}>
         <.nav_item
           navigate={~p"/c/#{@current_child}"}
@@ -324,13 +324,6 @@ defmodule TryggWeb.Layouts do
           active_icon="hero-moon-solid"
           label="Sleep"
           active={@current_tab == :sleep}
-        />
-        <.nav_item
-          navigate={~p"/c/#{@current_child}/log"}
-          icon="hero-list-bullet"
-          active_icon="hero-list-bullet-solid"
-          label="Log"
-          active={@current_tab == :log}
         />
         <.nav_item
           navigate={~p"/c/#{@current_child}/vitals"}
@@ -351,7 +344,7 @@ defmodule TryggWeb.Layouts do
     """
   end
 
-  # Desktop counterpart of `bottom_nav/1`: the same four tabs down a fixed left
+  # Desktop counterpart of `bottom_nav/1`: the same tabs down a fixed left
   # rail, since a bar pinned to the bottom of a wide screen is a long way from
   # everything else.
   attr :current_child, :map, required: true
@@ -384,13 +377,6 @@ defmodule TryggWeb.Layouts do
           active_icon="hero-moon-solid"
           label="Sleep"
           active={@current_tab == :sleep}
-        />
-        <.side_nav_item
-          navigate={~p"/c/#{@current_child}/log"}
-          icon="hero-list-bullet"
-          active_icon="hero-list-bullet-solid"
-          label="Log"
-          active={@current_tab == :log}
         />
         <.side_nav_item
           navigate={~p"/c/#{@current_child}/vitals"}
