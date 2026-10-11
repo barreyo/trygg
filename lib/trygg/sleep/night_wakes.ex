@@ -116,7 +116,7 @@ defmodule Trygg.Sleep.NightWakes do
 
     NightWake
     |> where([w], w.child_id == ^child.id and w.started_at >= ^since)
-    |> order_by(desc: :started_at)
+    |> order_by(desc: :started_at, desc: :id)
     |> preload(:started_by)
     |> Repo.all()
   end
