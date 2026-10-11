@@ -308,7 +308,7 @@ defmodule TryggWeb.Layouts do
           navigate={~p"/c/#{@current_child}"}
           icon="hero-home"
           active_icon="hero-home-solid"
-          label="Home"
+          label="Today"
           active={@current_tab == :home}
         />
         <.nav_item
@@ -360,7 +360,7 @@ defmodule TryggWeb.Layouts do
           navigate={~p"/c/#{@current_child}"}
           icon="hero-home"
           active_icon="hero-home-solid"
-          label="Home"
+          label="Today"
           active={@current_tab == :home}
         />
         <.side_nav_item

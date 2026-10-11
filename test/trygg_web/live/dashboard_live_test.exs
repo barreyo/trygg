@@ -149,7 +149,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "shows the child's tabs on child pages", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
-      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Home")
+      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Today")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/vitals"}']", "Vitals")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
@@ -161,7 +161,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
-      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Home")
+      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Today")
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
 
