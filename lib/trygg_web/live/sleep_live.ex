@@ -29,7 +29,7 @@ defmodule TryggWeb.SleepLive do
       socket =
         socket
         |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
-        |> assign(summary: nil, habits: nil, phase: nil, timeline: [])
+        |> assign(summary: nil, habits: nil, phase: nil, timeline: [], plan: nil, insights: [])
         |> assign(pending_cue: nil, pending_cue_at: nil)
         |> Loading.init()
         |> load()
@@ -93,9 +93,11 @@ defmodule TryggWeb.SleepLive do
     end
   end
 
+  # The plan is built from "now" (wake windows, the open nap window), so it's
+  # recomputed every minute as well as on every log change.
   def handle_info(:tick, socket) do
     Process.send_after(self(), :tick, 60_000)
-    {:noreply, expire_pending_cue(socket)}
+    {:noreply, socket |> expire_pending_cue() |> refresh()}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -186,12 +188,26 @@ defmodule TryggWeb.SleepLive do
   end
 
   defp fetch(scope, child) do
+    summary = Log.summary(scope, child)
+
+    %{plan: plan, insights: insights, habits: habits, phase: phase} =
+      Reports.sleep_plan(scope, child, DateTime.utc_now(), last_feed_at: last_feed_at(summary))
+
     %{
-      summary: Log.summary(scope, child),
-      habits: Reports.sleep_habits(scope, child),
-      phase: Phase.for_child(child),
+      summary: summary,
+      plan: plan,
+      insights: insights,
+      habits: habits,
+      phase: phase,
       timeline: Phase.timeline(child)
     }
+  end
+
+  # When the last feed (a bottle or a nursing session) ended.
+  defp last_feed_at(%{last_feeding: bottle, last_breastfeeding: nursing}) do
+    [bottle && bottle.started_at, nursing && (nursing.ended_at || nursing.started_at)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(DateTime, fn -> nil end)
   end
 
   defp apply_data(socket, data) do
@@ -225,10 +241,12 @@ defmodule TryggWeb.SleepLive do
               can_write={@can_write}
               tz={@current_child.timezone}
             />
-            <.habits_panel habits={@habits} />
-            <.cries_panel :if={@phase && @phase.id == :newborn} />
+            <.schedule_panel plan={@plan} tz={@current_child.timezone} />
+            <.insights_panel insights={@insights} />
           </:left>
           <:right>
+            <.habits_panel habits={@habits} />
+            <.cries_panel :if={@phase && @phase.id == :newborn} />
             <.cue_guide />
             <.rhythm_reference :if={@phase && @phase.id == :newborn} />
             <.roadmap :if={@timeline != []} timeline={@timeline} />

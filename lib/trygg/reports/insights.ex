@@ -548,7 +548,7 @@ defmodule Trygg.Reports.Insights do
           state: :asleep,
           next_nap: nil,
           wake_pressure: nil,
-          schedule: []
+          schedule: asleep_schedule(child, today, n_done, typical, stats, bedtime, now)
         }
       else
         %{
@@ -578,6 +578,21 @@ defmodule Trygg.Reports.Insights do
       bedtime: bedtime,
       transition?: transition?
     })
+  end
+
+  # While a nap is running, project the rest of the day from when it's expected
+  # to end (its start plus the usual length for that nap, never before now).
+  # Overnight sleep isn't a nap, so there is nothing to project.
+  defp asleep_schedule(child, today, n_done, typical, stats, bedtime, now) do
+    case Enum.find(today.naps, & &1.running?) do
+      nil ->
+        []
+
+      nap ->
+        length = round(nap_median(stats, n_done + 1) || 0)
+        wake = latest_of(add_seconds(nap.start, length), [now])
+        rest_schedule(child, today, wake, n_done + 1, typical, stats, bedtime, now)
+    end
   end
 
   defp morning_prediction(child, today, stats) do

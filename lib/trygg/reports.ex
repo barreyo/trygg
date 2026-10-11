@@ -14,6 +14,7 @@ defmodule Trygg.Reports do
   alias Trygg.Log
   alias Trygg.Reports.Alerts
   alias Trygg.Reports.Day
+  alias Trygg.Reports.DayPlan
   alias Trygg.Reports.Diapers
   alias Trygg.Reports.Feeding
   alias Trygg.Reports.Insights
@@ -94,7 +95,8 @@ defmodule Trygg.Reports do
       shifts: shifts,
       growth: growth,
       alerts: alerts,
-      rhythm: Rhythm.summarize(child, days, today_day, now)
+      rhythm: Rhythm.summarize(child, days, today_day, now),
+      today: today_day
     })
   end
 
@@ -135,6 +137,41 @@ defmodule Trygg.Reports do
       cluster: s.feeding.cluster,
       diapers: %{flags: s.diapers.flags, dry_seconds: s.diapers.dry_seconds},
       alerts: s.alerts
+    }
+  end
+
+  @doc """
+  Today's whole sleep day and what to do about it: the ordered schedule from
+  `Trygg.Reports.DayPlan` (what happened, what's running, what's predicted
+  from the current conditions) and the insights and suggestions from
+  `Trygg.Sleep.Coach`, plus this week's `Trygg.Reports.SleepHabits`.
+
+  Options: `:last_feed_at` (a `DateTime`, to nudge a feed during a long nap).
+  Requires `:viewer`.
+  """
+  def sleep_plan(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now(), opts \\ []) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+
+    s = summary(scope, child, @outlook_window, now)
+    habits = sleep_habits(scope, child, now)
+    phase = Trygg.Sleep.Phase.for_child(child)
+
+    context = %{
+      child: child,
+      phase: phase,
+      prediction: s.prediction,
+      today: s.today,
+      habits: habits,
+      last_feed_at: opts[:last_feed_at],
+      now: now
+    }
+
+    %{
+      plan: DayPlan.build(child, s.today, s.prediction, now),
+      insights: Trygg.Sleep.Coach.insights(context),
+      habits: habits,
+      phase: phase
     }
   end
 

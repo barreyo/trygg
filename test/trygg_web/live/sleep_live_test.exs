@@ -6,6 +6,7 @@ defmodule TryggWeb.SleepLiveTest do
   import Trygg.FamiliesFixtures
 
   alias Trygg.{Families, Log}
+  alias Trygg.Families.Child
 
   describe "auth boundary" do
     test "redirects anonymous users to log in", %{conn: conn} do
@@ -213,6 +214,85 @@ defmodule TryggWeb.SleepLiveTest do
     end
   end
 
+  describe "today's schedule and insights" do
+    # A child whose local time is about noon right now (a fixed-offset zone, so
+    # no DST), with five regular days behind them (night 20:00–07:00 and naps at
+    # 09:30, 12:30 and 15:30) and, today, a wake-up at 07:00 and one early nap.
+    # That keeps the day's shape the same whenever the suite runs.
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      offset = rem(12 - DateTime.utc_now().hour + 24, 24)
+      offset = if offset > 12, do: offset - 24, else: offset
+
+      zone =
+        cond do
+          offset == 0 -> "Etc/UTC"
+          offset > 0 -> "Etc/GMT-#{offset}"
+          true -> "Etc/GMT+#{-offset}"
+        end
+
+      child = child_fixture(scope, %{timezone: zone})
+      today = Child.local_today(child)
+      local = &Child.at_local(child, &1, &2)
+
+      sleep = fn date, from, to, end_date ->
+        {:ok, _} =
+          Log.create_entry(scope, child, :sleep, %{
+            "started_at" => local.(date, from),
+            "ended_at" => local.(end_date, to)
+          })
+      end
+
+      for back <- 5..1//-1 do
+        date = Date.add(today, -back)
+        sleep.(date, ~T[20:00:00], ~T[07:00:00], Date.add(date, 1))
+        sleep.(date, ~T[09:30:00], ~T[10:30:00], date)
+        sleep.(date, ~T[12:30:00], ~T[13:30:00], date)
+        sleep.(date, ~T[15:30:00], ~T[16:30:00], date)
+      end
+
+      sleep.(Date.add(today, -1), ~T[20:00:00], ~T[07:00:00], today)
+      sleep.(today, ~T[08:00:00], ~T[09:00:00], today)
+
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    test "lists what has happened and what's still to come", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      assert has_element?(lv, "#sleep-schedule #plan-wake[data-state=done]", "Woke up")
+      assert has_element?(lv, "#plan-nap-1[data-state=done]", "08:00–09:00")
+      assert has_element?(lv, "#plan-nap-2", "Nap 2")
+      assert has_element?(lv, "#plan-nap-3[data-state=upcoming]", "Nap 3")
+      assert has_element?(lv, "#plan-bed[data-state=upcoming]", "Bedtime")
+      assert has_element?(lv, "#sleep-schedule-total")
+    end
+
+    test "the next nap is due when they've been awake longer than usual", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      assert has_element?(lv, "#plan-nap-2[data-state=due]", "Window is open")
+      assert has_element?(lv, "#sleep-insights #insight-past-window[data-tone=watch]")
+      assert has_element?(lv, "#insight-past-window", "C.R.I.E.S.")
+    end
+
+    test "a sleep started now becomes the running nap, with the rest of the day after it", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+      lv |> element("#start-sleep") |> render_click()
+
+      assert has_element?(lv, "#plan-nap-2[data-state=now]", "Asleep")
+      assert has_element?(lv, "#plan-nap-3[data-state=upcoming]")
+      assert has_element?(lv, "#plan-bed")
+      refute has_element?(lv, "#insight-past-window")
+    end
+  end
+
   describe "this week" do
     setup %{conn: conn} do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
@@ -222,6 +302,8 @@ defmodule TryggWeb.SleepLiveTest do
     test "starts empty", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
       assert has_element?(lv, "#sleep-habits-empty")
+      assert has_element?(lv, "#sleep-schedule-empty")
+      assert has_element?(lv, "#sleep-insights")
     end
 
     test "counts cues and sleeps that began right after a feed", %{
