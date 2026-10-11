@@ -144,6 +144,27 @@ defmodule TryggWeb.VitalsLiveTest do
     assert has_element?(lv, "#latest-weight", "Not logged yet")
   end
 
+  test "a deleted measurement can be undone from the toast", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    m = measurement_fixture(scope, child, %{"weight_g" => 3200, "height_cm" => 50})
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
+
+    lv |> element("#measurement-#{m.id}") |> render_click()
+    lv |> element("#delete-measurement") |> render_click()
+    assert Growth.list_measurements(scope, child) == []
+    assert has_element?(lv, "#undo-delete")
+
+    lv |> element("#undo-delete") |> render_click()
+
+    assert [%{id: id}] = Growth.list_measurements(scope, child)
+    assert id == m.id
+    assert has_element?(lv, "#latest-weight", "3.2 kg")
+    refute has_element?(lv, "#undo-delete")
+  end
+
   test "a viewer can see measurements but cannot add", %{conn: conn} do
     %{owner_scope: owner_scope, child: child, member: member} = shared_child_fixture(:viewer)
     measurement_fixture(owner_scope, child)

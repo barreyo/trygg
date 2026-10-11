@@ -395,6 +395,46 @@ defmodule TryggWeb.CoreComponents do
   end
 
   @doc """
+  A floating "Deleted · Undo" pill above the tab bar, for `TryggWeb.UndoDelete`.
+  Tapping Undo pushes `undo_delete`; a thin bar drains to show how long is left.
+
+  ## Examples
+
+      <.undo_toast undo={@undo} label="Entry deleted" />
+  """
+  attr :undo, :map, default: nil, doc: "the `TryggWeb.UndoDelete` offer, or nil"
+  attr :label, :string, default: "Deleted"
+
+  def undo_toast(assigns) do
+    ~H"""
+    <div
+      :if={@undo}
+      id={"undo-toast-#{@undo.ref}"}
+      role="status"
+      phx-remove={
+        JS.transition(
+          {"transition-all ease-in duration-150", "opacity-100", "opacity-0 translate-y-2"},
+          time: 150
+        )
+      }
+      class="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-40 flex justify-center px-4 lg:bottom-6"
+    >
+      <div class="undo-toast pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-full bg-neutral py-1.5 pl-5 pr-1.5 text-neutral-content shadow-lg">
+        <span class="text-sm font-semibold">{@label}</span>
+        <.button id="undo-delete" type="button" variant="primary" size="sm" phx-click="undo_delete">
+          Undo
+        </.button>
+        <span
+          class="undo-toast-timer absolute inset-x-0 bottom-0 h-0.5 bg-primary"
+          style={"animation-duration: #{TryggWeb.UndoDelete.window_ms()}ms"}
+          aria-hidden="true"
+        ></span>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a header with title.
   """
   slot :inner_block, required: true
