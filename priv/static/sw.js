@@ -6,14 +6,20 @@
 // do not precache `/assets/css/app.css` / `/assets/js/app.js`; those paths
 // 404 in production after `mix phx.digest`.
 //
+// Only static, public files under `/assets/` and `/images/` are cached. Every
+// other same-origin GET goes straight to the network: that keeps signed-in
+// content (baby photos, `/api/v1` JSON) out of Cache Storage, where it would
+// outlive the session and be served without an auth check.
+//
 // `/` is deliberately not precached: for a signed-out visitor it redirects to
 // the login page, whose CSRF token is bound to a session that will be gone by
 // the time the cached copy is served. A static offline page is the fallback.
-const CACHE = "trygg-shell-v7"
+const CACHE = "trygg-shell-v8"
 const OFFLINE = "/offline.html"
 // `offline.js` powers the offline quick-logger inside offline.html. Literal,
 // undigested path (see the note in offline.html) so it's stable to precache.
 const SHELL = [OFFLINE, "/manifest.webmanifest", "/assets/js/offline.js"]
+const CACHEABLE_PREFIXES = ["/assets/", "/images/"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()))
@@ -40,13 +46,9 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Reports PDF export is generated fresh per request (date window, latest
-  // data) — never serve or store a cached copy, and never let a transient
-  // failure response get cached and replayed on the next attempt.
-  if (url.pathname.endsWith("/reports.pdf")) {
-    event.respondWith(fetch(request))
-    return
-  }
+  // Anything that isn't a public static file (photos, the reports PDF, API
+  // JSON, …) is never cached or replayed; the browser handles it as usual.
+  if (!CACHEABLE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return
 
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((res) => {
@@ -77,7 +79,9 @@ self.addEventListener("push", (event) => {
   const options = {
     body: payload.body || "",
     icon: "/images/icon-192.png",
-    badge: "/images/icon-192.png",
+    // Android masks the badge to a single-colour silhouette, so a full-colour
+    // icon would render as a blob.
+    badge: "/images/badge-96.png",
     tag: payload.tag || "trygg",
     renotify: Boolean(payload.tag),
     data: {url: payload.url || "/"},
