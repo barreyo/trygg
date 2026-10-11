@@ -454,6 +454,61 @@ defmodule Trygg.LogTest do
     end
   end
 
+  describe "how a sleep started (assist and settle time)" do
+    test "valid values are kept, as numbers or numeric strings", %{scope: scope, child: child} do
+      assert {:ok, %{data: %{"assist" => 7, "settle_minutes" => 10}}} =
+               Log.create_entry(scope, child, :sleep, %{
+                 "data" => %{"assist" => "7", "settle_minutes" => 10}
+               })
+    end
+
+    test "out-of-range or unreadable values are dropped", %{scope: scope, child: child} do
+      assert {:ok, %{data: data}} =
+               Log.create_entry(scope, child, :sleep, %{
+                 "data" => %{"assist" => 12, "settle_minutes" => "soon"}
+               })
+
+      assert data == %{}
+
+      assert {:ok, %{data: %{}}} =
+               Log.create_entry(scope, child, :sleep, %{
+                 "data" => %{"assist" => 0, "settle_minutes" => 999}
+               })
+    end
+
+    test "merge_sleep_data/3 sets and clears keys without touching the rest", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, nap} = Log.start_timer(scope, child, :sleep, %{"data" => %{"cue" => "ready"}})
+
+      assert {:ok, merged} =
+               Log.merge_sleep_data(scope, nap, %{"assist" => 8, "settle_minutes" => 5})
+
+      assert merged.data == %{"cue" => "ready", "assist" => 8, "settle_minutes" => 5}
+      assert merged.ended_at == nil
+
+      assert {:ok, cleared} = Log.merge_sleep_data(scope, merged, %{"assist" => nil})
+      assert cleared.data == %{"cue" => "ready", "settle_minutes" => 5}
+    end
+
+    test "an assist survives stop_timer/3", %{scope: scope, child: child} do
+      {:ok, nap} = Log.start_timer(scope, child, :sleep)
+      {:ok, nap} = Log.merge_sleep_data(scope, nap, %{"assist" => 9})
+      {:ok, stopped} = Log.stop_timer(scope, nap)
+      assert stopped.data["assist"] == 9
+    end
+
+    test "viewers can't change it" do
+      %{owner_scope: owner, child: child, member_scope: viewer} = shared_child_fixture(:viewer)
+      {:ok, nap} = Log.start_timer(owner, child, :sleep)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.merge_sleep_data(viewer, nap, %{"assist" => 3})
+      end
+    end
+  end
+
   describe "breastfeeding pattern data" do
     test "stores supported patterns, permits missing values, and rejects unknown values", %{
       scope: scope,

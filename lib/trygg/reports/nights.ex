@@ -36,7 +36,7 @@ defmodule Trygg.Reports.Nights do
   `nights` is the finished nights, newest first, each
 
       %{date, bedtime, wake, asleep_seconds, wakings, longest_sleep_seconds,
-        feeds, longest_feed_gap_seconds}
+        feeds, feed_events, longest_feed_gap_seconds}
 
   where `date` is the evening the night began. `best_baseline_seconds` is the
   longest stretch between feeds reached on at least two of those nights (the
@@ -45,12 +45,15 @@ defmodule Trygg.Reports.Nights do
   """
   def summarize(%Child{}, days, entries) when is_list(days) and is_list(entries) do
     sleeps = Enum.filter(entries, &(&1.type == :sleep))
-    feeds = for e <- entries, e.type in [:feeding, :breastfeeding], do: e.started_at
+    feed_entries = Enum.filter(entries, &(&1.type in [:feeding, :breastfeeding]))
+    feeds = Enum.map(feed_entries, & &1.started_at)
 
     nights =
       days
       |> Enum.chunk_every(2, 1, :discard)
-      |> Enum.flat_map(fn [evening, morning] -> night(evening, morning, sleeps, feeds) end)
+      |> Enum.flat_map(fn [evening, morning] ->
+        night(evening, morning, sleeps, feeds, feed_entries)
+      end)
       |> Enum.take(-@nights)
       |> Enum.reverse()
 
@@ -68,7 +71,8 @@ defmodule Trygg.Reports.Nights do
          %Day{bedtime: %DateTime{} = bed} = evening,
          %Day{morning_wake: %DateTime{} = wake},
          sleeps,
-         feeds
+         feeds,
+         feed_entries
        ) do
     if DateTime.compare(wake, bed) == :gt do
       [
@@ -80,6 +84,7 @@ defmodule Trygg.Reports.Nights do
           wakings: length(evening.night_wakings || []),
           longest_sleep_seconds: longest_sleep(bed, wake, evening.night_wakings || []),
           feeds: night_feeds(feeds, bed, wake),
+          feed_events: feed_events(feed_entries, bed, wake),
           longest_feed_gap_seconds: longest_feed_gap(feeds, bed, wake)
         }
       ]
@@ -88,7 +93,7 @@ defmodule Trygg.Reports.Nights do
     end
   end
 
-  defp night(_evening, _morning, _sleeps, _feeds), do: []
+  defp night(_evening, _morning, _sleeps, _feeds, _feed_entries), do: []
 
   defp asleep_seconds(sleeps, bed, wake) do
     Enum.reduce(sleeps, 0, fn %Entry{} = sleep, total ->
@@ -116,6 +121,30 @@ defmodule Trygg.Reports.Nights do
     from = DateTime.add(bed, @feed_margin_seconds, :second)
     to = DateTime.add(wake, -@feed_margin_seconds, :second)
     Enum.count(feeds, &(DateTime.compare(&1, from) != :lt and DateTime.compare(&1, to) != :gt))
+  end
+
+  # The night's feeds in order, with how much each was: `ml` for a bottle,
+  # `minutes` for a nursing session (`nil` while one is still running).
+  defp feed_events(entries, bed, wake) do
+    from = DateTime.add(bed, @feed_margin_seconds, :second)
+    to = DateTime.add(wake, -@feed_margin_seconds, :second)
+
+    entries
+    |> Enum.filter(
+      &(DateTime.compare(&1.started_at, from) != :lt and
+          DateTime.compare(&1.started_at, to) != :gt)
+    )
+    |> Enum.sort_by(& &1.started_at, DateTime)
+    |> Enum.map(fn e ->
+      %{
+        at: e.started_at,
+        kind: e.type,
+        ml: e.data["amount_ml"],
+        minutes:
+          e.ended_at && e.type == :breastfeeding &&
+            round(DateTime.diff(e.ended_at, e.started_at, :second) / 60)
+      }
+    end)
   end
 
   # Longest gap between consecutive feeds, counting the last feed before

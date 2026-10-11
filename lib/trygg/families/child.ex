@@ -53,6 +53,14 @@ defmodule Trygg.Families.Child do
     # push notifications, sent by `Trygg.Sleep.Nudges`. Opt-in.
     field :sleep_nudges, :boolean, default: false
 
+    # Sleep toolkit state (see `Trygg.Sleep`): when a caregiver recorded the
+    # pediatrician's go-ahead for night weaning and for sleep training, and the
+    # checklist items ticked by hand. Changed through
+    # `Trygg.Families.update_sleep_toolkit/3`, never the child form.
+    field :night_weaning_cleared_on, :date
+    field :sleep_training_cleared_on, :date
+    field :sleep_checks, :map, default: %{}
+
     # Which trackers show on Home (glance cards, log buttons, recent list).
     # Shared by every caregiver; at least one must stay on.
     field :tracked_types,
@@ -69,6 +77,17 @@ defmodule Trygg.Families.Child do
     has_many :caregivers, through: [:memberships, :user]
 
     timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def sleep_toolkit_changeset(child, attrs) do
+    child
+    |> cast(attrs, [:night_weaning_cleared_on, :sleep_training_cleared_on, :sleep_checks])
+    |> validate_change(:sleep_checks, fn :sleep_checks, checks ->
+      if is_map(checks) and Enum.all?(checks, fn {k, v} -> is_binary(k) and is_binary(v) end),
+        do: [],
+        else: [sleep_checks: "must map item ids to dates"]
+    end)
   end
 
   @doc false

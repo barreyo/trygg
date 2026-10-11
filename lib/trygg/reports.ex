@@ -16,6 +16,7 @@ defmodule Trygg.Reports do
   alias Trygg.Reports.Day
   alias Trygg.Reports.DayPlan
   alias Trygg.Reports.Diapers
+  alias Trygg.Reports.FallingAsleep
   alias Trygg.Reports.Feeding
   alias Trygg.Reports.Insights
   alias Trygg.Reports.Nights
@@ -150,6 +151,18 @@ defmodule Trygg.Reports do
   end
 
   @doc """
+  How the child's way of falling asleep has changed over the last six weeks
+  (`Trygg.Reports.FallingAsleep`). Requires `:viewer`.
+  """
+  def falling_asleep(%Scope{} = scope, %Child{} = child, _now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    today = Child.local_today(child)
+    {start, _} = Child.day_bounds(child, Date.add(today, -(FallingAsleep.weeks() * 7 - 1)))
+    entries = Log.list_entries(scope, child, type: :sleep, since: start)
+    FallingAsleep.summarize(child, entries, today)
+  end
+
+  @doc """
   How the last few nights went (`Trygg.Reports.Nights`): bedtime and wake,
   sleep, wakings, the longest unbroken sleep and the longest stretch between
   feeds. Requires `:viewer`.
@@ -160,6 +173,60 @@ defmodule Trygg.Reports do
     # One more day than the nights shown: each night needs the morning after it.
     {days, entries} = load_days(scope, child, Date.add(today, -Nights.count()), today, now)
     Nights.summarize(child, days, entries)
+  end
+
+  @doc """
+  Everything the Sleep toolkit page shows for the 13-week stage: how they fall
+  asleep, the bedtime plan and the guide's day, the night-feed plan with its
+  gates, and the checklists. Requires `:viewer`.
+
+  Options: `:last_feed_at` (a `DateTime`).
+  """
+  def sleep_toolkit(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now(), opts \\ []) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+
+    phase = Trygg.Sleep.Phase.for_child(child)
+    s = summary(scope, child, @outlook_window, now)
+    nights = nights(scope, child, now)
+    falling = falling_asleep(scope, child, now)
+    habits = sleep_habits(scope, child, now)
+    growth = Growth.velocity(scope, child)
+
+    table = phase && Trygg.Sleep.Schedules.for_age(phase.age_days)
+    usual = s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes)
+
+    wake_at =
+      s.today.morning_wake ||
+        (s.morning_wake && s.morning_wake.median_minutes &&
+           Child.at_local(child, today, minutes_to_time(s.morning_wake.median_minutes))) ||
+        Child.at_local(child, today, ~T[07:00:00])
+
+    gates = Trygg.Sleep.NightFeeds.gates(child, phase || %{age_days: 0, next: nil}, growth, today)
+
+    %{
+      phase: phase,
+      table: table,
+      falling_asleep: falling,
+      bedtime_plan: table && Trygg.Sleep.BedtimePlan.build(table, usual),
+      guide_day: table && Trygg.Sleep.Schedules.plan_day(child, table, wake_at),
+      nights: nights,
+      night_feed_gates: gates,
+      night_feed_plan: Trygg.Sleep.NightFeeds.plan(child, nights, opts[:last_feed_at], now),
+      checklists:
+        Trygg.Sleep.Checklists.evaluate(%{
+          child: child,
+          nights: nights,
+          falling_asleep: falling,
+          habits: habits
+        })
+    }
+  end
+
+  defp minutes_to_time(minutes) do
+    minutes = round(minutes)
+    Time.new!(rem(div(minutes, 60), 24), rem(minutes, 60), 0)
   end
 
   @doc """

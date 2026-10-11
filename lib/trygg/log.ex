@@ -623,12 +623,20 @@ defmodule Trygg.Log do
   sleep, started — see `Trygg.Sleep.Cue`. Other `data`, timing and the note are
   left as they were. Requires `:caregiver`.
   """
-  def set_sleep_cue(%Scope{} = scope, %Entry{type: :sleep} = entry, cue) do
+  def set_sleep_cue(%Scope{} = scope, %Entry{type: :sleep} = entry, cue),
+    do: merge_sleep_data(scope, entry, %{"cue" => cue})
+
+  @doc """
+  Merges `changes` into a sleep's `data` (a `nil` value removes the key), leaving
+  its timing and note alone. Used for the cue, how it fell asleep
+  (`"assist"`, `"settle_minutes"`) and similar. Requires `:caregiver`.
+  """
+  def merge_sleep_data(%Scope{} = scope, %Entry{type: :sleep} = entry, %{} = changes) do
     data =
-      case cue do
-        nil -> Map.delete(entry.data || %{}, "cue")
-        cue -> Map.put(entry.data || %{}, "cue", cue)
-      end
+      Enum.reduce(changes, entry.data || %{}, fn
+        {key, nil}, acc -> Map.delete(acc, key)
+        {key, value}, acc -> Map.put(acc, key, value)
+      end)
 
     update_entry(scope, entry, %{
       "type" => "sleep",

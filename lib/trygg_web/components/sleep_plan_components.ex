@@ -15,7 +15,7 @@ defmodule TryggWeb.SleepPlanComponents do
 
   alias Trygg.Log.Entry
   alias Trygg.Reports.SleepHabits
-  alias Trygg.Sleep.{Cries, Cue, Guide}
+  alias Trygg.Sleep.{Assist, Cries, Cue, Guide}
 
   ## Hero ----------------------------------------------------------------------
 
@@ -81,6 +81,7 @@ defmodule TryggWeb.SleepPlanComponents do
   attr :pending_cue, :string, default: nil
   attr :can_write, :boolean, required: true
   attr :tz, :string, required: true
+  attr :track_assist, :boolean, default: false
 
   def right_now(assigns) do
     ~H"""
@@ -100,6 +101,7 @@ defmodule TryggWeb.SleepPlanComponents do
 
         <div :if={@can_write}>
           <.cue_chips selected={@running.data["cue"]} label="How did they look going down?" />
+          <.assist_form :if={@track_assist} running={@running} />
           <.button
             id="stop-sleep"
             type="button"
@@ -126,6 +128,44 @@ defmodule TryggWeb.SleepPlanComponents do
         </div>
       <% end %>
     </section>
+    """
+  end
+
+  attr :running, :map, required: true
+
+  defp assist_form(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :form,
+        to_form(
+          %{
+            "assist" => to_string(assigns.running.data["assist"] || ""),
+            "settle" => to_string(assigns.running.data["settle_minutes"] || "")
+          },
+          as: :fall
+        )
+      )
+
+    ~H"""
+    <.form for={@form} id="assist-form" phx-change="set_assist" class="mt-3 space-y-2">
+      <.input
+        field={@form[:assist]}
+        id="assist-select"
+        type="select"
+        label="How did they fall asleep?"
+        prompt="Not noted"
+        options={for {level, text} <- Assist.levels(), do: {"#{level}. #{text}", level}}
+      />
+      <.input
+        field={@form[:settle]}
+        id="settle-select"
+        type="select"
+        label="How long did it take?"
+        prompt="Not noted"
+        options={for {minutes, label} <- Assist.settle_options(), do: {label, minutes}}
+      />
+    </.form>
     """
   end
 
