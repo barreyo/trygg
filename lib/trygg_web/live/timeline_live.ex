@@ -4,6 +4,7 @@ defmodule TryggWeb.TimelineLive do
   alias Trygg.Accounts.Scope
   alias Trygg.Families
   alias Trygg.Families.Child
+  alias TryggWeb.UndoDelete
   alias Trygg.Log
   alias Trygg.Log.Entry
   alias TryggWeb.{Loading, RemoteUpdate}
@@ -130,6 +131,7 @@ defmodule TryggWeb.TimelineLive do
         vitamin_d?={@edit_vitamin_d?}
         photo_src={@editing.photo_key && ~p"/c/#{@current_child}/log/#{@editing.id}/photo"}
       />
+      <.undo_toast undo={@undo} label="Entry deleted" />
     </Layouts.app>
     """
   end
@@ -148,6 +150,7 @@ defmodule TryggWeb.TimelineLive do
       |> assign(:cursor, nil)
       |> assign(:loaded_count, 0)
       |> assign(:editing, nil)
+      |> assign(:undo, nil)
       |> assign(:edit_vitamin_d?, false)
       |> assign(:edit_form, nil)
       |> allow_upload(:photo,
@@ -207,6 +210,9 @@ defmodule TryggWeb.TimelineLive do
      |> assign(:unit_system, user.unit_system)
      |> load_entries()}
   end
+
+  def handle_info({:undo_expired, ref}, socket),
+    do: {:noreply, UndoDelete.expire(socket, ref)}
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -311,8 +317,16 @@ defmodule TryggWeb.TimelineLive do
   end
 
   def handle_event("delete_entry", _params, socket) do
-    {:ok, _} = Log.delete_entry(socket.assigns.current_scope, socket.assigns.editing)
-    {:noreply, socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Deleted.")}
+    {:ok, deleted} =
+      Log.delete_entry(socket.assigns.current_scope, socket.assigns.editing, undoable: true)
+
+    {:noreply, socket |> assign(editing: nil, edit_form: nil) |> UndoDelete.stash(deleted)}
+  end
+
+  def handle_event("undo_delete", _params, socket) do
+    scope = socket.assigns.current_scope
+    {entry, socket} = UndoDelete.take(socket)
+    {:noreply, UndoDelete.restore(socket, entry, &Log.restore_entry(scope, &1))}
   end
 
   ## ------------------------------------------------------------------

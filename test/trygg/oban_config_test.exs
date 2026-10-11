@@ -25,6 +25,10 @@ defmodule Trygg.ObanConfigTest do
     test "declares the push queue for DeliveryWorker", %{oban: oban} do
       assert Keyword.has_key?(oban[:queues], :push)
     end
+
+    test "declares the cleanup queue for PhotoCleanupWorker", %{oban: oban} do
+      assert Keyword.has_key?(oban[:queues], :cleanup)
+    end
   end
 
   describe "production config (config/prod.exs)" do

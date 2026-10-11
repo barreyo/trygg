@@ -145,6 +145,20 @@ defmodule Trygg.Growth do
     |> broadcast(measurement.child_id, :deleted)
   end
 
+  @doc """
+  Puts back a measurement that `delete_measurement/2` just removed, with the
+  same id and timestamps. Requires `:caregiver` for the measurement's child.
+  """
+  def restore_measurement(%Scope{} = scope, %Measurement{} = measurement) do
+    Families.authorize!(scope, %Child{id: measurement.child_id}, :caregiver)
+
+    %{measurement | origin: nil}
+    |> Ecto.reset_fields([:child, :logged_by])
+    |> Ecto.put_meta(state: :built)
+    |> Repo.insert()
+    |> broadcast(measurement.child_id, :created)
+  end
+
   ## Helpers ------------------------------------------------------------
 
   defp put_measured_at(attrs, child, opts) do
