@@ -226,12 +226,12 @@ defmodule TryggWeb.LoginComponents do
 
     <%!-- Keepsakes --%>
     <g transform="translate(104 66)">
-      <g class="login-bob" style="--dur: 5s; --delay: 0.4s">
+      <g class="login-bob" style="--dur: 7s; --delay: 0.4s">
         <use href="#login-heart" fill="#ff7fa3" />
       </g>
     </g>
     <g transform="translate(222 108)">
-      <g class="login-bob" style="--dur: 6s; --delay: 1s">
+      <g class="login-bob" style="--dur: 8s; --delay: 1s">
         <path
           d="M0,-9 C5,-2 8,2 8,6 C8,10 4,12.5 0,12.5 C-4,12.5 -8,10 -8,6 C-8,2 -5,-2 0,-9Z"
           fill="#ffd24a"

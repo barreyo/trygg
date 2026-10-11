@@ -338,6 +338,13 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, :sheet_form, layout_form(move_type(order, type, dir), checked))}
   end
 
+  # A drag in the Customize sheet drops with the whole new order (see the
+  # `LayoutReorder` hook); the up/down buttons stay for everyone who can't drag.
+  def handle_event("set_layout_order", %{"order" => order}, socket) when is_list(order) do
+    %{"tracked_types" => checked} = socket.assigns.sheet_form.params
+    {:noreply, assign(socket, :sheet_form, layout_form(layout_order(order), checked))}
+  end
+
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
     last = socket.assigns.summary.last_feeding
 
@@ -1659,6 +1666,7 @@ defmodule TryggWeb.DashboardLive do
           <.form
             for={@form}
             id="layout-form"
+            phx-hook="LayoutReorder"
             phx-change="layout_change"
             phx-submit="save_layout"
             class="space-y-2"
@@ -1668,10 +1676,20 @@ defmodule TryggWeb.DashboardLive do
             <div
               :for={{type, i} <- Enum.with_index(order)}
               id={"layout-row-#{type}"}
+              data-reorder-row
               class="flex items-center gap-1 rounded-box bg-base-200/60 pr-2"
             >
+              <%!-- Drag handle for the `LayoutReorder` hook; the buttons at the
+                   right are the accessible way to do the same thing. --%>
+              <span
+                data-drag-handle
+                aria-hidden="true"
+                class="grid h-12 w-9 shrink-0 cursor-grab touch-none place-items-center text-base-content/40"
+              >
+                <.icon name="hero-bars-3" class="size-5" />
+              </span>
               <input type="hidden" name="layout[order][]" value={type} />
-              <label class="flex min-h-12 flex-1 items-center gap-3 p-3">
+              <label class="flex min-h-12 flex-1 items-center gap-3 py-3 pr-3">
                 <input
                   type="checkbox"
                   id={"layout-#{type}"}
