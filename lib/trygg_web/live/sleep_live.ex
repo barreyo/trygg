@@ -141,6 +141,21 @@ defmodule TryggWeb.SleepLive do
     end
   end
 
+  # How a running sleep started: the level on the scale and the time to settle.
+  def handle_event("set_assist", %{"fall" => params}, socket) do
+    with true <- socket.assigns.can_write,
+         %Entry{} = nap <- Log.running(socket.assigns.summary, :sleep),
+         {:ok, _} <-
+           Log.merge_sleep_data(socket.assigns.current_scope, nap, %{
+             "assist" => parse_int(params["assist"]),
+             "settle_minutes" => parse_int(params["settle"])
+           }) do
+      {:noreply, refresh(socket)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   # While awake a tapped cue is remembered for the sleep about to start; during
   # a sleep it's saved on that sleep. Tapping the one that's set clears it.
   def handle_event("set_cue", %{"cue" => cue}, socket) do
@@ -173,6 +188,13 @@ defmodule TryggWeb.SleepLive do
   end
 
   defp expire_pending_cue(socket), do: socket
+
+  defp parse_int(value) do
+    case Integer.parse(to_string(value)) do
+      {n, ""} -> n
+      _ -> nil
+    end
+  end
 
   ## Data --------------------------------------------------------------------
 
@@ -225,6 +247,7 @@ defmodule TryggWeb.SleepLive do
       back={~p"/c/#{@current_child}"}
       wide
     >
+      <.sleep_subnav current={:today} child={@current_child} />
       <.loadable id="sleep-content" loaded={@loaded?} failed={@load_failed?}>
         <:skeleton><.sleep_skeleton /></:skeleton>
         <.phase_hero phase={@phase} timeline={@timeline} child_name={@current_child.name} />
@@ -237,6 +260,7 @@ defmodule TryggWeb.SleepLive do
               pending_cue={@pending_cue}
               can_write={@can_write}
               tz={@current_child.timezone}
+              track_assist={!!(@phase && @phase.id != :newborn)}
             />
             <.schedule_panel plan={@plan} tz={@current_child.timezone} />
             <.insights_panel insights={@insights} />

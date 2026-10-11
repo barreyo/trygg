@@ -246,6 +246,36 @@ defmodule Trygg.Families do
     end
   end
 
+  @doc """
+  Updates the sleep toolkit's state on the child: `:night_weaning_cleared_on`,
+  `:sleep_training_cleared_on` (the date a caregiver recorded the pediatrician's
+  go-ahead, or `nil`) and `:sleep_checks`. Needs only `:caregiver`, like logging.
+  """
+  def update_sleep_toolkit(%Scope{} = scope, %Child{} = child, attrs) do
+    role = authorize!(scope, child, :caregiver)
+
+    with {:ok, updated} <- child |> Child.sleep_toolkit_changeset(attrs) |> Repo.update() do
+      updated = %{updated | role: role}
+      broadcast(child.id, {:child_updated, updated})
+      {:ok, updated}
+    end
+  end
+
+  @doc """
+  Ticks or unticks a hand-checked sleep checklist item (`key`) for `date`.
+  """
+  def toggle_sleep_check(%Scope{} = scope, %Child{} = child, key, %Date{} = date)
+      when is_binary(key) do
+    checks = child.sleep_checks || %{}
+
+    checks =
+      if Map.has_key?(checks, key),
+        do: Map.delete(checks, key),
+        else: Map.put(checks, key, Date.to_iso8601(date))
+
+    update_sleep_toolkit(scope, child, %{sleep_checks: checks})
+  end
+
   # Keep `birth_date` and `expected_birth_date` mutually exclusive so
   # `expecting?/1` stays a clean function of `birth_date` alone.
   defp reconcile_practice_mode(child, attrs, true = _was_expecting?) do

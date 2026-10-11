@@ -56,6 +56,73 @@ defmodule Trygg.FamiliesTest do
     end
   end
 
+  describe "update_sleep_toolkit/3 and toggle_sleep_check/4" do
+    test "a caregiver can record the pediatrician's go-ahead and clear it" do
+      %{owner_scope: owner, child: child} = shared_child_fixture()
+      today = Date.utc_today()
+
+      assert {:ok, updated} =
+               Families.update_sleep_toolkit(owner, child, %{night_weaning_cleared_on: today})
+
+      assert updated.night_weaning_cleared_on == today
+      assert updated.role == :owner
+      assert Families.get_child!(owner, child.id).night_weaning_cleared_on == today
+
+      assert {:ok, cleared} =
+               Families.update_sleep_toolkit(owner, updated, %{night_weaning_cleared_on: nil})
+
+      assert cleared.night_weaning_cleared_on == nil
+    end
+
+    test "touches nothing but the toolkit fields" do
+      %{owner_scope: owner, child: child} = shared_child_fixture()
+
+      {:ok, updated} =
+        Families.update_sleep_toolkit(owner, child, %{
+          name: "Renamed",
+          sleep_training_cleared_on: Date.utc_today()
+        })
+
+      assert updated.name == child.name
+      assert updated.sleep_training_cleared_on
+    end
+
+    test "toggle_sleep_check/4 ticks an item with a date and unticks it again" do
+      %{owner_scope: owner, child: child} = shared_child_fixture()
+      date = ~D[2026-10-10]
+
+      assert {:ok, ticked} = Families.toggle_sleep_check(owner, child, "environment", date)
+      assert ticked.sleep_checks == %{"environment" => "2026-10-10"}
+
+      assert {:ok, ticked} = Families.toggle_sleep_check(owner, ticked, "routine", date)
+      assert Map.keys(ticked.sleep_checks) |> Enum.sort() == ["environment", "routine"]
+
+      assert {:ok, unticked} = Families.toggle_sleep_check(owner, ticked, "environment", date)
+      assert unticked.sleep_checks == %{"routine" => "2026-10-10"}
+    end
+
+    test "viewers may not" do
+      %{child: child, member_scope: viewer} = shared_child_fixture(:viewer)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Families.update_sleep_toolkit(viewer, child, %{night_weaning_cleared_on: Date.utc_today()})
+      end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Families.toggle_sleep_check(viewer, child, "environment", Date.utc_today())
+      end
+    end
+
+    test "the checks must map ids to dates" do
+      %{owner_scope: owner, child: child} = shared_child_fixture()
+
+      assert {:error, changeset} =
+               Families.update_sleep_toolkit(owner, child, %{sleep_checks: %{"a" => 1}})
+
+      assert "must map item ids to dates" in errors_on(changeset).sleep_checks
+    end
+  end
+
   describe "update_tracked_types/3" do
     test "caregivers may change the layout, but only that" do
       %{member_scope: member, child: child} = shared_child_fixture(:caregiver)

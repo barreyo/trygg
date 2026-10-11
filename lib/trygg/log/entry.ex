@@ -11,7 +11,7 @@ defmodule Trygg.Log.Entry do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Trygg.Sleep.Cue
+  alias Trygg.Sleep.{Assist, Cue}
 
   @types [:feeding, :diaper, :sleep, :breastfeeding]
   @timer_types [:sleep, :breastfeeding]
@@ -165,7 +165,11 @@ defmodule Trygg.Log.Entry do
       drop_nils(%{
         "location" => enum(raw["location"], @sleep_locations),
         # How sleepy they looked when the sleep started; see `Trygg.Sleep.Cue`.
-        "cue" => enum(raw["cue"], Cue.ids())
+        "cue" => enum(raw["cue"], Cue.ids()),
+        # How much help falling asleep took (1–9) and how long it took; see
+        # `Trygg.Sleep.Assist`.
+        "assist" => assist(raw["assist"]),
+        "settle_minutes" => settle_minutes(raw["settle_minutes"])
       })
 
     put_change(changeset, :data, data)
@@ -194,6 +198,32 @@ defmodule Trygg.Log.Entry do
     do: pattern
 
   defp normalize_breastfeeding_pattern(_), do: nil
+
+  defp assist(value) do
+    case integer(value) do
+      level when is_integer(level) -> if Assist.valid?(level), do: level
+      _ -> nil
+    end
+  end
+
+  defp settle_minutes(value) do
+    case integer(value) do
+      minutes when is_integer(minutes) and minutes in 0..240 -> minutes
+      _ -> nil
+    end
+  end
+
+  defp integer(n) when is_integer(n), do: n
+  defp integer(n) when is_float(n), do: round(n)
+
+  defp integer(s) when is_binary(s) do
+    case Integer.parse(String.trim(s)) do
+      {n, ""} -> n
+      _ -> nil
+    end
+  end
+
+  defp integer(_), do: nil
 
   defp truthy?(value), do: value in [true, "true", "on", "1", 1]
 
