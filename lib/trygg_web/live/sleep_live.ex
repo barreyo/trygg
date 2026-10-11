@@ -12,7 +12,7 @@ defmodule TryggWeb.SleepLive do
   alias Trygg.Log
   alias Trygg.Log.Entry
   alias Trygg.Reports
-  alias Trygg.Sleep.{Cue, Phase}
+  alias Trygg.Sleep.{Cue, NightWakes, Phase}
   alias TryggWeb.Loading
 
   # A cue tapped before a sleep starts is dropped if the sleep doesn't follow
@@ -30,7 +30,7 @@ defmodule TryggWeb.SleepLive do
         socket
         |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
         |> assign(summary: nil, habits: nil, phase: nil, timeline: [], plan: nil, insights: [])
-        |> assign(nights: nil)
+        |> assign(nights: nil, night_wake: nil)
         |> assign(pending_cue: nil, pending_cue_at: nil)
         |> Loading.init()
         |> load()
@@ -53,6 +53,12 @@ defmodule TryggWeb.SleepLive do
 
   @impl true
   def handle_info({:log, _action, _entry}, socket), do: {:noreply, refresh(socket)}
+
+  def handle_info({:night_wake, :finished, _wake}, socket),
+    do: {:noreply, assign(socket, :night_wake, nil)}
+
+  def handle_info({:night_wake, _action, wake}, socket),
+    do: {:noreply, assign(socket, :night_wake, wake)}
 
   def handle_info({:child_updated, child}, socket) do
     {:noreply,
@@ -220,6 +226,7 @@ defmodule TryggWeb.SleepLive do
 
     %{
       summary: summary,
+      night_wake: NightWakes.active(scope, child),
       plan: plan,
       insights: insights,
       habits: habits,
@@ -250,6 +257,7 @@ defmodule TryggWeb.SleepLive do
       <.sleep_subnav current={:today} child={@current_child} />
       <.loadable id="sleep-content" loaded={@loaded?} failed={@load_failed?}>
         <:skeleton><.sleep_skeleton /></:skeleton>
+        <.night_wake_banner :if={@night_wake} wake={@night_wake} child={@current_child} />
         <.phase_hero phase={@phase} timeline={@timeline} child_name={@current_child.name} />
 
         <Layouts.columns id="sleep-columns">

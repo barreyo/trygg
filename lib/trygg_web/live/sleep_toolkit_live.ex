@@ -202,6 +202,7 @@ defmodule TryggWeb.SleepToolkitLive do
               can_write={@can_write}
               child_id={@current_child.id}
             />
+            <.night_wakes_panel summary={@toolkit.night_wakes} child_id={@current_child.id} />
             <.checklists_panel checklists={@toolkit.checklists} can_write={@can_write} />
           </:right>
         </Layouts.columns>

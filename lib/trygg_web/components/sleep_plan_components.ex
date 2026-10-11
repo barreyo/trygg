@@ -17,6 +17,27 @@ defmodule TryggWeb.SleepPlanComponents do
   alias Trygg.Reports.SleepHabits
   alias Trygg.Sleep.{Assist, Cries, Cue, Guide}
 
+  @doc "A banner on the Sleep tab while a night waking is being worked through."
+  attr :wake, :map, required: true
+  attr :child, :map, required: true
+
+  def night_wake_banner(assigns) do
+    ~H"""
+    <.link
+      id="night-wake-banner"
+      navigate={"/c/#{@child.id}/sleep/night"}
+      class="mb-4 flex items-center gap-3 rounded-[var(--radius-card)] border-2 border-warning/50 bg-warning/10 p-4"
+    >
+      <.icon name="hero-moon" class="size-6 shrink-0 text-warning" />
+      <span class="min-w-0 flex-1 leading-snug">
+        <span class="block font-semibold">A night waking is in progress</span>
+        <span class="block text-sm opacity-80">Open night mode to follow the steps.</span>
+      </span>
+      <.icon name="hero-arrow-right" class="size-5 shrink-0" />
+    </.link>
+    """
+  end
+
   ## Hero ----------------------------------------------------------------------
 
   @doc "The big header: which phase, how far along, and what's next."

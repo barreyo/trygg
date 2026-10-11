@@ -25,6 +25,7 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/trygg"
 import topbar from "../vendor/topbar"
 import Timer from "./hooks/timer"
+import NightTimer from "./hooks/night_timer"
 import InstallPrompt from "./hooks/install_prompt"
 import DownloadPdf from "./hooks/download_pdf"
 import Theme from "./hooks/theme"
@@ -54,6 +55,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     ...colocatedHooks,
     Timer,
+    NightTimer,
     InstallPrompt,
     DownloadPdf,
     Theme,

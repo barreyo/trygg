@@ -212,6 +212,8 @@ defmodule Trygg.Reports do
       bedtime_plan: table && Trygg.Sleep.BedtimePlan.build(table, usual),
       guide_day: table && Trygg.Sleep.Schedules.plan_day(child, table, wake_at),
       nights: nights,
+      night_wakes:
+        Trygg.Sleep.NightWakes.summarize(Trygg.Sleep.NightWakes.recent(scope, child, 14)),
       night_feed_gates: gates,
       night_feed_plan: Trygg.Sleep.NightFeeds.plan(child, nights, opts[:last_feed_at], now),
       checklists:
