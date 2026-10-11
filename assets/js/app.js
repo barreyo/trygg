@@ -32,6 +32,7 @@ import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
 import SheetDrag from "./hooks/sheet_drag"
+import LayoutReorder from "./hooks/layout_reorder"
 import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
 import OfflineContext from "./hooks/offline_context"
@@ -42,6 +43,8 @@ import {installOfflinePanel} from "./offline/panel_toggle"
 import {startAutoSync} from "./offline/auto_sync"
 import "./remote_flash"
 import "./log_splash"
+import "./viewport"
+import "./haptics"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -57,6 +60,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushPrompt,
     ModalBack,
     SheetDrag,
+    LayoutReorder,
     PullToRefresh,
     ChildSwipe,
     OfflineContext,

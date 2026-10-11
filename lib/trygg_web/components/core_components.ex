@@ -377,7 +377,7 @@ defmodule TryggWeb.CoreComponents do
     ~H"""
     <div
       id={@id}
-      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      class="fixed inset-0 z-50 flex items-end sm:items-center justify-center pb-[var(--kb,0px)]"
       role="dialog"
       aria-modal="true"
       aria-label={@label}
@@ -396,7 +396,7 @@ defmodule TryggWeb.CoreComponents do
       <div
         id={"#{@id}-panel"}
         phx-hook="SheetDrag"
-        class="sheet-panel relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain"
+        class="sheet-panel relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[calc(90dvh-var(--kb,0px))] overflow-y-auto overscroll-contain"
       >
         <%!-- Grab handle: the `SheetDrag` hook's drag zone (phones only). A tall,
              full-width strip so it's easy to hit; the visible pill is small. --%>

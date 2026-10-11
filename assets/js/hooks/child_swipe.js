@@ -29,6 +29,7 @@
 // discoverable without a tutorial. It never plays again after that (tracked
 // in localStorage) and is skipped entirely under reduced-motion.
 import {spring, rubberband, unrubberband, VelocityTracker} from "../spring"
+import {tick} from "../haptics"
 
 const THRESHOLD = 72 // px of drag past which release switches child
 const BAND = 300 // the rubber band's soft limit
@@ -223,6 +224,7 @@ const ChildSwipe = {
     const target = items[(index + direction + items.length) % items.length]
 
     this.markHintSeen()
+    tick(8)
 
     // Keep sliding the way the user was already dragging (direction -1 is a
     // swipe right: the page moves right), at the speed they let go, and tell

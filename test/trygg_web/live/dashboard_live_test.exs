@@ -1170,6 +1170,22 @@ defmodule TryggWeb.DashboardLiveTest do
       assert card_order(owner_lv) == ["glance-diaper", "glance-sleep", "glance-feed"]
     end
 
+    test "dropping a dragged row sets the whole order and keeps the ticks", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element("#customize-home") |> render_click()
+
+      render_hook(lv, "set_layout_order", %{"order" => ["sleep", "feeding", "diaper", "bogus"]})
+
+      assert has_element?(lv, "#layout-up-sleep[disabled]")
+      lv |> form("#layout-form") |> render_submit()
+
+      assert Families.get_child!(scope, child.id).tracked_types == [:sleep, :feeding, :diaper]
+    end
+
     test "moving a tracker keeps the other ticks as they were", %{
       conn: conn,
       scope: scope,

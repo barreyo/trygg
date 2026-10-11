@@ -972,7 +972,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   0%, 100% { opacity: 0.75; transform: scale(1); }
   50%      { opacity: 1;    transform: scale(1.12); }
 }
-.login-halo { transform-box: fill-box; transform-origin: center; animation: login-halo 6s ease-in-out infinite; }
+.login-halo { transform-box: fill-box; transform-origin: center; animation: login-halo 8s ease-in-out infinite; }
 
 @keyframes login-drift {
   from { transform: translateX(0); }
@@ -1006,7 +1006,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 }
 .login-hero .login-cradle,
 .login-hero .login-hop { transform-origin: 50% 100%; }
-.login-hero .login-cradle { animation: login-rock 2.8s ease-in-out infinite alternate; }
+.login-hero .login-cradle { animation: login-rock 3.6s ease-in-out infinite alternate; }
 
 /* A tap sets the cradle wobbling harder, then it settles back to rocking */
 @keyframes login-nudge {
@@ -1019,7 +1019,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 .login-hero.is-popping .login-cradle {
   animation:
     login-nudge 900ms ease-out 1,
-    login-rock 2.8s ease-in-out 900ms infinite alternate;
+    login-rock 3.6s ease-in-out 900ms infinite alternate;
 }
 
 /* The cradle hops when the Create an account button is hovered or focused */
@@ -1058,7 +1058,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50%      { transform: translateY(-6px) rotate(2deg); }
 }
-.login-float { animation: login-float 5s ease-in-out infinite; }
+.login-float { animation: login-float 7s ease-in-out infinite; }
 
 @keyframes login-slip {
   0%, 100% { transform: translateY(0); }
@@ -1139,3 +1139,11 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   .login-z { opacity: 0.7; }
   .login-cta-arrow, .login-new-card { transition: none; }
 }
+
+/*
+ * Menus grow out of the button that opened them. daisyUI already fades and
+ * scales a dropdown in, but from its top-centre; anchoring that to the trigger's
+ * side keeps the button and its menu visibly connected.
+ */
+.dropdown > .dropdown-content { transform-origin: top left; }
+.dropdown-end > .dropdown-content { transform-origin: top right; }

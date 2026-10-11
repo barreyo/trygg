@@ -18,6 +18,7 @@
 // release velocity. Grabbing the page again mid-settle picks up from where it
 // is, rather than jumping.
 import {spring, rubberband, unrubberband, VelocityTracker} from "../spring"
+import {tick} from "../haptics"
 
 const THRESHOLD = 64 // px of pull past which release triggers a refresh
 const BAND = 150 // the rubber band's soft limit: the pull creeps towards it but never reaches it
@@ -64,7 +65,10 @@ const PullToRefresh = {
         this.disarm()
         return
       }
+      const wasArmed = this.pull >= THRESHOLD
       this.pull = rubberband(dy, BAND, BAND_CONSTANT)
+      // A tick as the pull crosses the point where letting go will refresh.
+      if (!wasArmed && this.pull >= THRESHOLD) tick(8)
       this.tracker.add(this.pull)
       // We own the gesture now — stop the page from scrolling under us.
       if (e.cancelable) e.preventDefault()
