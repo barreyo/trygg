@@ -5,6 +5,7 @@ defmodule TryggWeb.DashboardLive do
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
+  alias TryggWeb.UndoDelete
   alias Trygg.Reports.Alerts
   alias Trygg.Units
   alias TryggWeb.{Loading, RemoteUpdate}
@@ -40,6 +41,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
       |> assign(:editing, nil)
+      |> assign(:undo, nil)
       |> assign(:edit_vitamin_d?, false)
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
@@ -138,6 +140,9 @@ defmodule TryggWeb.DashboardLive do
     Process.send_after(self(), :tick, @tick_ms)
     {:noreply, socket |> assign(:now_tick, System.system_time(:second)) |> refresh_summary()}
   end
+
+  def handle_info({:undo_expired, ref}, socket),
+    do: {:noreply, UndoDelete.expire(socket, ref)}
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -495,8 +500,16 @@ defmodule TryggWeb.DashboardLive do
   end
 
   def handle_event("delete_entry", _params, socket) do
-    {:ok, _} = Log.delete_entry(socket.assigns.current_scope, socket.assigns.editing)
-    {:noreply, socket |> assign(editing: nil, edit_form: nil) |> put_flash(:info, "Deleted.")}
+    {:ok, deleted} =
+      Log.delete_entry(socket.assigns.current_scope, socket.assigns.editing, undoable: true)
+
+    {:noreply, socket |> assign(editing: nil, edit_form: nil) |> UndoDelete.stash(deleted)}
+  end
+
+  def handle_event("undo_delete", _params, socket) do
+    scope = socket.assigns.current_scope
+    {entry, socket} = UndoDelete.take(socket)
+    {:noreply, UndoDelete.restore(socket, entry, &Log.restore_entry(scope, &1))}
   end
 
   def handle_event("bump_amount", %{"by" => by}, socket) do
@@ -1013,7 +1026,7 @@ defmodule TryggWeb.DashboardLive do
 
   # Accessible name of each sheet — the same words as its on-screen heading.
   defp sheet_label(:earlier), do: "Log from earlier"
-  defp sheet_label(:layout), do: "Customize Home"
+  defp sheet_label(:layout), do: "Customize Today"
   defp sheet_label(:bottle), do: "Log a bottle"
   defp sheet_label(:sleep_stop), do: "How did they sleep?"
   defp sheet_label(:sleep_start), do: "When did they fall asleep?"
@@ -1345,6 +1358,7 @@ defmodule TryggWeb.DashboardLive do
         vitamin_d?={@edit_vitamin_d?}
         photo_src={@editing.photo_key && ~p"/c/#{@current_child}/log/#{@editing.id}/photo"}
       />
+      <.undo_toast undo={@undo} label="Entry deleted" />
     </Layouts.app>
     """
   end
@@ -1637,10 +1651,10 @@ defmodule TryggWeb.DashboardLive do
             </.button>
           </div>
         <% :layout -> %>
-          <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
+          <h3 class="font-semibold text-lg mb-1">Customize Today</h3>
           <p class="text-sm opacity-60 mb-4">
             Choose what to track and put it in the order you like. Everyone caring for this child
-            sees the same Home screen. Hidden entries stay in the full log and reports.
+            sees the same Today screen. Hidden entries stay in the full log and reports.
           </p>
           <.form
             for={@form}
@@ -1739,7 +1753,7 @@ defmodule TryggWeb.DashboardLive do
                     id="bottle-amount"
                     value={@form.params["amount"]}
                     aria-label={"Amount in #{@unit}"}
-                    class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <span class="text-base font-normal opacity-60">{@unit}</span>
                 </div>

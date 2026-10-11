@@ -155,6 +155,21 @@ defmodule Trygg.GrowthTest do
       assert {:ok, _} = Growth.delete_measurement(scope, m)
       assert Growth.list_measurements(scope, child) == []
     end
+
+    test "restore_measurement puts a deleted measurement back as it was", %{
+      scope: scope,
+      child: child
+    } do
+      m = measurement_fixture(scope, child)
+      {:ok, deleted} = Growth.delete_measurement(scope, m)
+
+      assert {:ok, restored} = Growth.restore_measurement(scope, deleted)
+      assert restored.id == m.id
+      assert restored.weight_g == m.weight_g
+      assert restored.measured_at == m.measured_at
+      assert [%Measurement{id: id}] = Growth.list_measurements(scope, child)
+      assert id == m.id
+    end
   end
 
   describe "authorization" do

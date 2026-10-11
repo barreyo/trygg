@@ -117,7 +117,7 @@ config :trygg, Trygg.RateLimit,
 config :trygg, Oban,
   repo: Trygg.Repo,
   shutdown_grace_period: :timer.seconds(20),
-  queues: [reminders: 10, push: 20],
+  queues: [reminders: 10, push: 20, cleanup: 5],
   plugins: [
     {Oban.Lifeline, rescue_after: :timer.minutes(30)},
     {Oban.Pruner, max_age: {7, :days}},

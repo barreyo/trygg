@@ -22,7 +22,9 @@ defmodule TryggWeb.UserLive.Registration do
         <.login_hero variant={:night} />
 
         <div class="login-rise login-copy text-center" style="--d: 0.15s">
-          <h1 class="text-2xl font-bold text-white drop-shadow">Register for an account</h1>
+          <h1 class="text-2xl font-bold tracking-tight text-white drop-shadow">
+            Register for an account
+          </h1>
           <p class="mt-2 text-sm text-white/80 [text-shadow:0_1px_10px_rgb(18_14_61_/_0.9)]">
             Already registered?
             <.link

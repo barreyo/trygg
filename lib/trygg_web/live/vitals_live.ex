@@ -12,7 +12,7 @@ defmodule TryggWeb.VitalsLive do
   alias Trygg.Reports
   alias Trygg.Units
   alias TryggWeb.GrowthComponents
-  alias TryggWeb.{Loading, RemoteUpdate}
+  alias TryggWeb.{Loading, RemoteUpdate, UndoDelete}
 
   @impl true
   def render(assigns) do
@@ -240,6 +240,7 @@ defmodule TryggWeb.VitalsLive do
       </.loadable>
 
       <.sheet :if={@sheet} form={@form} editing={@editing} unit_system={@unit_system} />
+      <.undo_toast undo={@undo} label="Measurement deleted" />
     </Layouts.app>
     """
   end
@@ -496,7 +497,6 @@ defmodule TryggWeb.VitalsLive do
           type="button"
           variant="outline"
           phx-click="delete"
-          data-confirm="Delete this measurement?"
           class="btn-error w-full mt-2 min-h-11"
         >
           Delete
@@ -517,6 +517,7 @@ defmodule TryggWeb.VitalsLive do
       |> assign(:sheet, false)
       |> assign(:form, nil)
       |> assign(:editing, nil)
+      |> assign(:undo, nil)
       |> assign(:chart_period, :all)
       |> assign(:age_basis, :corrected)
       |> assign(:selected_point, nil)
@@ -568,6 +569,9 @@ defmodule TryggWeb.VitalsLive do
      |> assign(:unit_system, user.unit_system)
      |> load_measurements()}
   end
+
+  def handle_info({:undo_expired, ref}, socket),
+    do: {:noreply, UndoDelete.expire(socket, ref)}
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -649,16 +653,23 @@ defmodule TryggWeb.VitalsLive do
 
   def handle_event("delete", _params, socket) do
     if socket.assigns.can_write && socket.assigns.editing do
-      {:ok, _} = Growth.delete_measurement(socket.assigns.current_scope, socket.assigns.editing)
+      {:ok, deleted} =
+        Growth.delete_measurement(socket.assigns.current_scope, socket.assigns.editing)
 
       {:noreply,
        socket
        |> assign(sheet: false, form: nil, editing: nil, selected_point: nil)
        |> load_measurements()
-       |> put_flash(:info, "Deleted.")}
+       |> UndoDelete.stash(deleted)}
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_event("undo_delete", _params, socket) do
+    scope = socket.assigns.current_scope
+    {measurement, socket} = UndoDelete.take(socket)
+    {:noreply, UndoDelete.restore(socket, measurement, &Growth.restore_measurement(scope, &1))}
   end
 
   def handle_event("chart_period", %{"period" => period}, socket) do

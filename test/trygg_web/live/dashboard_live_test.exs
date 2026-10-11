@@ -149,7 +149,7 @@ defmodule TryggWeb.DashboardLiveTest do
     test "shows the child's tabs on child pages", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
-      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Home")
+      assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}"}']", "Today")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/vitals"}']", "Vitals")
       assert has_element?(lv, "#bottom-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
@@ -161,7 +161,7 @@ defmodule TryggWeb.DashboardLiveTest do
     } do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/vitals")
 
-      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Home")
+      assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}"}']", "Today")
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/log"}']", "Log")
       assert has_element?(lv, "#side-nav a[href='#{~p"/c/#{child}/reports"}']", "Reports")
 
@@ -669,6 +669,21 @@ defmodule TryggWeb.DashboardLiveTest do
 
       assert Log.list_entries(scope, child) == []
       refute has_element?(lv, "#edit-entry-form")
+    end
+
+    test "a deleted entry can be undone from the toast", %{conn: conn, scope: scope, child: child} do
+      entry = Trygg.LogFixtures.entry_fixture(scope, child, type: :diaper)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      lv |> element(~s([id$="#{entry.id}"])) |> render_click()
+      lv |> element("#edit-entry-delete") |> render_click()
+      assert has_element?(lv, "#undo-delete")
+
+      lv |> element("#undo-delete") |> render_click()
+
+      assert [%{id: id}] = Log.list_entries(scope, child)
+      assert id == entry.id
+      assert has_element?(lv, ~s([id$="#{entry.id}"]))
     end
 
     test "an entry logged by another caregiver appears live", %{conn: conn, child: child} do
