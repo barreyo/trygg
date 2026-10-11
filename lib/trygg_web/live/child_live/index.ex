@@ -184,7 +184,7 @@ defmodule TryggWeb.ChildLive.Index do
           label="Night starts"
         />
         <fieldset id="tracked-types" class="fieldset">
-          <legend class="fieldset-legend">Track on Home</legend>
+          <legend class="fieldset-legend">Track on Today</legend>
           <%!-- Always submitted, so unticking everything still sends an (empty)
                list for the changeset to reject. --%>
           <input type="hidden" name="child[tracked_types][]" value="" />
@@ -206,7 +206,7 @@ defmodule TryggWeb.ChildLive.Index do
             {msg}
           </p>
           <p class="text-xs opacity-60">
-            What the Home screen shows and offers to log, for everyone caring for {@form[:name].value ||
+            What the Today screen shows and offers to log, for everyone caring for {@form[:name].value ||
               "the baby"}. Hidden entries stay in the full log and reports.
           </p>
         </fieldset>
