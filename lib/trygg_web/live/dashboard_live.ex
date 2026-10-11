@@ -1013,7 +1013,7 @@ defmodule TryggWeb.DashboardLive do
 
   # Accessible name of each sheet — the same words as its on-screen heading.
   defp sheet_label(:earlier), do: "Log from earlier"
-  defp sheet_label(:layout), do: "Customize Home"
+  defp sheet_label(:layout), do: "Customize Today"
   defp sheet_label(:bottle), do: "Log a bottle"
   defp sheet_label(:sleep_stop), do: "How did they sleep?"
   defp sheet_label(:sleep_start), do: "When did they fall asleep?"
@@ -1637,10 +1637,10 @@ defmodule TryggWeb.DashboardLive do
             </.button>
           </div>
         <% :layout -> %>
-          <h3 class="font-semibold text-lg mb-1">Customize Home</h3>
+          <h3 class="font-semibold text-lg mb-1">Customize Today</h3>
           <p class="text-sm opacity-60 mb-4">
             Choose what to track and put it in the order you like. Everyone caring for this child
-            sees the same Home screen. Hidden entries stay in the full log and reports.
+            sees the same Today screen. Hidden entries stay in the full log and reports.
           </p>
           <.form
             for={@form}
