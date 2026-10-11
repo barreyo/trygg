@@ -384,14 +384,50 @@ defmodule TryggWeb.CoreComponents do
       phx-window-keydown={@close}
       phx-key="escape"
       phx-hook={@modal_back && "ModalBack"}
-      data-close-event={@modal_back && @close}
+      data-close-event={@close}
+      phx-remove={sheet_exit(@id)}
     >
-      <div class="absolute inset-0 bg-black/60" phx-click={@close}></div>
-      <div class="relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain">
+      <div
+        id={"#{@id}-backdrop"}
+        class="sheet-backdrop absolute inset-0 bg-black/60"
+        phx-click={@close}
+      >
+      </div>
+      <div
+        id={"#{@id}-panel"}
+        phx-hook="SheetDrag"
+        class="sheet-panel relative w-full sm:max-w-md bg-base-100 border-t border-base-300 sm:border rounded-t-box sm:rounded-box p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[90dvh] overflow-y-auto overscroll-contain"
+      >
+        <%!-- Grab handle: the `SheetDrag` hook's drag zone (phones only). A tall,
+             full-width strip so it's easy to hit; the visible pill is small. --%>
+        <div
+          data-sheet-handle
+          aria-hidden="true"
+          class="-mx-5 -mt-5 mb-1 flex h-9 touch-none cursor-grab items-center justify-center sm:hidden"
+        >
+          <span class="h-1.5 w-10 rounded-full bg-base-content/20"></span>
+        </div>
         {render_slot(@inner_block)}
       </div>
     </div>
     """
+  end
+
+  # The way out when the server removes a sheet: the panel drops away and the
+  # backdrop fades, instead of the whole thing vanishing in one frame. Runs from
+  # `phx-remove` on the (outer) frame, which holds the removal until it's done.
+  defp sheet_exit(id) do
+    %JS{}
+    |> JS.transition(
+      {"transition-all ease-in duration-200", "translate-y-0", "translate-y-full"},
+      to: "##{id}-panel",
+      time: 200
+    )
+    |> JS.transition(
+      {"transition-opacity ease-in duration-200", "opacity-100", "opacity-0"},
+      to: "##{id}-backdrop",
+      time: 200
+    )
   end
 
   @doc """
