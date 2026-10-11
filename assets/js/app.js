@@ -32,6 +32,7 @@ import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
 import SheetDrag from "./hooks/sheet_drag"
+import AutoDismiss from "./hooks/auto_dismiss"
 import LayoutReorder from "./hooks/layout_reorder"
 import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
@@ -60,6 +61,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushPrompt,
     ModalBack,
     SheetDrag,
+    AutoDismiss,
     LayoutReorder,
     PullToRefresh,
     ChildSwipe,

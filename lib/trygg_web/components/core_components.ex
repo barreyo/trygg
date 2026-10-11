@@ -43,6 +43,13 @@ defmodule TryggWeb.CoreComponents do
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+
+  attr :dismiss_after, :integer,
+    default: nil,
+    doc:
+      "milliseconds before the notice clears itself, shown as a bar draining along its edge; " <>
+        "nil keeps it until tapped (the connection notices, which clear when the connection returns)"
+
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
@@ -55,12 +62,14 @@ defmodule TryggWeb.CoreComponents do
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      phx-hook={@dismiss_after && "AutoDismiss"}
+      data-dismiss-after={@dismiss_after}
       role="alert"
-      class="toast toast-top toast-end z-50 top-[max(0.5rem,env(safe-area-inset-top))]"
+      class="toast toast-center z-50 bottom-[calc(env(safe-area-inset-bottom)+5rem)] lg:bottom-6"
       {@rest}
     >
       <div class={[
-        "alert w-[min(20rem,calc(100vw-1rem))] sm:w-96 text-wrap",
+        "flash-pop alert relative w-[min(20rem,calc(100vw-1rem))] overflow-hidden sm:w-96 text-wrap",
         @kind == :info && "alert-info",
         @kind == :error && "alert-error"
       ]}>
@@ -78,6 +87,13 @@ defmodule TryggWeb.CoreComponents do
         >
           <.icon name="hero-x-mark" class="size-5 opacity-70 group-hover:opacity-100" />
         </button>
+        <span
+          :if={@dismiss_after}
+          data-flash-timer
+          class="flash-timer absolute inset-x-0 bottom-0 h-0.5 bg-current opacity-40"
+          style={"animation-duration: #{@dismiss_after}ms"}
+          aria-hidden="true"
+        ></span>
       </div>
     </div>
     """

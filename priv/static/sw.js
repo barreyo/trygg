@@ -21,15 +21,26 @@ const OFFLINE = "/offline.html"
 const SHELL = [OFFLINE, "/manifest.webmanifest", "/assets/js/offline.js"]
 const CACHEABLE_PREFIXES = ["/assets/", "/images/"]
 
+// On a developer's machine `/assets/css/app.css` and `/assets/js/app.js` keep the
+// same URL while they're rebuilt on every save (nothing is digested), so
+// cache-first would serve a stale build indefinitely. Never cache there.
+const HOST = self.location.hostname
+const DEV = HOST === "localhost" || HOST === "127.0.0.1" || HOST === "[::1]" || HOST.endsWith(".localhost")
+
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()))
 })
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      ),
+      // Start the navigation request while the worker is still waking up
+      // instead of after it, which is what makes a cold start feel slow.
+      self.registration.navigationPreload ? self.registration.navigationPreload.enable() : null,
+    ]).then(() => self.clients.claim())
   )
 })
 
@@ -42,13 +53,22 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/health") return
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE)))
+    event.respondWith(
+      (async () => {
+        try {
+          // The preloaded response, when the browser started one; else fetch.
+          return (await event.preloadResponse) || (await fetch(request))
+        } catch (_e) {
+          return caches.match(OFFLINE)
+        }
+      })()
+    )
     return
   }
 
   // Anything that isn't a public static file (photos, the reports PDF, API
   // JSON, …) is never cached or replayed; the browser handles it as usual.
-  if (!CACHEABLE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return
+  if (DEV || !CACHEABLE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return
 
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((res) => {
