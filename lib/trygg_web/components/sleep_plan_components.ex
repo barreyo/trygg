@@ -1,21 +1,133 @@
 defmodule TryggWeb.SleepPlanComponents do
   @moduledoc """
-  Home's sleep coaching pieces: the sleepy-cue chips on the Sleep card, the
-  Sleep plan card (phase, cue and feed-to-sleep habits, what's next) and the
-  C.R.I.E.S. soothing sheet.
+  The building blocks of the Sleep tab: the phase hero, the "right now" panel
+  with the sleepy-cue chips, this week's habits, the C.R.I.E.S. steps, the cue
+  guide, the newborn rhythm reference and the roadmap.
 
-  Fed by `Trygg.Sleep.Phase` and `Trygg.Reports.SleepHabits`; the guidance they
-  encode comes from the Taking Cara Babies guides (see `Trygg.Sleep.Cue` and
-  `Trygg.Sleep.Cries`).
+  Fed by `Trygg.Sleep.Phase`, `Trygg.Reports.SleepHabits` and
+  `Trygg.Sleep.Guide`; the guidance comes from the Taking Cara Babies guides
+  (see `Trygg.Sleep.Cue` and `Trygg.Sleep.Cries`).
   """
   use Phoenix.Component
 
   import TryggWeb.CoreComponents
-  import TryggWeb.LogComponents, only: [format_duration: 1]
+  import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
-  alias Phoenix.LiveView.JS
+  alias Trygg.Log.Entry
   alias Trygg.Reports.SleepHabits
-  alias Trygg.Sleep.{Cries, Cue}
+  alias Trygg.Sleep.{Cries, Cue, Guide}
+
+  ## Hero ----------------------------------------------------------------------
+
+  @doc "The big header: which phase, how far along, and what's next."
+  attr :phase, :map, default: nil
+  attr :timeline, :list, default: []
+  attr :child_name, :string, required: true
+
+  def phase_hero(%{phase: nil} = assigns) do
+    ~H"""
+    <section id="sleep-hero" class={panel_class()}>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">Sleep plan</p>
+      <h2 class="text-2xl font-bold leading-tight">Starts once {@child_name} is born</h2>
+      <p class="mt-1 opacity-80">
+        The plan follows {@child_name}'s age, so it needs a birth date to get going.
+      </p>
+    </section>
+    """
+  end
+
+  def phase_hero(assigns) do
+    ~H"""
+    <section id="sleep-hero" class={panel_class()}>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">Sleep plan</p>
+      <h2 id="sleep-hero-phase" class="text-2xl font-bold leading-tight">
+        {@phase.label} · {week_label(@phase.week)}
+      </h2>
+      <p id="sleep-hero-blurb" class="mt-1 max-w-prose opacity-80">{blurb(@phase.id)}</p>
+
+      <ol id="sleep-phase-steps" class="mt-4 grid grid-cols-3 gap-2">
+        <li
+          :for={step <- @timeline}
+          id={"sleep-phase-#{step.id}"}
+          aria-current={step.state == :current && "step"}
+          class={[
+            "rounded-field border-2 p-2 text-sm leading-tight",
+            step.state == :current && "border-primary bg-primary/10",
+            step.state != :current && "border-base-300"
+          ]}
+        >
+          <span class="block font-semibold">{step.label}</span>
+          <span class="block text-xs opacity-70">{step_when(step)}</span>
+        </li>
+      </ol>
+
+      <p :if={@phase.next} id="sleep-hero-next" class="mt-3 text-sm opacity-80">
+        {@phase.next.label} starts {Calendar.strftime(@phase.next.on, "%b %-d")}, {time_to_go(
+          @phase.next.in_days
+        )}.
+      </p>
+    </section>
+    """
+  end
+
+  ## Right now -----------------------------------------------------------------
+
+  @doc """
+  Whether they're asleep or awake, the cue chips, and the button to start or
+  stop. `running` is the running sleep entry (or `nil`), `last` the latest sleep.
+  """
+  attr :running, :any, default: nil
+  attr :last, :any, default: nil
+  attr :pending_cue, :string, default: nil
+  attr :can_write, :boolean, required: true
+  attr :tz, :string, required: true
+
+  def right_now(assigns) do
+    ~H"""
+    <section id="sleep-right-now" class={panel_class()}>
+      <h2 class={heading_class()}>Right now</h2>
+
+      <%= if @running do %>
+        <p class="text-sm opacity-70">Asleep since {clock(@running.started_at, @tz)}</p>
+        <p
+          id={"sleep-timer-#{@running.id}"}
+          phx-hook="Timer"
+          data-since={DateTime.to_unix(@running.started_at)}
+          class="text-4xl font-bold tabular-nums"
+        >
+          {format_duration(Entry.duration_seconds(@running))}
+        </p>
+
+        <div :if={@can_write}>
+          <.cue_chips selected={@running.data["cue"]} label="How did they look going down?" />
+          <.button
+            id="stop-sleep"
+            type="button"
+            variant="primary"
+            class="mt-4 w-full"
+            phx-click="stop_sleep"
+          >
+            <.icon name="hero-stop" class="size-5" /> Stop sleep
+          </.button>
+        </div>
+      <% else %>
+        <p class="text-sm opacity-70">{awake_line(@last, @tz)}</p>
+        <div :if={@can_write}>
+          <.cue_chips selected={@pending_cue} label="Showing cues? Tap what you see, then start." />
+          <.button
+            id="start-sleep"
+            type="button"
+            variant="primary"
+            class="mt-4 w-full"
+            phx-click="start_sleep"
+          >
+            <.icon name="hero-moon" class="size-5" /> Start sleep
+          </.button>
+        </div>
+      <% end %>
+    </section>
+    """
+  end
 
   @doc """
   Three tap-to-toggle chips for the sleepy cue (tired / ready / overtired).
@@ -27,14 +139,13 @@ defmodule TryggWeb.SleepPlanComponents do
 
   def cue_chips(assigns) do
     ~H"""
-    <div id={@id} class="mt-2 space-y-1.5">
-      <span class="block text-xs opacity-80">{@label}</span>
-      <div class="grid grid-cols-3 gap-1.5">
+    <div id={@id} class="mt-3 space-y-1.5">
+      <span class="block text-sm opacity-80">{@label}</span>
+      <div class="grid grid-cols-3 gap-2">
         <.button
           :for={cue <- Cue.all()}
           id={"cue-chip-#{cue.id}"}
           type="button"
-          size="xs"
           variant={if @selected == cue.id, do: "primary"}
           phx-click="set_cue"
           phx-value-cue={cue.id}
@@ -47,113 +158,164 @@ defmodule TryggWeb.SleepPlanComponents do
     """
   end
 
-  @doc """
-  The Sleep plan card. `phase` is a `Trygg.Sleep.Phase.for_child/2` map and
-  `habits` a `Trygg.Reports.SleepHabits.summarize/4` map.
-  """
-  attr :phase, :map, required: true
+  ## Habits --------------------------------------------------------------------
+
+  @doc "This week's cue and feed → sleep numbers (`Trygg.Reports.SleepHabits`)."
   attr :habits, :map, required: true
 
-  def sleep_plan_card(assigns) do
+  def habits_panel(assigns) do
     ~H"""
-    <section
-      id="sleep-plan"
-      class="mt-3 space-y-3 rounded-[var(--radius-card)] border-2 border-base-300 bg-base-200/40 p-4"
-    >
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-70">Sleep plan</p>
-          <h2 id="sleep-plan-phase" class="text-lg font-bold leading-tight">
-            {@phase.label} · {week_label(@phase.week)}
-          </h2>
-        </div>
-        <span class="text-2xl leading-none" aria-hidden="true">🌙</span>
-      </div>
+    <section id="sleep-habits" class={panel_class()}>
+      <h2 class={heading_class()}>This week</h2>
 
-      <p id="sleep-plan-blurb" class="text-sm leading-snug opacity-80">{blurb(@phase.id)}</p>
-
-      <ul class="space-y-2 text-sm leading-snug">
-        <li :if={cues_line(@habits)} id="sleep-plan-cues">{cues_line(@habits)}</li>
-        <li :if={windows_line(@habits)} id="sleep-plan-windows">{windows_line(@habits)}</li>
-        <li :if={feed_sleep_line(@habits)} id="sleep-plan-feed-sleep">
-          {feed_sleep_line(@habits)}
-          <span class="block text-xs opacity-70">
-            Just a pattern to see — feeding to sleep is normal at this age.
-          </span>
-        </li>
-      </ul>
-
-      <%!-- `open` is the reader's, not the server's: keep it across re-renders. --%>
-      <details
-        id="cue-guide"
-        class="text-sm"
-        phx-mounted={JS.ignore_attributes(["open"])}
-      >
-        <summary class="cursor-pointer font-medium text-primary">
-          What do sleepy cues look like?
-        </summary>
-        <dl class="mt-2 space-y-1.5">
-          <div :for={cue <- Cue.all()} id={"cue-guide-#{cue.id}"}>
-            <dt class="font-medium">{cue.title}</dt>
-            <dd class="opacity-80">{Enum.join(cue.signs, " · ")}</dd>
-          </div>
+      <%= if @habits.week.sleeps == 0 do %>
+        <p id="sleep-habits-empty" class="text-sm opacity-80">
+          Log a few sleeps and the patterns show up here.
+        </p>
+      <% else %>
+        <dl class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <.stat id="stat-sleeps" label="Sleeps" value={@habits.week.sleeps} />
+          <.stat id="stat-cued" label="With a cue noted" value={@habits.week.cued} />
+          <.stat id="stat-overtired" label="Started overtired" value={@habits.week.overtired} />
+          <.stat
+            id="stat-fed-to-sleep"
+            label={"Within #{minutes()} of a feed"}
+            value={"#{@habits.week.fed_to_sleep} of #{@habits.week.measured}"}
+          />
         </dl>
-      </details>
 
-      <.button
-        :if={@phase.id == :newborn}
-        id="open-cries"
-        type="button"
-        variant="outline"
-        class="w-full"
-        phx-click="open_sheet"
-        phx-value-kind="cries"
-      >
-        <.icon name="hero-heart" class="size-5" /> Soothing steps (C.R.I.E.S.)
-      </.button>
+        <p :if={windows_line(@habits)} id="sleep-habits-windows" class="mt-3 text-sm">
+          {windows_line(@habits)}
+        </p>
+        <p :if={@habits.week.cued == 0} id="sleep-habits-cue-hint" class="mt-3 text-sm opacity-80">
+          Tap a cue before you start a sleep and this will show how long they're usually awake when they're ready.
+        </p>
+        <p :if={@habits.week.measured > 0} class="mt-3 text-xs opacity-70">
+          Just a pattern to see: feeding to sleep is normal at this age.
+        </p>
+      <% end %>
+    </section>
+    """
+  end
 
-      <p :if={@phase.next} id="sleep-plan-next" class="text-xs opacity-70">
-        Next: {@phase.next.label} from {Calendar.strftime(@phase.next.on, "%b %-d")} ({time_to_go(
-          @phase.next.in_days
-        )}).
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :any, required: true
+
+  defp stat(assigns) do
+    ~H"""
+    <div id={@id} class="rounded-field bg-base-100 p-3">
+      <dt class="text-xs opacity-70 leading-tight">{@label}</dt>
+      <dd class="mt-1 text-2xl font-bold tabular-nums">{@value}</dd>
+    </div>
+    """
+  end
+
+  ## Reference content ---------------------------------------------------------
+
+  @doc "The five C.R.I.E.S. steps for calming a crying newborn."
+  def cries_panel(assigns) do
+    assigns = assign(assigns, :steps, Cries.steps())
+
+    ~H"""
+    <section id="sleep-cries" class={panel_class()}>
+      <h2 class={heading_class()}>When they cry: C.R.I.E.S.</h2>
+      <p class="mb-3 text-sm opacity-80">
+        A calming order to try, from the Taking Cara Babies newborn guidance.
+      </p>
+      <ol id="cries-steps" class="space-y-3">
+        <li :for={step <- @steps} id={"cries-#{String.downcase(step.letter)}"} class="flex gap-3">
+          <span class="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-lg font-bold text-primary-content">
+            {step.letter}
+          </span>
+          <div class="min-w-0">
+            <p class="font-semibold leading-tight">{step.name}</p>
+            <p class="text-sm leading-snug opacity-80">{step.detail}</p>
+          </div>
+        </li>
+      </ol>
+      <p class="mt-4 text-xs opacity-70">
+        Hungry, wet or too warm? Check those first. If the crying seems unusual, or they have a fever,
+        call your pediatrician.
       </p>
     </section>
     """
   end
 
-  @doc "Body of the C.R.I.E.S. soothing sheet."
-  def cries_sheet(assigns) do
-    assigns = assign(assigns, :steps, Cries.steps())
-
+  @doc "What tired, ready and overtired look like."
+  def cue_guide(assigns) do
     ~H"""
-    <h3 class="font-semibold text-lg mb-1">When they cry</h3>
-    <p class="text-sm opacity-70 mb-4">
-      C.R.I.E.S. — a calming order to try, from the Taking Cara Babies newborn guidance.
-    </p>
-    <ol id="cries-steps" class="space-y-3">
-      <li :for={step <- @steps} id={"cries-#{String.downcase(step.letter)}"} class="flex gap-3">
-        <span class="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-lg font-bold text-primary-content">
-          {step.letter}
-        </span>
-        <div class="min-w-0">
-          <p class="font-semibold leading-tight">{step.name}</p>
-          <p class="text-sm opacity-80 leading-snug">{step.detail}</p>
+    <section id="sleep-cue-guide" class={panel_class()}>
+      <h2 class={heading_class()}>Sleepy cues</h2>
+      <dl class="space-y-3">
+        <div :for={cue <- Cue.all()} id={"cue-guide-#{cue.id}"}>
+          <dt class="font-semibold">{cue.title}</dt>
+          <dd class="text-sm opacity-80">{Enum.join(cue.signs, " · ")}</dd>
         </div>
-      </li>
-    </ol>
-    <p class="mt-4 text-xs opacity-70">
-      Hungry, wet or too warm? Check those first. If the crying seems unusual, or they have a fever,
-      call your pediatrician.
-    </p>
-    <div class="pt-4">
-      <.button type="button" variant="ghost" class="w-full" phx-click="close_sheet">
-        Close
-      </.button>
-    </div>
+      </dl>
+      <p class="mt-3 text-xs opacity-70">
+        Newborns: start a nap as soon as the cues show. Overtired babies often seem wired, not sleepy.
+      </p>
+    </section>
     """
   end
 
-  ## Copy --------------------------------------------------------------------
+  @doc "The newborn master schedule, as a rhythm to practise."
+  def rhythm_reference(assigns) do
+    assigns =
+      assign(assigns, principles: Guide.principles(), schedule: Guide.master_schedule())
+
+    ~H"""
+    <section id="sleep-rhythm" class={panel_class()}>
+      <h2 class={heading_class()}>A newborn day</h2>
+      <ul class="mb-3 list-disc space-y-1 pl-5 text-sm">
+        <li :for={line <- @principles}>{line}</li>
+      </ul>
+      <table id="master-schedule" class="w-full text-sm">
+        <tbody>
+          <tr :for={{time, activity} <- @schedule} class="border-t border-base-300">
+            <th scope="row" class="py-1.5 pr-3 text-left font-medium whitespace-nowrap">{time}</th>
+            <td class={[activity =~ "Sleeping" && "text-primary font-medium"]}>{activity}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="mt-3 text-xs opacity-70">
+        A routine to practise, not a schedule to follow exactly.
+      </p>
+    </section>
+    """
+  end
+
+  @doc "Every phase with what it's about; the current one is highlighted."
+  attr :timeline, :list, required: true
+
+  def roadmap(assigns) do
+    assigns = assign(assigns, :topics, &Guide.topics/1)
+
+    ~H"""
+    <section id="sleep-roadmap" class={panel_class()}>
+      <h2 class={heading_class()}>The road ahead</h2>
+      <ol class="space-y-4">
+        <li :for={step <- @timeline} id={"roadmap-#{step.id}"}>
+          <p class="font-semibold">
+            {step.label}
+            <span class="font-normal text-sm opacity-70">· {step_when(step)}</span>
+          </p>
+          <ul class="mt-1 list-disc space-y-1 pl-5 text-sm leading-snug opacity-90">
+            <li :for={line <- @topics.(step.id)}>{line}</li>
+          </ul>
+        </li>
+      </ol>
+    </section>
+    """
+  end
+
+  ## Copy ----------------------------------------------------------------------
+
+  defp panel_class,
+    do: "mb-4 rounded-[var(--radius-card)] border-2 border-base-300 bg-base-200/40 p-4"
+
+  defp heading_class, do: "mb-2 text-sm font-semibold uppercase tracking-wide opacity-70"
 
   defp week_label(0), do: "first week"
   defp week_label(week), do: "week #{week}"
@@ -168,16 +330,11 @@ defmodule TryggWeb.SleepPlanComponents do
 
   defp blurb(_phase), do: "Keep watching cues and the clock."
 
-  defp cues_line(%{week: %{sleeps: 0}}), do: nil
+  defp step_when(%{state: :current}), do: "now"
+  defp step_when(%{starts_on: on}), do: "from " <> Calendar.strftime(on, "%b %-d")
 
-  defp cues_line(%{week: %{cued: 0}}),
-    do:
-      "Tap Tired, Ready or Overtired on the Sleep card before a sleep to see when they're ready."
-
-  defp cues_line(%{week: %{cued: cued, sleeps: sleeps, overtired: overtired}}) do
-    base = "Cues noted on #{cued} of #{sleeps} sleeps this week"
-    if overtired > 0, do: "#{base}, #{overtired} started overtired.", else: base <> "."
-  end
+  defp awake_line(%Entry{ended_at: %DateTime{} = at}, tz), do: "Awake since #{clock(at, tz)}"
+  defp awake_line(_last, _tz), do: "No sleep logged yet"
 
   defp windows_line(%{cue_windows: windows}) when map_size(windows) == 0, do: nil
 
@@ -187,18 +344,10 @@ defmodule TryggWeb.SleepPlanComponents do
         "#{cue.label} #{format_duration(seconds)}"
       end
 
-    "Typical time awake before sleep this week: " <> Enum.join(parts, " · ")
+    "Typical time awake before sleep: " <> Enum.join(parts, " · ")
   end
 
-  defp feed_sleep_line(%{today: %{measured: m, fed_to_sleep: n}}) when m > 0,
-    do: "#{n} of #{m} sleeps today began within #{minutes()} of a feed."
-
-  defp feed_sleep_line(%{week: %{measured: m, fed_to_sleep: n}}) when m > 0,
-    do: "#{n} of #{m} sleeps this week began within #{minutes()} of a feed."
-
-  defp feed_sleep_line(_habits), do: nil
-
-  defp minutes, do: "#{div(SleepHabits.fed_to_sleep_seconds(), 60)} minutes"
+  defp minutes, do: "#{div(SleepHabits.fed_to_sleep_seconds(), 60)} min"
 
   defp time_to_go(days) when days >= 14, do: "about #{div(days, 7)} weeks to go"
   defp time_to_go(1), do: "1 day to go"

@@ -32,7 +32,22 @@ defmodule Trygg.Sleep.PhaseTest do
     assert %{id: :newborn, age_days: 35, next: %{in_days: 56}} = Phase.for_child(preterm, @today)
   end
 
+  test "timeline gives every phase its start date and state" do
+    assert [
+             %{id: :newborn, state: :current, starts_on: ~D[2026-09-12]},
+             %{id: :foundations, state: :upcoming, starts_on: ~D[2026-12-12]},
+             %{id: :beyond, state: :upcoming, starts_on: ~D[2027-02-11]}
+           ] = Phase.timeline(child(28), @today)
+
+    assert [%{state: :past}, %{state: :current}, %{state: :upcoming}] =
+             Phase.timeline(child(100), @today)
+
+    assert [%{state: :past}, %{state: :past}, %{state: :current}] =
+             Phase.timeline(child(200), @today)
+  end
+
   test "no phase without a birth date" do
     assert Phase.for_child(%Child{birth_date: nil, timezone: "Etc/UTC"}, @today) == nil
+    assert Phase.timeline(%Child{birth_date: nil, timezone: "Etc/UTC"}, @today) == []
   end
 end

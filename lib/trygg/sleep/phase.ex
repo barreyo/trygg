@@ -42,6 +42,37 @@ defmodule Trygg.Sleep.Phase do
   @doc "All phases, in order."
   def all, do: @phases
 
+  @doc """
+  Every phase with the date it starts and whether it is `:past`, `:current` or
+  `:upcoming` for `child` on `date` (default: today), or `[]` without a birth
+  date. A phase's `starts_on` can be before the birth date for the first phase
+  of a baby born early; it is the date their corrected age reaches the boundary.
+  """
+  def timeline(%Child{} = child, date \\ nil) do
+    date = date || Child.local_today(child)
+
+    case Norms.corrected_age_days(child, date) do
+      nil ->
+        []
+
+      age_days ->
+        current = build(age_days, date).id
+
+        for phase <- @phases do
+          %{
+            id: phase.id,
+            label: phase.label,
+            starts_on: Date.add(date, phase.from_days - age_days),
+            state: state(phase, current, age_days)
+          }
+        end
+    end
+  end
+
+  defp state(%{id: id}, id, _age_days), do: :current
+  defp state(%{from_days: from}, _current, age_days) when from < age_days, do: :past
+  defp state(_phase, _current, _age_days), do: :upcoming
+
   defp build(age_days, date) do
     current = @phases |> Enum.filter(&(&1.from_days <= age_days)) |> List.last()
     next = Enum.find(@phases, &(&1.from_days > age_days))
