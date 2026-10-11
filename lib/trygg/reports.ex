@@ -14,12 +14,14 @@ defmodule Trygg.Reports do
   alias Trygg.Log
   alias Trygg.Reports.Alerts
   alias Trygg.Reports.Day
+  alias Trygg.Reports.DayPlan
   alias Trygg.Reports.Diapers
   alias Trygg.Reports.Feeding
   alias Trygg.Reports.Insights
   alias Trygg.Reports.PredictionLedger
   alias Trygg.Reports.Rhythm
   alias Trygg.Reports.Shifts
+  alias Trygg.Reports.SleepHabits
 
   # Long enough to reconstruct last night's cluster (and a late bedtime).
   @lookback_hours 36
@@ -93,7 +95,8 @@ defmodule Trygg.Reports do
       shifts: shifts,
       growth: growth,
       alerts: alerts,
-      rhythm: Rhythm.summarize(child, days, today_day, now)
+      rhythm: Rhythm.summarize(child, days, today_day, now),
+      today: today_day
     })
   end
 
@@ -135,6 +138,59 @@ defmodule Trygg.Reports do
       diapers: %{flags: s.diapers.flags, dry_seconds: s.diapers.dry_seconds},
       alerts: s.alerts
     }
+  end
+
+  @doc """
+  Today's whole sleep day and what to do about it: the ordered schedule from
+  `Trygg.Reports.DayPlan` (what happened, what's running, what's predicted
+  from the current conditions) and the insights and suggestions from
+  `Trygg.Sleep.Coach`, plus this week's `Trygg.Reports.SleepHabits`.
+
+  Options: `:last_feed_at` (a `DateTime`, to nudge a feed during a long nap).
+  Requires `:viewer`.
+  """
+  def sleep_plan(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now(), opts \\ []) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+
+    s = summary(scope, child, @outlook_window, now)
+    habits = sleep_habits(scope, child, now)
+    phase = Trygg.Sleep.Phase.for_child(child)
+
+    context = %{
+      child: child,
+      phase: phase,
+      prediction: s.prediction,
+      today: s.today,
+      habits: habits,
+      last_feed_at: opts[:last_feed_at],
+      now: now
+    }
+
+    %{
+      plan: DayPlan.build(child, s.today, s.prediction, now),
+      insights: Trygg.Sleep.Coach.insights(context),
+      habits: habits,
+      phase: phase
+    }
+  end
+
+  @doc """
+  Sleep cues and the feed-to-sleep pattern over the last
+  7 local days, for the Home Sleep plan card. See
+  `Trygg.Reports.SleepHabits`. Requires `:viewer`.
+  """
+  def sleep_habits(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+    {start, _} = Child.day_bounds(child, Date.add(today, 1 - SleepHabits.window_days()))
+    since = DateTime.add(start, -SleepHabits.lookback_seconds(), :second)
+
+    entries =
+      Log.list_entries(scope, child, types: [:sleep, :feeding, :breastfeeding], since: since)
+
+    SleepHabits.summarize(child, entries, today, now)
   end
 
   @doc """

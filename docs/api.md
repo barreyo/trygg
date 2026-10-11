@@ -60,7 +60,9 @@ curl -X POST https://<host>/api/v1/children/1/entries \
   `pee`, `poo` or `mixed`) or `sleep`.
 - `started_at` defaults to now; `ended_at` is for completed sleeps. A `sleep`
   with no `ended_at` starts the child's running timer (starting it twice returns
-  the same one).
+  the same one). A `sleep` may carry `data.location` (`bassinet`, `crib`,
+  `contact`, `stroller`, `other`) and `data.cue`, how sleepy the baby looked when
+  it started: `tired`, `ready` or `overtired`. Unknown values are dropped.
 - `client_id` (a UUID) makes the call idempotent: repeating it updates the same
   entry instead of adding another. `started_at` is then required.
 - Entries show up live for everyone. They are credited to the integration, not

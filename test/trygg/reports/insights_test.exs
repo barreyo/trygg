@@ -425,6 +425,73 @@ defmodule Trygg.Reports.InsightsTest do
     assert drift3 >= 0 and drift3 < drift2
   end
 
+  describe "the rest of the day while asleep" do
+    setup do
+      child = %{child() | birth_date: ~D[2025-10-07]}
+
+      history =
+        for date <- [~D[2026-03-02], ~D[2026-03-03], ~D[2026-03-04], ~D[2026-03-05]] do
+          nap_day(date, [
+            {~T[09:30:00], ~T[10:30:00]},
+            {~T[12:30:00], ~T[13:30:00]},
+            {~T[15:30:00], ~T[16:30:00]}
+          ])
+        end
+
+      %{child: child, history: history}
+    end
+
+    test "a running nap still projects the later naps and bedtime", %{
+      child: child,
+      history: history
+    } do
+      night = sleep(60, ~U[2026-03-05 20:00:00Z], ~U[2026-03-06 07:00:00Z])
+      now = ~U[2026-03-06 12:50:00Z]
+
+      today =
+        Day.build(
+          child,
+          ~D[2026-03-06],
+          [
+            night,
+            sleep(61, ~U[2026-03-06 09:30:00Z], ~U[2026-03-06 10:30:00Z]),
+            sleep(62, ~U[2026-03-06 12:30:00Z], nil)
+          ],
+          now
+        )
+
+      %{prediction: p} = Insights.summarize(child, history, today, now)
+
+      assert p.state == :asleep
+      assert [%{kind: :nap, ordinal: 3} = nap3, %{kind: :bed}] = p.schedule
+      # Expected to wake about an hour after it started, so nap 3 follows that.
+      assert DateTime.compare(nap3.start, ~U[2026-03-06 13:30:00Z]) == :gt
+      assert DateTime.compare(nap3.start, now) == :gt
+    end
+
+    test "overnight sleep isn't a nap, so there is nothing to project", %{
+      child: child,
+      history: history
+    } do
+      now = ~U[2026-03-06 22:00:00Z]
+
+      today =
+        Day.build(
+          child,
+          ~D[2026-03-06],
+          [
+            sleep(60, ~U[2026-03-05 20:00:00Z], ~U[2026-03-06 07:00:00Z]),
+            sleep(61, ~U[2026-03-06 20:00:00Z], nil)
+          ],
+          now
+        )
+
+      %{prediction: p} = Insights.summarize(child, history, today, now)
+      assert p.state == :asleep
+      assert p.schedule == []
+    end
+  end
+
   test "erratic nap-start clocks fall back to a pure wake-window offset" do
     # ~82 days old. Every nap-1 wake window is exactly 60 min, but the clock
     # time swings from 08:00 to 13:00 across the history — so no clock anchor.

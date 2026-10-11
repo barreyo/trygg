@@ -37,7 +37,7 @@ defmodule TryggWeb.Layouts do
 
   attr :current_tab, :atom,
     default: nil,
-    values: [nil, :home, :log, :vitals, :reports],
+    values: [nil, :home, :sleep, :log, :vitals, :reports],
     doc: "which bottom tab (if any) to highlight as active"
 
   attr :children, :list,
@@ -46,7 +46,7 @@ defmodule TryggWeb.Layouts do
 
   attr :child_switch_to, :atom,
     default: :home,
-    values: [:home, :log, :vitals, :reports, :caregivers],
+    values: [:home, :sleep, :log, :vitals, :reports, :caregivers],
     doc: "which child page a switch should land on"
 
   attr :title, :string, default: nil, doc: "heading shown in the top bar"
@@ -306,7 +306,10 @@ defmodule TryggWeb.Layouts do
       id="bottom-nav"
       class="material [--material-tint:var(--color-base-200)] fixed bottom-0 inset-x-0 z-30 border-t border-base-300 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <div class="mx-auto max-w-md md:max-w-lg grid grid-cols-4 text-center text-xs">
+      <div class={[
+        "mx-auto max-w-md md:max-w-lg grid text-center text-xs",
+        if(sleep_tab?(@current_child), do: "grid-cols-4", else: "grid-cols-3")
+      ]}>
         <.nav_item
           navigate={~p"/c/#{@current_child}"}
           icon="hero-home"
@@ -315,11 +318,12 @@ defmodule TryggWeb.Layouts do
           active={@current_tab == :home}
         />
         <.nav_item
-          navigate={~p"/c/#{@current_child}/log"}
-          icon="hero-list-bullet"
-          active_icon="hero-list-bullet-solid"
-          label="Log"
-          active={@current_tab == :log}
+          :if={sleep_tab?(@current_child)}
+          navigate={~p"/c/#{@current_child}/sleep"}
+          icon="hero-moon"
+          active_icon="hero-moon-solid"
+          label="Sleep"
+          active={@current_tab == :sleep}
         />
         <.nav_item
           navigate={~p"/c/#{@current_child}/vitals"}
@@ -340,7 +344,7 @@ defmodule TryggWeb.Layouts do
     """
   end
 
-  # Desktop counterpart of `bottom_nav/1`: the same four tabs down a fixed left
+  # Desktop counterpart of `bottom_nav/1`: the same tabs down a fixed left
   # rail, since a bar pinned to the bottom of a wide screen is a long way from
   # everything else.
   attr :current_child, :map, required: true
@@ -367,11 +371,12 @@ defmodule TryggWeb.Layouts do
           active={@current_tab == :home}
         />
         <.side_nav_item
-          navigate={~p"/c/#{@current_child}/log"}
-          icon="hero-list-bullet"
-          active_icon="hero-list-bullet-solid"
-          label="Log"
-          active={@current_tab == :log}
+          :if={sleep_tab?(@current_child)}
+          navigate={~p"/c/#{@current_child}/sleep"}
+          icon="hero-moon"
+          active_icon="hero-moon-solid"
+          label="Sleep"
+          active={@current_tab == :sleep}
         />
         <.side_nav_item
           navigate={~p"/c/#{@current_child}/vitals"}
@@ -646,7 +651,12 @@ defmodule TryggWeb.Layouts do
     """
   end
 
+  # The Sleep tab is for children whose sleep is tracked and who are born.
+  defp sleep_tab?(%Child{} = child),
+    do: Child.tracks?(child, :sleep) and not Child.expecting?(child)
+
   defp child_path(child, :home), do: ~p"/c/#{child}"
+  defp child_path(child, :sleep), do: ~p"/c/#{child}/sleep"
   defp child_path(child, :log), do: ~p"/c/#{child}/log"
   defp child_path(child, :vitals), do: ~p"/c/#{child}/vitals"
   defp child_path(child, :reports), do: ~p"/c/#{child}/reports"

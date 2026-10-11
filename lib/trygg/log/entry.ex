@@ -11,6 +11,8 @@ defmodule Trygg.Log.Entry do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Trygg.Sleep.Cue
+
   @types [:feeding, :diaper, :sleep, :breastfeeding]
   @timer_types [:sleep, :breastfeeding]
 
@@ -159,7 +161,13 @@ defmodule Trygg.Log.Entry do
 
   # sleep ---------------------------------------------------------------
   defp validate_type_data(changeset, :sleep, raw) do
-    data = drop_nils(%{"location" => enum(raw["location"], @sleep_locations)})
+    data =
+      drop_nils(%{
+        "location" => enum(raw["location"], @sleep_locations),
+        # How sleepy they looked when the sleep started; see `Trygg.Sleep.Cue`.
+        "cue" => enum(raw["cue"], Cue.ids())
+      })
+
     put_change(changeset, :data, data)
   end
 
