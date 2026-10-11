@@ -30,7 +30,7 @@ defmodule TryggWeb.SleepLive do
         socket
         |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
         |> assign(summary: nil, habits: nil, phase: nil, timeline: [], plan: nil, insights: [])
-        |> assign(nights: nil, night_wake: nil)
+        |> assign(nights: nil, night_wake: nil, age_guide: nil)
         |> assign(pending_cue: nil, pending_cue_at: nil)
         |> Loading.init()
         |> load()
@@ -219,7 +219,14 @@ defmodule TryggWeb.SleepLive do
   defp fetch(scope, child) do
     summary = Log.summary(scope, child)
 
-    %{plan: plan, insights: insights, habits: habits, phase: phase, nights: nights} =
+    %{
+      plan: plan,
+      insights: insights,
+      habits: habits,
+      phase: phase,
+      nights: nights,
+      age_guide: age_guide
+    } =
       Reports.sleep_plan(scope, child, DateTime.utc_now(),
         last_feed_at: Log.last_feed_at(summary)
       )
@@ -231,6 +238,7 @@ defmodule TryggWeb.SleepLive do
       insights: insights,
       habits: habits,
       nights: nights,
+      age_guide: age_guide,
       phase: phase,
       timeline: Phase.timeline(child)
     }
@@ -276,7 +284,10 @@ defmodule TryggWeb.SleepLive do
           <:right>
             <.overnight_panel nights={@nights} tz={@current_child.timezone} />
             <.habits_panel habits={@habits} />
+            <.age_guide_panel guide={@age_guide} phase={@phase} />
+            <.playbooks_card child={@current_child} />
             <.cries_panel :if={@phase && @phase.id == :newborn} />
+            <.newborn_nights_panel :if={@phase && @phase.id == :newborn} />
             <.cue_guide />
             <.rhythm_reference :if={@phase && @phase.id == :newborn} />
             <.roadmap :if={@timeline != []} timeline={@timeline} />

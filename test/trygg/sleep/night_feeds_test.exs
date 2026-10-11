@@ -180,4 +180,25 @@ defmodule Trygg.Sleep.NightFeedsTest do
       refute NightFeeds.plan(@child, nights(many), at(1), at(2)).goal_met?
     end
   end
+
+  describe "typical/1" do
+    test "gives the usual night feeds for the age" do
+      assert %{label: "0–3 months", average: "3–4", low: "1–2", high: "6"} =
+               NightFeeds.typical(30)
+
+      assert %{label: "3–6 months", average: "2–3"} = NightFeeds.typical(100)
+      assert %{label: "6–9 months", average: "0–2"} = NightFeeds.typical(200)
+      assert %{label: "9–12 months", average: "0–1"} = NightFeeds.typical(300)
+      assert %{label: "9–12 months"} = NightFeeds.typical(900)
+    end
+
+    test "is nil without an age" do
+      assert NightFeeds.typical(nil) == nil
+    end
+  end
+
+  test "there are rules for deciding which wakings get a feed, and uses for a dream feed" do
+    assert length(NightFeeds.rules()) >= 5
+    assert length(NightFeeds.dream_feed_uses()) == 3
+  end
 end

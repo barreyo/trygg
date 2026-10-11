@@ -54,6 +54,32 @@ defmodule Trygg.Sleep.Guide do
     ]
   }
 
+  # From *Precious Little Sleep*'s newborn chapter: why the nights are upside
+  # down and what actually helps.
+  @newborn_nights [
+    "Newborns can't tell day from night yet. That's the body clock, and it settles by about two to four months with or without your help. You can't rush it, but light helps.",
+    "Awake at night: keep it dim, quiet and boring, with white noise on. Try settling for about 20 minutes. If it's going nowhere, stop and try again 45–60 minutes later.",
+    "Awake in the day: lots of light, especially outdoors in the morning, and lots going on.",
+    "Don't wake a sleeping newborn to fix nights. It gives you a tired baby and doesn't fix the night.",
+    "If bedtime attempts run past about 30 minutes, call it off and do something else for a while: a bath, a walk, the bouncer.",
+    "Bedtime can be any time between 7 pm and midnight. Even a simple routine (diaper, pyjamas, swaddle, a song) starts to build a rhythm.",
+    "A long first stretch after bedtime is the one to protect: go to bed when they do.",
+    "Don't change a diaper at night unless it's dirty or leaking."
+  ]
+
+  @witching_hours [
+    "Fussy and miserable somewhere between 5 and 11 pm is normal for newborns, and usually fades by about 8 weeks.",
+    "Ask someone to walk the baby while you eat. Change the scenery every 10 minutes: bouncer, lap, bath, a walk outside.",
+    "Cluster-feed. Now isn't the time to space feeds out.",
+    "Taking turns is allowed, and so is a rough evening. You're not doing it wrong."
+  ]
+
+  @doc "Why newborn nights are upside down, and what helps."
+  def newborn_nights, do: @newborn_nights
+
+  @doc "Getting through the evening fuss (the \"witching hours\")."
+  def witching_hours, do: @witching_hours
+
   @doc "The three habits the newborn routine rests on."
   def principles, do: @principles
 

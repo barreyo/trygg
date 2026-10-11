@@ -70,6 +70,62 @@ defmodule TryggWeb.SleepLiveTest do
       assert has_element?(lv, "#roadmap-beyond", "ABCs of Sleep")
     end
 
+    test "a newborn sees what's typical at their age and how nights usually go", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+
+      assert has_element?(lv, "#age-guide-table", "Naps a day")
+      assert has_element?(lv, "#age-guide h2", "Birth to 6 weeks")
+      assert has_element?(lv, "#age-guide-wake")
+      assert has_element?(lv, "#newborn-nights li", "20 minutes")
+      assert has_element?(lv, "#witching-hours summary")
+    end
+
+    test "an older baby sees the typical day but not the newborn nights", %{
+      conn: conn,
+      scope: scope
+    } do
+      older = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -100)})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{older}/sleep")
+
+      assert has_element?(lv, "#age-guide h2", "3 to 6 months")
+      refute has_element?(lv, "#newborn-nights")
+    end
+
+    test "with no birth date there's no typical day to show", %{conn: conn, scope: scope} do
+      expecting =
+        child_fixture(scope, %{
+          birth_date: nil,
+          expected_birth_date: Date.add(Date.utc_today(), 30)
+        })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{expecting}/sleep")
+      assert has_element?(lv, "#age-guide-none")
+    end
+
+    test "the typical day compares their own numbers once there's history", %{
+      conn: conn,
+      scope: scope
+    } do
+      older = child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -100)})
+      now = DateTime.utc_now()
+
+      for days_ago <- 1..5 do
+        start = DateTime.add(now, -days_ago * 86_400 - 3 * 3600, :second)
+
+        {:ok, _} =
+          Trygg.Log.create_entry(scope, older, :sleep, %{
+            "started_at" => start,
+            "ended_at" => DateTime.add(start, 3600, :second)
+          })
+      end
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{older}/sleep")
+      assert has_element?(lv, "#age-guide-compare")
+    end
+
     test "an older baby gets Foundations, without the newborn-only panels", %{
       conn: conn,
       scope: scope

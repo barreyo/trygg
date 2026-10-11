@@ -9,16 +9,16 @@ defmodule TryggWeb.SleepToolkitComponents do
   import TryggWeb.CoreComponents
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
-  alias Trygg.Sleep.{Assist, BedtimePlan, NightFeeds}
+  alias Trygg.Sleep.{Assist, BedtimePlan, NightFeeds, PowerTools, SafeSleep}
   alias Trygg.Units
 
   @doc "Links between the Sleep tab's pages."
-  attr :current, :atom, required: true, values: [:today, :toolkit, :plan, :night]
+  attr :current, :atom, required: true, values: [:today, :toolkit, :plan, :playbooks, :night]
   attr :child, :map, required: true
 
   def sleep_subnav(assigns) do
     ~H"""
-    <nav id="sleep-subnav" class="mb-4 flex gap-2" aria-label="Sleep sections">
+    <nav id="sleep-subnav" class="mb-4 flex gap-2 overflow-x-auto" aria-label="Sleep sections">
       <.button
         id="subnav-today"
         navigate={"/c/#{@child.id}/sleep"}
@@ -45,6 +45,15 @@ defmodule TryggWeb.SleepToolkitComponents do
         aria-current={@current == :plan && "page"}
       >
         Plan
+      </.button>
+      <.button
+        id="subnav-playbooks"
+        navigate={"/c/#{@child.id}/sleep/playbooks"}
+        size="sm"
+        variant={if @current == :playbooks, do: "primary"}
+        aria-current={@current == :playbooks && "page"}
+      >
+        Playbooks
       </.button>
       <.button
         id="subnav-night"
@@ -282,6 +291,7 @@ defmodule TryggWeb.SleepToolkitComponents do
   attr :tz, :string, required: true
   attr :can_write, :boolean, required: true
   attr :child_id, :integer, required: true
+  attr :typical, :map, default: nil
 
   def night_feeds_panel(assigns) do
     ~H"""
@@ -334,6 +344,35 @@ defmodule TryggWeb.SleepToolkitComponents do
         Most healthy babies can go at least 4 hours at night if they feed well every 2–4 hours by day.
         The goal is one night feed by the end of the fourth month. Not medical advice.
       </p>
+
+      <p :if={@typical} id="night-feeds-typical" class="mt-3 text-sm">
+        At {@typical.label}, <span class="font-semibold">{@typical.average}</span>
+        night feeds is typical. Some babies need none ({@typical.low}), and up to {@typical.high} isn't unusual.
+        Feeding more at night is only a problem if it's a problem for you.
+      </p>
+
+      <details id="night-feed-rules" class="mt-3">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          Which night wakings get a feed
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
+          For when they fall asleep on their own and you're deciding what to do at 2 a.m.
+        </p>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+          <li :for={rule <- NightFeeds.rules()}>{rule}</li>
+        </ul>
+        <h3 class="mt-3 text-sm font-semibold">Weaning one feed at a time</h3>
+        <p class="mt-1 text-sm">
+          Pick the feed that leaves you the longest unbroken sleep, not the earliest. Take a minute off
+          a nursing session or 2 oz (60 ml) off a bottle each night, and move that food to the day.
+          Once it's down to a minute or two, a feed that's still demanded can be answered by the
+          non-nursing parent with soothing and no food. Then the next feed.
+        </p>
+        <h3 class="mt-3 text-sm font-semibold">When a dream feed helps</h3>
+        <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
+          <li :for={use <- NightFeeds.dream_feed_uses()}>{use}</li>
+        </ul>
+      </details>
     </section>
     """
   end
@@ -470,6 +509,116 @@ defmodule TryggWeb.SleepToolkitComponents do
     settled_at
     |> Enum.sort()
     |> Enum.map_join(", ", fn {step, n} -> "#{step + 1} (#{n}×)" end)
+  end
+
+  ## Power tools -------------------------------------------------------------------
+
+  attr :tools, :list, required: true
+  attr :ticks, :map, default: %{}
+  attr :age_days, :integer, default: nil
+  attr :can_write, :boolean, required: true
+
+  def power_tools_panel(assigns) do
+    assigns =
+      assign(assigns,
+        signals:
+          for {id, text} <- PowerTools.signals() do
+            %{id: id, text: text, checked?: Map.has_key?(assigns.ticks || %{}, id)}
+          end,
+        lovey: PowerTools.lovey_note(assigns.age_days)
+      )
+
+    ~H"""
+    <section id="toolkit-power-tools" class={panel_class()}>
+      <h2 class={heading_class()}>Sleep tools</h2>
+      <p class="text-xs opacity-70">
+        The four things that make sleep easier without you doing it for them, and what to do with each one now.
+      </p>
+
+      <ul class="mt-3 space-y-3">
+        <li
+          :for={tool <- @tools}
+          id={"tool-#{tool.id}"}
+          data-state={tool.state}
+          class="rounded-box border border-base-300 p-3"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold">{tool.name}</h3>
+            <span class={["badge badge-sm", tool_badge(tool.state)]}>{tool_state(tool.state)}</span>
+          </div>
+          <p class="mt-1 text-sm">{tool.headline}</p>
+          <details class="mt-1">
+            <summary class="cursor-pointer text-xs text-primary">How</summary>
+            <ul class="mt-1 list-disc space-y-1 pl-5 text-xs opacity-80">
+              <li :for={point <- tool.points}>{point}</li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+
+      <h3 class="mt-4 text-sm font-semibold">Tell us if</h3>
+      <ul id="tool-signals" class="mt-2 space-y-1.5">
+        <.check_item
+          :for={signal <- @signals}
+          item={
+            %{id: signal.id, text: signal.text, checked?: signal.checked?, auto?: false, detail: nil}
+          }
+          can_write={@can_write}
+        />
+      </ul>
+
+      <p id="lovey-note" class="mt-3 text-xs opacity-70">{@lovey}</p>
+    </section>
+    """
+  end
+
+  defp tool_state(:use), do: "Use"
+  defp tool_state(:consider), do: "Think about stopping"
+  defp tool_state(:stop), do: "Stop"
+  defp tool_state(:optional), do: "Optional"
+
+  defp tool_badge(:use), do: "badge-success"
+  defp tool_badge(:consider), do: "badge-warning"
+  defp tool_badge(:stop), do: "badge-error"
+  defp tool_badge(:optional), do: "badge-ghost"
+
+  ## Safe sleep ---------------------------------------------------------------------
+
+  attr :safe_sleep, :map, required: true
+  attr :can_write, :boolean, required: true
+
+  def safe_sleep_panel(assigns) do
+    assigns = assign(assigns, :cosleeping, SafeSleep.cosleeping_notes())
+
+    ~H"""
+    <section id="toolkit-safe-sleep" class={panel_class()}>
+      <h2 class={heading_class()}>
+        Safe sleep
+        <span id="safe-sleep-count" class="font-normal opacity-70">
+          {@safe_sleep.done} of {@safe_sleep.total}
+        </span>
+      </h2>
+      <p class="text-xs opacity-70">
+        What lowers the risk of SIDS and accidents. Run through it, show it to your pediatrician,
+        and give it to anyone who looks after them.
+      </p>
+      <ul id="safe-sleep-checklist" class="mt-2 space-y-1.5">
+        <.check_item :for={item <- @safe_sleep.items} item={item} can_write={@can_write} />
+      </ul>
+
+      <details id="cosleeping" class="mt-3">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          If you share a bed
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
+          The pediatricians' advice is not to. If it happens anyway, make it as safe as it can be.
+        </p>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+          <li :for={note <- @cosleeping}>{note}</li>
+        </ul>
+      </details>
+    </section>
+    """
   end
 
   ## Checklists --------------------------------------------------------------------

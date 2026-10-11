@@ -91,6 +91,7 @@ defmodule TryggWeb do
       import TryggWeb.ReportComponents
       import TryggWeb.RhythmComponents
       import TryggWeb.SleepPlanComponents
+      import TryggWeb.SleepPlaybooksComponents
       import TryggWeb.SleepToolkitComponents
       import TryggWeb.SkeletonComponents
       import TryggWeb.GrowthComponents, only: [trend_chart: 1]

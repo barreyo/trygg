@@ -15,7 +15,7 @@ defmodule TryggWeb.SleepPlanComponents do
 
   alias Trygg.Log.Entry
   alias Trygg.Reports.SleepHabits
-  alias Trygg.Sleep.{Assist, Cries, Cue, Guide}
+  alias Trygg.Sleep.{Assist, BedtimePlan, Cries, Cue, Guide}
 
   @doc "A banner on the Sleep tab while a night waking is being worked through."
   attr :wake, :map, required: true
@@ -502,6 +502,150 @@ defmodule TryggWeb.SleepPlanComponents do
         Newborns: start a nap as soon as the cues show. Overtired babies often seem wired, not sleepy.
       </p>
     </section>
+    """
+  end
+
+  @doc """
+  What a typical day looks like at this age (`Trygg.Sleep.AgeGuide`), next to
+  this child's own numbers.
+  """
+  attr :guide, :map, required: true
+  attr :phase, :map, default: nil
+
+  def age_guide_panel(%{guide: %{band: nil}} = assigns) do
+    ~H"""
+    <section id="age-guide" class={panel_class()}>
+      <h2 class={heading_class()}>A typical day</h2>
+      <p id="age-guide-none" class="text-sm opacity-80">
+        Add a birth date to see what's typical at their age.
+      </p>
+    </section>
+    """
+  end
+
+  def age_guide_panel(assigns) do
+    band = assigns.guide.band
+    wake = assigns.guide.wake_time
+
+    assigns =
+      assign(assigns,
+        band: band,
+        wake: wake,
+        rows: [
+          {"Naps a day", range(band.naps)},
+          {"Nap length", mins(band.nap)},
+          {"Awake between naps", band.between && mins(band.between)},
+          {"Awake before bed", mins(band.before_bed)},
+          {"Bedtime", clocks(band.bedtime)},
+          {"Night sleep", hours(band.night_hours)},
+          {"Total sleep", hours(band.total_hours)}
+        ]
+      )
+
+    ~H"""
+    <section id="age-guide" class={panel_class()}>
+      <h2 class={heading_class()}>A typical day: {@band.label}</h2>
+      <table id="age-guide-table" class="w-full text-sm">
+        <tbody>
+          <tr :for={{label, value} <- @rows} :if={value} class="border-t border-base-300">
+            <th scope="row" class="py-1.5 pr-3 text-left font-medium">{label}</th>
+            <td class="tabular-nums">{value}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p :if={@wake} id="age-guide-wake" class="mt-2 text-sm">
+        Awake before a nap: {mins(@wake.wake)}. Shortest after the morning wake-up, longest before bed.
+      </p>
+
+      <div :if={@guide.comparison != []} id="age-guide-compare" class="mt-3">
+        <h3 class="text-sm font-semibold">How they compare</h3>
+        <ul class="mt-1 space-y-1 text-sm">
+          <li
+            :for={line <- @guide.comparison}
+            id={"compare-#{line.metric}"}
+            data-verdict={line.verdict}
+            class="flex items-baseline justify-between gap-2"
+          >
+            <span>{line.label}</span>
+            <span class="tabular-nums">
+              {compare_value(line)}
+              <span class={["badge badge-sm ml-1", verdict_badge(line.verdict)]}>
+                {verdict_text(line.verdict)}
+              </span>
+            </span>
+          </li>
+        </ul>
+      </div>
+
+      <p class="mt-3 text-xs opacity-70">
+        Ranges from <em>Precious Little Sleep</em>. Babies vary far more than any chart; your own
+        pattern and how they are in the day matter more.
+      </p>
+    </section>
+    """
+  end
+
+  defp range({lo, lo}), do: "#{lo}"
+  defp range({lo, hi}), do: "#{lo}–#{hi}"
+
+  defp mins({lo, lo}), do: format_duration(lo * 60)
+  defp mins({lo, hi}), do: "#{format_duration(lo * 60)}–#{format_duration(hi * 60)}"
+
+  defp hours({lo, hi}), do: "#{lo}–#{hi} h"
+
+  defp clocks({lo, hi}), do: "#{BedtimePlan.clock(lo)}–#{BedtimePlan.clock(hi)}"
+
+  defp compare_value(%{metric: :bedtime, value: value}), do: BedtimePlan.clock(round(value))
+
+  defp compare_value(%{metric: :nap_minutes, value: value}),
+    do: format_duration(round(value * 60))
+
+  defp compare_value(%{value: value}), do: "#{Float.round(value * 1.0, 1)}"
+
+  defp verdict_text(:within), do: "in range"
+  defp verdict_text(:below), do: "below"
+  defp verdict_text(:above), do: "above"
+
+  defp verdict_badge(:within), do: "badge-success"
+  defp verdict_badge(_), do: "badge-ghost"
+
+  @doc "Why newborn nights are upside down, and the evening fuss."
+  def newborn_nights_panel(assigns) do
+    assigns = assign(assigns, nights: Guide.newborn_nights(), witching: Guide.witching_hours())
+
+    ~H"""
+    <section id="newborn-nights" class={panel_class()}>
+      <h2 class={heading_class()}>Newborn nights</h2>
+      <ul class="list-disc space-y-1.5 pl-5 text-sm">
+        <li :for={line <- @nights}>{line}</li>
+      </ul>
+      <details id="witching-hours" class="mt-3">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          The evening fuss (witching hours)
+        </summary>
+        <ul class="mt-2 list-disc space-y-1.5 pl-5 text-sm">
+          <li :for={line <- @witching}>{line}</li>
+        </ul>
+      </details>
+    </section>
+    """
+  end
+
+  @doc "A link from the Today page to the playbooks."
+  attr :child, :map, required: true
+
+  def playbooks_card(assigns) do
+    ~H"""
+    <.link
+      id="playbooks-card"
+      navigate={"/c/#{@child.id}/sleep/playbooks"}
+      class="mb-4 block rounded-[var(--radius-card)] border-2 border-base-300 bg-base-200/40 p-4"
+    >
+      <span class="text-sm font-semibold">Playbooks</span>
+      <span class="block text-sm opacity-80">
+        Naps, early mornings, regressions, travel, clock changes and what the log says is worth a look.
+      </span>
+    </.link>
     """
   end
 

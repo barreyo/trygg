@@ -301,6 +301,9 @@ defmodule Trygg.Reports do
         Trygg.Sleep.NightWakes.summarize(Trygg.Sleep.NightWakes.recent(scope, child, 14)),
       night_feed_gates: gates,
       night_feed_plan: Trygg.Sleep.NightFeeds.plan(child, nights, opts[:last_feed_at], now),
+      night_feed_typical: Trygg.Sleep.NightFeeds.typical(phase && phase.age_days),
+      power_tools: Trygg.Sleep.PowerTools.plan(phase && phase.age_days, child.sleep_checks),
+      safe_sleep: Trygg.Sleep.SafeSleep.evaluate(child.sleep_checks),
       checklists:
         Trygg.Sleep.Checklists.evaluate(%{
           child: child,
@@ -346,6 +349,9 @@ defmodule Trygg.Reports do
       now: now
     }
 
+    age_days = phase && phase.age_days
+    band = Trygg.Sleep.AgeGuide.band(age_days)
+
     %{
       plan: DayPlan.build(child, s.today, s.prediction, now),
       insights: Trygg.Sleep.Coach.insights(context),
@@ -353,7 +359,53 @@ defmodule Trygg.Reports do
       nights: nights,
       phase: phase,
       prediction: s.prediction,
-      today: s.today
+      today: s.today,
+      age_guide: %{
+        band: band,
+        wake_time: Trygg.Sleep.AgeGuide.wake_time(age_days),
+        comparison: Trygg.Sleep.AgeGuide.compare(band, Trygg.Sleep.AgeGuide.stats_from(s))
+      }
+    }
+  end
+
+  @doc """
+  What the Sleep playbooks page shows: what the log says is worth a look
+  (`Trygg.Reports.Setbacks`), how the naps measure up against the book's
+  conventions, the next clock change, and the child's usual bedtime and wake
+  time to start the planners from. Requires `:viewer`.
+  """
+  def sleep_playbooks(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+
+    phase = Trygg.Sleep.Phase.for_child(child)
+    age_days = phase && phase.age_days
+    s = summary(scope, child, @outlook_window, now)
+    nights = nights(scope, child, now, count: 14)
+    {days, _entries} = load_days(scope, child, Date.add(today, -13), today, now)
+
+    %{
+      phase: phase,
+      age_days: age_days,
+      findings:
+        Trygg.Reports.Setbacks.detect(%{
+          child: child,
+          age_days: age_days,
+          nights: nights,
+          days: days,
+          insights: s,
+          today: today
+        }),
+      naps: Trygg.Sleep.NapConventions.assess(%{child: child, days: days}),
+      dst: Trygg.Sleep.Setbacks.next_dst_change(child, today),
+      usual: %{
+        bed: s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes),
+        wake:
+          s.morning_wake && s.morning_wake.median_minutes && round(s.morning_wake.median_minutes)
+      },
+      power_tools: Trygg.Sleep.PowerTools.plan(age_days, child.sleep_checks),
+      drop: Trygg.Sleep.NapConventions.drop_for(age_days)
     }
   end
 

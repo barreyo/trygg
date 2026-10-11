@@ -329,4 +329,68 @@ defmodule TryggWeb.SleepToolkitLiveTest do
       assert Families.get_child!(owner, child.id).sleep_checks == %{}
     end
   end
+
+  describe "power tools and safe sleep" do
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      %{conn: conn, scope: scope, child: child_fixture(scope)}
+    end
+
+    test "a newborn gets the tools, with the swaddle and pacifier in use", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/toolkit")
+
+      assert has_element?(lv, "#tool-white_noise[data-state=use]")
+      assert has_element?(lv, "#tool-swaddle[data-state=use]")
+      assert has_element?(lv, "#tool-pacifier[data-state=use]")
+      assert has_element?(lv, "#tool-schedule")
+      assert has_element?(lv, "#lovey-note", "Nothing soft")
+    end
+
+    test "ticking that they're rolling ends the swaddle at once", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/toolkit")
+
+      lv |> element("#check-pt-rolling button") |> render_click()
+
+      assert has_element?(lv, "#tool-swaddle[data-state=stop]", "Stop swaddling now")
+      assert Families.get_child!(scope, child.id).sleep_checks["pt-rolling"]
+    end
+
+    test "a viewer can see the tools but not tick anything", %{conn: conn} do
+      owner = user_scope_fixture()
+      child = child_fixture(owner)
+      %{conn: conn, scope: viewer} = register_and_log_in_user(%{conn: conn})
+      membership_fixture(child, viewer.user, :viewer)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/toolkit")
+      assert has_element?(lv, "#tool-swaddle")
+      refute has_element?(lv, "#check-pt-rolling button")
+    end
+
+    test "the safe sleep checklist can be ticked and counted", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/toolkit")
+
+      assert has_element?(lv, "#safe-sleep-count", "0 of 14")
+      lv |> element("#check-ss-back button") |> render_click()
+      assert has_element?(lv, "#safe-sleep-count", "1 of 14")
+      assert has_element?(lv, "#check-ss-back[data-checked=true]")
+      assert has_element?(lv, "#cosleeping summary", "share a bed")
+    end
+
+    test "night feeds show what's typical and the rules, even before they open", %{
+      conn: conn,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/toolkit")
+
+      assert has_element?(lv, "#night-feeds-typical", "0–3 months")
+      assert has_element?(lv, "#night-feed-rules li", "midnight")
+    end
+  end
 end
