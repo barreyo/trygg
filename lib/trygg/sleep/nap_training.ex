@@ -109,7 +109,7 @@ defmodule Trygg.Sleep.NapTraining do
 
   defp auto("n-short", %{nap_medians: [_ | _] = medians}) do
     {Enum.all?(medians, &(&1 < @short_nap_seconds)),
-     "typical naps #{div(Enum.min(medians), 60)}–#{div(Enum.max(medians), 60)} min"}
+     "typical naps #{round(Enum.min(medians) / 60)}–#{round(Enum.max(medians) / 60)} min"}
   end
 
   defp auto(_id, _ctx), do: {false, nil}

@@ -10,7 +10,7 @@ defmodule TryggWeb.SleepToolkitLive do
   alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Reports
-  alias Trygg.Sleep.Checklists
+  alias Trygg.Sleep.{Checklists, PowerTools, SafeSleep}
   alias TryggWeb.Loading
 
   @impl true
@@ -91,7 +91,9 @@ defmodule TryggWeb.SleepToolkitLive do
 
   @impl true
   def handle_event("toggle_check", %{"id" => id}, socket) do
-    manual = Checklists.troubleshooting_ids() ++ manual_success_ids()
+    manual =
+      Checklists.troubleshooting_ids() ++
+        manual_success_ids() ++ SafeSleep.ids() ++ PowerTools.signal_ids()
 
     if socket.assigns.can_write and id in manual do
       child = socket.assigns.current_child
@@ -186,6 +188,12 @@ defmodule TryggWeb.SleepToolkitLive do
         <Layouts.columns id="toolkit-columns">
           <:left>
             <.falling_asleep_panel falling_asleep={@toolkit.falling_asleep} phase={@toolkit.phase} />
+            <.power_tools_panel
+              tools={@toolkit.power_tools}
+              ticks={@current_child.sleep_checks}
+              age_days={@toolkit.phase && @toolkit.phase.age_days}
+              can_write={@can_write}
+            />
             <.bedtime_panel
               plan={@toolkit.bedtime_plan}
               table={@toolkit.table}
@@ -201,8 +209,10 @@ defmodule TryggWeb.SleepToolkitLive do
               tz={@current_child.timezone}
               can_write={@can_write}
               child_id={@current_child.id}
+              typical={@toolkit.night_feed_typical}
             />
             <.night_wakes_panel summary={@toolkit.night_wakes} child_id={@current_child.id} />
+            <.safe_sleep_panel safe_sleep={@toolkit.safe_sleep} can_write={@can_write} />
             <.checklists_panel checklists={@toolkit.checklists} can_write={@can_write} />
           </:right>
         </Layouts.columns>

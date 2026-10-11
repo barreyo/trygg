@@ -304,6 +304,7 @@ defmodule TryggWeb.SleepNightLive do
             <% @active && @active.method == :abcs -> %>
               <SleepAbcsComponents.abcs_screen
                 wake={@active}
+                plan={@plan}
                 tonight={@tonight}
                 bedtime_at={@bedtime_at}
                 can_write={@can_write}

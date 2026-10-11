@@ -11,7 +11,7 @@ defmodule TryggWeb.SleepAbcsComponents do
   import TryggWeb.CoreComponents
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
-  alias Trygg.Sleep.{Abcs, BedtimePlan, Checkins, NapTraining}
+  alias Trygg.Sleep.{Abcs, BedtimePlan, Checkins, Definitions, NapTraining}
   alias Trygg.Units
 
   ## Before starting -------------------------------------------------------------
@@ -48,18 +48,26 @@ defmodule TryggWeb.SleepAbcsComponents do
 
   attr :eligibility, :map, required: true
   attr :can_write, :boolean, required: true
+  attr :definition, :atom, default: :abcs
 
   def gates_panel(assigns) do
+    assigns =
+      assign(assigns,
+        prefix: Atom.to_string(assigns.definition),
+        preflight: Definitions.preflight(assigns.definition),
+        months: months(assigns.definition)
+      )
+
     ~H"""
-    <section id="abcs-gates" class={panel_class()}>
+    <section id={"#{@prefix}-gates"} class={panel_class()}>
       <h2 class={heading_class()}>Before you start</h2>
 
       <ul class="space-y-2 text-sm">
-        <li id="abcs-gate-age" class="flex gap-2">
+        <li id={"#{@prefix}-gate-age"} class="flex gap-2">
           <.gate_icon ok={match?({:ok, _}, @eligibility.age)} />
-          <span>{age_text(@eligibility.age)}</span>
+          <span>{age_text(@eligibility.age, @months)}</span>
         </li>
-        <li id="abcs-gate-clearance" class="flex gap-2">
+        <li :if={@eligibility.needs_clearance?} id={"#{@prefix}-gate-clearance"} class="flex gap-2">
           <.gate_icon ok={not is_nil(@eligibility.clearance)} />
           <span>
             <%= if @eligibility.clearance do %>
@@ -88,13 +96,13 @@ defmodule TryggWeb.SleepAbcsComponents do
 
       <h3 class="mt-4 text-sm font-semibold">
         Pre-flight
-        <span id="abcs-preflight-count" class="font-normal opacity-70">
+        <span id={"#{@prefix}-preflight-count"} class="font-normal opacity-70">
           {@eligibility.preflight.done} of {@eligibility.preflight.total}
         </span>
       </h3>
-      <ul id="abcs-preflight" class="mt-2 space-y-1.5">
+      <ul id={"#{@prefix}-preflight"} class="mt-2 space-y-1.5">
         <li
-          :for={{id, text} <- Abcs.preflight()}
+          :for={{id, text} <- @preflight}
           id={"check-#{id}"}
           data-checked={to_string(id not in @eligibility.preflight.missing)}
           class="flex gap-2 text-sm"
@@ -107,7 +115,7 @@ defmodule TryggWeb.SleepAbcsComponents do
               role="checkbox"
               aria-checked={to_string(id not in @eligibility.preflight.missing)}
               aria-label={text}
-              class="mt-0.5 shrink-0"
+              class="-m-3 shrink-0 touch-manipulation p-3"
             >
               <.icon
                 name={
@@ -115,7 +123,7 @@ defmodule TryggWeb.SleepAbcsComponents do
                     do: "hero-stop",
                     else: "hero-check-circle-solid"
                 }
-                class={"size-5 " <> if(id in @eligibility.preflight.missing, do: "opacity-50", else: "text-success")}
+                class={"size-5 " <> if(id in @eligibility.preflight.missing, do: "opacity-70", else: "text-success")}
               />
             </button>
           <% else %>
@@ -125,7 +133,7 @@ defmodule TryggWeb.SleepAbcsComponents do
                   do: "hero-minus-circle",
                   else: "hero-check-circle-solid"
               }
-              class={"mt-0.5 size-5 shrink-0 " <> if(id in @eligibility.preflight.missing, do: "opacity-40", else: "text-success")}
+              class={"mt-0.5 size-5 shrink-0 " <> if(id in @eligibility.preflight.missing, do: "opacity-70", else: "text-success")}
             />
           <% end %>
           <span>{text}</span>
@@ -135,23 +143,30 @@ defmodule TryggWeb.SleepAbcsComponents do
     """
   end
 
+  defp months(:swap), do: "2 months"
+  defp months(:slip), do: "4 months"
+  defp months(:abcs), do: "5 months"
+
   attr :ok, :boolean, required: true
 
   defp gate_icon(assigns) do
     ~H"""
     <.icon
       name={if @ok, do: "hero-check-circle", else: "hero-minus-circle"}
-      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-50")}
+      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-70")}
     />
     """
   end
 
-  defp age_text({:ok, _}), do: "They're past 5 months (corrected for a baby born early)."
-  defp age_text({:locked, nil}), do: "The plan opens at 5 months, and needs a birth date."
+  defp age_text({:ok, _}, months),
+    do: "They're past #{months} (corrected for a baby born early)."
 
-  defp age_text({:locked, on}),
+  defp age_text({:locked, nil}, months),
+    do: "The plan opens at #{months}, and needs a birth date."
+
+  defp age_text({:locked, on}, months),
     do:
-      "The plan opens at 5 months, from #{Calendar.strftime(on, "%b %-d")}. Before then it isn't for them."
+      "The plan opens at #{months}, from #{Calendar.strftime(on, "%b %-d")}. Before then it isn't for them."
 
   attr :form, :any, required: true
   attr :count, :integer, required: true
@@ -177,6 +192,7 @@ defmodule TryggWeb.SleepAbcsComponents do
         phx-submit="start_plan"
         class="space-y-3"
       >
+        <input type="hidden" name="plan[definition]" value="abcs" />
         <.input
           field={@form[:count]}
           id="setup-count"
@@ -338,6 +354,7 @@ defmodule TryggWeb.SleepAbcsComponents do
   attr :tz, :string, required: true
   attr :tonight, :map, required: true
   attr :can_write, :boolean, required: true
+  attr :definition, :atom, default: :abcs
 
   def night_chart_panel(assigns) do
     ~H"""
@@ -348,51 +365,61 @@ defmodule TryggWeb.SleepAbcsComponents do
         Night 1 starts tonight. Each night you work through shows up here.
       </p>
 
-      <div :if={@nights != []} class="overflow-x-auto">
-        <table class="w-full min-w-[28rem] text-left text-sm">
-          <thead class="text-xs uppercase opacity-70">
-            <tr>
-              <th class="pb-1 pr-2">Night</th>
-              <th class="pb-1 pr-2">Down</th>
-              <th class="pb-1 pr-2">To sleep</th>
-              <th class="pb-1 pr-2">Wakings</th>
-              <th class="pb-1 pr-2">Crying</th>
-              <th class="pb-1 pr-2">Longest sleep</th>
-              <th class="pb-1">Feeds</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for night <- Enum.reverse(@nights) do %>
-              <tr id={"abcs-night-#{night.number}"} class="border-t border-base-300 align-top">
-                <th scope="row" class="py-1.5 pr-2 font-medium">{night.number}</th>
-                <td class="py-1.5 pr-2 tabular-nums">{time_or_dash(night.bedtime, @tz)}</td>
-                <td class="py-1.5 pr-2 tabular-nums">
-                  {duration_or_dash(night.bedtime_to_sleep_seconds)}
-                </td>
-                <td class="py-1.5 pr-2 tabular-nums">{night.wakings}</td>
-                <td class="py-1.5 pr-2 tabular-nums">{duration_or_dash(night.cry_seconds, true)}</td>
-                <td class="py-1.5 pr-2 tabular-nums">
-                  {duration_or_dash(night.longest_sleep_seconds)}
-                </td>
-                <td class="py-1.5 tabular-nums">{night.night_feeds || "—"}</td>
+      <details :if={@nights != []} class="fold" id="abcs-chart-log">
+        <summary class="cursor-pointer text-sm text-primary">
+          {length(@nights)} {if length(@nights) == 1, do: "night", else: "nights"} logged
+        </summary>
+        <div class="mt-2 overflow-x-auto">
+          <table class="w-full min-w-[28rem] text-left text-sm">
+            <thead class="text-xs uppercase opacity-70">
+              <tr>
+                <th class="pb-1 pr-2">Night</th>
+                <th class="pb-1 pr-2">Down</th>
+                <th class="pb-1 pr-2">To sleep</th>
+                <th class="pb-1 pr-2">Wakings</th>
+                <th :if={@definition != :swap} class="pb-1 pr-2">Crying</th>
+                <th class="pb-1 pr-2">Longest sleep</th>
+                <th class="pb-1">Feeds</th>
               </tr>
-              <tr :if={night.wakes != []} class="text-xs opacity-80">
-                <td></td>
-                <td colspan="6" class="pb-1.5">
-                  <span :for={wake <- night.wakes} class="mr-3 inline-block">
-                    {clock(wake.started_at, @tz)}: {length(wake.pop_in_times)} pop-ins{if wake.to_sleep_seconds,
-                      do: ", asleep in #{format_duration(wake.to_sleep_seconds)}"}
-                  </span>
-                </td>
-              </tr>
-              <tr :if={night.note} class="text-xs opacity-80">
-                <td></td>
-                <td colspan="6" class="pb-1.5 italic">{night.note}</td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              <%= for night <- Enum.reverse(@nights) do %>
+                <tr id={"abcs-night-#{night.number}"} class="border-t border-base-300 align-top">
+                  <th scope="row" class="py-1.5 pr-2 font-medium">{night.number}</th>
+                  <td class="py-1.5 pr-2 tabular-nums">{time_or_dash(night.bedtime, @tz)}</td>
+                  <td class="py-1.5 pr-2 tabular-nums">
+                    {duration_or_dash(night.bedtime_to_sleep_seconds)}
+                  </td>
+                  <td class="py-1.5 pr-2 tabular-nums">{night.wakings}</td>
+                  <td :if={@definition != :swap} class="py-1.5 pr-2 tabular-nums">
+                    {duration_or_dash(night.cry_seconds, true)}
+                  </td>
+                  <td class="py-1.5 pr-2 tabular-nums">
+                    {duration_or_dash(night.longest_sleep_seconds)}
+                  </td>
+                  <td class="py-1.5 tabular-nums">{night.night_feeds || "—"}</td>
+                </tr>
+                <tr :if={night.wakes != []} class="text-xs opacity-80">
+                  <td></td>
+                  <td colspan="6" class="pb-1.5">
+                    <span :for={wake <- night.wakes} class="mr-3 inline-block">
+                      {clock(wake.started_at, @tz)}: {visit_count(
+                        length(wake.pop_in_times),
+                        @definition
+                      )}{if wake.to_sleep_seconds,
+                        do: ", asleep in #{format_duration(wake.to_sleep_seconds)}"}
+                    </span>
+                  </td>
+                </tr>
+                <tr :if={night.note} class="text-xs opacity-80">
+                  <td></td>
+                  <td colspan="6" class="pb-1.5 italic">{night.note}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       <.form
         :if={@can_write and @nights != [] and @tonight.night >= 1 and not @tonight.finished?}
@@ -418,18 +445,33 @@ defmodule TryggWeb.SleepAbcsComponents do
 
   attr :progress, :map, required: true
   attr :nights, :list, required: true
+  attr :definition, :atom, default: :abcs
+  attr :assessment, :any, default: nil
 
   def progress_panel(assigns) do
-    max_cry = assigns.progress.cry_seconds |> Enum.max(fn -> 0 end) |> max(1)
-    assigns = assign(assigns, :max_cry, max_cry)
+    # A SWAP is judged by how long bedtime takes; the others by how much they cry.
+    {series, label} =
+      if assigns.definition == :swap,
+        do:
+          {assigns.progress.bedtime_to_sleep_seconds, "Time from put-down to asleep each night."},
+        else: {assigns.progress.cry_seconds, "Total time spent crying each night."}
+
+    max_value = series |> Enum.reject(&is_nil/1) |> Enum.max(fn -> 0 end) |> max(1)
+
+    assigns =
+      assign(assigns,
+        bars: Enum.zip(assigns.nights, series),
+        label: label,
+        max_value: max_value
+      )
 
     ~H"""
     <section :if={@nights != []} id="abcs-progress" class={panel_class()}>
       <h2 class={heading_class()}>Progress</h2>
 
-      <ol id="abcs-cry-bars" class="space-y-1.5" aria-label="Crying by night">
+      <ol id="abcs-cry-bars" class="space-y-1.5" aria-label={@label}>
         <li
-          :for={night <- @nights}
+          :for={{night, value} <- @bars}
           id={"abcs-cry-#{night.number}"}
           class="flex items-center gap-2 text-sm"
         >
@@ -437,25 +479,43 @@ defmodule TryggWeb.SleepAbcsComponents do
           <span class="h-3 flex-1 overflow-hidden rounded-full bg-base-300">
             <span
               class="block h-full rounded-full bg-primary"
-              style={"width: #{round(night.cry_seconds / @max_cry * 100)}%"}
+              style={"width: #{round((value || 0) / @max_value * 100)}%"}
             ></span>
           </span>
-          <span class="w-14 shrink-0 text-right tabular-nums">{duration_or_dash(
-            night.cry_seconds,
-            true
-          )}</span>
+          <span class="w-14 shrink-0 text-right tabular-nums">{duration_or_dash(value, true)}</span>
         </li>
       </ol>
-      <p class="mt-1 text-xs opacity-70">Total time spent crying each night.</p>
+      <p class="mt-1 text-xs opacity-70">{@label}</p>
 
-      <p :if={@progress.trend} id="abcs-trend" class="mt-3 text-sm">{trend_text(@progress.trend)}</p>
-      <p class="mt-2 text-xs opacity-70">
+      <p
+        :if={@assessment}
+        id="plan-assessment"
+        data-status={elem(@assessment, 0)}
+        class="mt-3 text-sm"
+      >
+        {elem(@assessment, 1)}
+      </p>
+
+      <p
+        :if={@definition != :swap and is_nil(@assessment) and @progress.trend}
+        id="abcs-trend"
+        class="mt-3 text-sm"
+      >
+        {trend_text(@progress.trend)}
+      </p>
+      <p :if={@definition == :abcs} class="mt-2 text-xs opacity-70">
         It's usually hardest on nights 1 to 5 and gets much easier from there. Early-morning wakings
         (4–6 am) are the last to resolve.
       </p>
     </section>
     """
   end
+
+  # "1 pop-in", "2 pop-ins"; "1 time in", "2 times in" on a gradual plan.
+  defp visit_count(1, :swap), do: "1 time in"
+  defp visit_count(n, :swap), do: "#{n} times in"
+  defp visit_count(1, _definition), do: "1 pop-in"
+  defp visit_count(n, _definition), do: "#{n} pop-ins"
 
   defp trend_text(seconds) when seconds < -300,
     do: "Crying is down #{format_duration(abs(seconds))} from the first night."
@@ -471,26 +531,45 @@ defmodule TryggWeb.SleepAbcsComponents do
   attr :can_write, :boolean, required: true
 
   def plan_controls(assigns) do
+    assigns =
+      assign(assigns,
+        graduated_slip?:
+          assigns.plan.definition == :slip and assigns.plan.options["mode"] != "full"
+      )
+
     ~H"""
     <section id="abcs-controls" class={panel_class()}>
       <h2 class={heading_class()}>If something changes</h2>
-      <ul class="space-y-1.5 text-sm leading-snug">
-        <li>
-          <span class="font-semibold">Sick or in pain:</span>
-          meet the need and stop the plan. Start again once they're fully well.
-        </li>
-        <li>
-          <span class="font-semibold">A tooth breaking the skin:</span>
-          wait 24–48 hours before starting.
-        </li>
-        <li>
-          <span class="font-semibold">Early mornings:</span>
-          check the room is dark and the sound machine loud, and that bedtime is
-          no later than 7 pm. Never bring them into your bed.
-        </li>
-      </ul>
+      <details class="fold" id="plan-if-changes">
+        <summary class="cursor-pointer text-sm text-primary">When to pause the plan</summary>
+        <ul class="space-y-1.5 text-sm leading-snug">
+          <li>
+            <span class="font-semibold">Sick or in pain:</span>
+            meet the need and stop the plan. Start again once they're fully well.
+          </li>
+          <li>
+            <span class="font-semibold">A tooth breaking the skin:</span>
+            wait 24–48 hours before starting.
+          </li>
+          <li>
+            <span class="font-semibold">Early mornings:</span>
+            check the room is dark and the sound machine loud, and that bedtime is
+            no later than 7 pm. Never bring them into your bed.
+          </li>
+        </ul>
+      </details>
 
       <div :if={@can_write} class="mt-3 flex flex-wrap gap-2">
+        <.button
+          :if={@graduated_slip? and not @tonight.finished?}
+          id="go-full"
+          type="button"
+          size="sm"
+          phx-click="go_full"
+          data-confirm="Stop going in at all? You can't go back to visits once you've decided not to."
+        >
+          Switch to no visits
+        </.button>
         <.button
           :if={@tonight.finished?}
           id="finish-plan"
@@ -551,7 +630,7 @@ defmodule TryggWeb.SleepAbcsComponents do
           <%= if sign.auto? or not @can_write do %>
             <.icon
               name={if sign.checked?, do: "hero-check-circle-solid", else: "hero-minus-circle"}
-              class={"mt-0.5 size-5 shrink-0 " <> if(sign.checked?, do: "text-success", else: "opacity-40")}
+              class={"mt-0.5 size-5 shrink-0 " <> if(sign.checked?, do: "text-success", else: "opacity-70")}
             />
           <% else %>
             <button
@@ -561,11 +640,11 @@ defmodule TryggWeb.SleepAbcsComponents do
               role="checkbox"
               aria-checked={to_string(sign.checked?)}
               aria-label={sign.text}
-              class="mt-0.5 shrink-0"
+              class="-m-3 shrink-0 touch-manipulation p-3"
             >
               <.icon
                 name={if sign.checked?, do: "hero-check-circle-solid", else: "hero-stop"}
-                class={"size-5 " <> if(sign.checked?, do: "text-success", else: "opacity-50")}
+                class={"size-5 " <> if(sign.checked?, do: "text-success", else: "opacity-70")}
               />
             </button>
           <% end %>
@@ -603,7 +682,7 @@ defmodule TryggWeb.SleepAbcsComponents do
         </p>
       </div>
 
-      <details id="nap-tips" class="mt-3 text-sm">
+      <details id="nap-tips" class="fold mt-3 text-sm">
         <summary class="cursor-pointer font-medium text-primary">Nap questions</summary>
         <ul class="mt-2 list-disc space-y-1.5 pl-5 leading-snug">
           <li :for={tip <- @tips}>{tip}</li>
@@ -631,17 +710,22 @@ defmodule TryggWeb.SleepAbcsComponents do
 
       <h2 class="text-xl font-semibold">
         <%= if @tonight && @tonight.night >= 1 and not @tonight.finished? do %>
-          ABCs of Sleep · night {@tonight.night} of {@tonight.nights}
+          {plan_name(@plan)} · night {@tonight.night} of {@tonight.nights}
         <% else %>
-          ABCs of Sleep
+          {plan_name(@plan)}
         <% end %>
       </h2>
-      <p class="text-sm opacity-80">
-        Tap when you put them down, and again if they cry. It times the pop-ins for you.
+      <p class="text-sm opacity-80">{idle_blurb(@plan)}</p>
+      <p
+        :if={@plan && @plan.definition == :swap && @tonight && @tonight.night >= 1}
+        id="night-swap-step"
+        class="rounded-box bg-[#1b110c] p-3 text-sm"
+      >
+        Tonight: {@tonight.step.headline}
       </p>
 
       <div
-        :if={@tonight && @tonight.weaning != []}
+        :if={@tonight && Map.get(@tonight, :weaning, []) != []}
         id="night-weaning"
         class="rounded-box bg-[#1b110c] p-3 text-sm"
       >
@@ -679,6 +763,24 @@ defmodule TryggWeb.SleepAbcsComponents do
     """
   end
 
+  defp plan_name(nil), do: "ABCs of Sleep"
+
+  defp plan_name(%{definition: definition}) when definition in [:abcs, :slip, :swap],
+    do: Definitions.short_name(definition)
+
+  defp plan_name(_plan), do: "ABCs of Sleep"
+
+  defp idle_blurb(%{definition: :slip, options: %{"mode" => "full"}}),
+    do:
+      "Tap when you put them down, and again if they cry. It keeps count of the crying. No visits."
+
+  defp idle_blurb(%{definition: :swap}),
+    do:
+      "Tap when you put them down. It times how long they take to fall asleep, so progress shows."
+
+  defp idle_blurb(_plan),
+    do: "Tap when you put them down, and again if they cry. It times the pop-ins for you."
+
   defp abcs_last_line(%{outcome: :settled, cry_seconds: seconds}) when is_integer(seconds),
     do:
       "Asleep. Crying took #{if seconds == 0, do: "no time", else: format_duration(seconds)} in total."
@@ -687,6 +789,7 @@ defmodule TryggWeb.SleepAbcsComponents do
   defp abcs_last_line(_), do: "Stopped."
 
   attr :wake, :map, required: true
+  attr :plan, :map, default: nil
   attr :tonight, :map, default: nil
   attr :bedtime_at, :any, default: nil
   attr :can_write, :boolean, required: true
@@ -694,16 +797,22 @@ defmodule TryggWeb.SleepAbcsComponents do
   attr :tz, :string, required: true
 
   def abcs_screen(assigns) do
-    state = Checkins.state(assigns.wake.events, assigns.now)
     night = if assigns.tonight, do: max(assigns.tonight.night, 1), else: 1
+    plan = assigns.plan || %Trygg.Sleep.Plan{definition: :abcs}
+    definition = plan.definition || :abcs
+    state = Checkins.state(assigns.wake.events, assigns.now, Definitions.schedule(plan, night))
 
     assigns =
       assign(assigns,
+        definition: definition,
         state: state,
         seen: length(assigns.wake.events),
         touch: Abcs.touch(night),
+        visits?: Definitions.visits?(plan),
+        how: visit_text(definition, plan, assigns.tonight, night),
         morning?:
-          assigns.bedtime_at && Abcs.morning_state(assigns.bedtime_at, assigns.now) == :morning,
+          definition == :abcs and assigns.bedtime_at != nil and
+            Abcs.morning_state(assigns.bedtime_at, assigns.now) == :morning,
         due_ms: state.next_due_at && DateTime.to_unix(state.next_due_at) * 1000,
         due?: state.next_due_at && DateTime.compare(assigns.now, state.next_due_at) != :lt
       )
@@ -712,7 +821,7 @@ defmodule TryggWeb.SleepAbcsComponents do
     <div id="night-step" data-phase={@state.phase} class="space-y-5">
       <div class="flex items-center justify-between gap-3 text-sm">
         <p id="night-method" class="font-medium">
-          ABCs of Sleep{if @tonight && @tonight.night >= 1, do: " · night #{@tonight.night}"}
+          {plan_name(@plan)}{if @tonight && @tonight.night >= 1, do: " · night #{@tonight.night}"}
         </p>
         <p id="night-started-by" class="opacity-70">
           {if @wake.kind == :bedtime, do: "Put down", else: "Woke"} {clock(@wake.started_at, @tz)}{started_by(
@@ -733,7 +842,7 @@ defmodule TryggWeb.SleepAbcsComponents do
             <p class="mt-2 text-sm opacity-80">If they cry, tap below and it starts timing.</p>
           </div>
         <% :crying -> %>
-          <div class="text-center">
+          <div :if={@due_ms} class="text-center">
             <p id="abcs-state" class="text-sm uppercase tracking-wide opacity-70">
               {if @due?,
                 do: "Time for pop-in #{@state.pop_ins + 1}",
@@ -760,9 +869,18 @@ defmodule TryggWeb.SleepAbcsComponents do
               </p>
             </div>
           </div>
+          <div :if={!@due_ms} id="abcs-no-timer" class="text-center">
+            <p class="text-2xl font-semibold">
+              {if @definition == :slip, do: "Crying. Stay out.", else: "Crying. Wait."}
+            </p>
+            <p class="mt-2 text-sm opacity-80">
+              {if @definition == :slip,
+                do: "No visits. They're safe, fed and loved: they're working out how to do this.",
+                else: "Give it 5–10 minutes before you go in. They may settle without you."}
+            </p>
+          </div>
           <p id="abcs-popin-how" class="rounded-box bg-[#1b110c] p-3 text-sm leading-snug">
-            {popin_text(@touch)} Stay 15–20 seconds, say something calm and confident
-            ("I love you, you can do this, go to sleep"), then leave.
+            {@how}
           </p>
         <% :calming -> %>
           <div class="text-center">
@@ -788,7 +906,9 @@ defmodule TryggWeb.SleepAbcsComponents do
         <% else %>
           {format_duration(@state.cry_seconds)}
         <% end %>
-        · pop-ins: {@state.pop_ins}
+        <span :if={@visits?}>
+          · {if @definition == :swap, do: "times in", else: "pop-ins"}: {@state.pop_ins}
+        </span>
       </p>
 
       <div :if={@can_write} class="grid gap-3">
@@ -806,6 +926,7 @@ defmodule TryggWeb.SleepAbcsComponents do
             </button>
           <% :crying -> %>
             <button
+              :if={@visits?}
               id="abcs-record-popin"
               type="button"
               phx-click="record"
@@ -813,7 +934,7 @@ defmodule TryggWeb.SleepAbcsComponents do
               phx-value-seen={@seen}
               class="rounded-box bg-[#7a3b24] py-5 text-xl font-semibold text-[#ffe9dc]"
             >
-              I did a pop-in
+              {if @definition == :swap, do: "I went in", else: "I did a pop-in"}
             </button>
             <button
               id="abcs-record-calm"
@@ -860,6 +981,25 @@ defmodule TryggWeb.SleepAbcsComponents do
     </div>
     """
   end
+
+  defp visit_text(:abcs, _plan, _tonight, night) do
+    "#{popin_text(Abcs.touch(night))} Stay 15–20 seconds, say something calm and confident " <>
+      "(\"I love you, you can do this, go to sleep\"), then leave."
+  end
+
+  defp visit_text(:slip, %{options: %{"mode" => "full"}}, _tonight, _night),
+    do:
+      "Full plan: you don't go in. If you're worried about their safety, check on the monitor, not in the room."
+
+  defp visit_text(:slip, _plan, _tonight, _night),
+    do:
+      "A visit is a minute or two: your bedtime words, no picking up, no feeding, no rocking, and leave while they're still awake."
+
+  defp visit_text(:swap, _plan, %{step: %{headline: headline}}, _night),
+    do: "Tonight's step: #{headline}"
+
+  defp visit_text(:swap, _plan, _tonight, _night),
+    do: "Do what you did at bedtime, a little less than last night."
 
   defp popin_text(:touch),
     do:

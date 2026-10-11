@@ -35,8 +35,8 @@ defmodule Trygg.Reports.Nights do
 
   `nights` is the finished nights, newest first, each
 
-      %{date, bedtime, wake, asleep_seconds, wakings, longest_sleep_seconds,
-        feeds, feed_events, longest_feed_gap_seconds}
+      %{date, bedtime, wake, asleep_seconds, wakings, longest_waking_seconds,
+        longest_sleep_seconds, feeds, feed_events, longest_feed_gap_seconds}
 
   where `date` is the evening the night began. `best_baseline_seconds` is the
   longest stretch between feeds reached on at least two of those nights (the
@@ -83,6 +83,7 @@ defmodule Trygg.Reports.Nights do
           wake: wake,
           asleep_seconds: asleep_seconds(sleeps, bed, wake),
           wakings: length(evening.night_wakings || []),
+          longest_waking_seconds: longest_waking(evening.night_wakings || []),
           longest_sleep_seconds: longest_sleep(bed, wake, evening.night_wakings || []),
           feeds: night_feeds(feeds, bed, wake),
           feed_events: feed_events(feed_entries, bed, wake),
@@ -102,6 +103,13 @@ defmodule Trygg.Reports.Nights do
       finish = earlier(sleep.ended_at || wake, wake)
       total + max(DateTime.diff(finish, start, :second), 0)
     end)
+  end
+
+  defp longest_waking(wakings) do
+    wakings
+    |> Enum.map(&DateTime.diff(&1.end, &1.start, :second))
+    |> Enum.max(fn -> 0 end)
+    |> max(0)
   end
 
   # The longest run between wakings (or from bedtime / to the morning wake).

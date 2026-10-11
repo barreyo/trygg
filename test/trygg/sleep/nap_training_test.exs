@@ -71,6 +71,11 @@ defmodule Trygg.Sleep.NapTrainingTest do
     assert sign(NapTraining.readiness(ctx(nap_medians: [1800, 2100])), "n-short").checked?
     refute sign(NapTraining.readiness(ctx(nap_medians: [1800, 3600])), "n-short").checked?
     refute sign(NapTraining.readiness(ctx(nap_medians: [])), "n-short").checked?
+
+    # Medians from the log are floats.
+    float = sign(NapTraining.readiness(ctx(nap_medians: [1800.0, 2100.0])), "n-short")
+    assert float.checked?
+    assert float.detail == "typical naps 30–35 min"
   end
 
   test "the other signs follow the hand ticks, and any one is enough" do

@@ -215,6 +215,19 @@ defmodule Trygg.Sleep.NightWakesTest do
       assert length(NightWakes.recent(owner, child, 14)) == 1
     end
 
+    test "check-in wakings (no step) count as settled but not at a step", %{
+      owner: owner,
+      child: child
+    } do
+      {:ok, wake} = NightWakes.start(owner, child, :abcs)
+      {:ok, _} = NightWakes.asleep(owner, wake, 1)
+
+      assert %{count: 1, settled: 1, settled_at: settled_at} =
+               NightWakes.summarize(NightWakes.recent(owner, child))
+
+      assert settled_at == %{}
+    end
+
     test "summarize/1 of nothing", _ctx do
       assert %{count: 0, settled: 0, fed: 0, stopped: 0, settled_at: %{}} ==
                NightWakes.summarize([])

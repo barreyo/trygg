@@ -15,6 +15,11 @@
 # Her Vitals tab gets a birth measurement, the day-4 dip, and well-child
 # height/weight checks through two months, all riding a healthy CDC percentile.
 #
+# Then `dev_seeds_sleep.exs` adds the sleep-coaching data: cues, C.R.I.E.S. wakings
+# and safe-sleep ticks for Astrid, and three more babies in her family (Freja,
+# Linnea and Sigrid) who each show a different stage of the Sleep tab: a gradual
+# plan, the Sleep Learning Independence Plan and The ABCs of Sleep.
+#
 # Re-running wipes Astrid's existing entries and measurements and regenerates, so
 # it's safe to run repeatedly. The RNG is seeded, so the shape is stable.
 
@@ -40,6 +45,9 @@ defmodule Trygg.DevSeeds do
   @age_days 63
 
   def run do
+    # The SQL log drowns the summary at the end.
+    Logger.configure(level: :warning)
+
     :rand.seed(:exsss, {20_260_901, 7, 24})
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -65,6 +73,11 @@ defmodule Trygg.DevSeeds do
 
     weeks = div(@age_days, 7)
 
+    Code.require_file("dev_seeds_sleep.exs", __DIR__)
+
+    sleep_summaries =
+      Trygg.DevSeeds.Sleep.run(%{user: user, scope: scope, astrid: child, now: now})
+
     IO.puts("""
 
     Seeded local dev data:
@@ -73,6 +86,9 @@ defmodule Trygg.DevSeeds do
       log    #{inserted} entries over #{@age_days} days#{if deleted > 0, do: "  (replaced #{deleted} previous)", else: ""}
       vitals #{inserted_growth} height/weight measurements#{if deleted_growth > 0, do: "  (replaced #{deleted_growth} previous)", else: ""}
       running nap: #{if Enum.any?(rows, &is_nil(&1.ended_at)), do: "yes — dashboard timer is live", else: "no"}
+
+    Sleep coaching (partner@johanbackman.com is a second caregiver):
+    #{Enum.map_join(sleep_summaries, "\n", fn %{name: name, note: note} -> "  #{String.pad_trailing(name, 7)}#{note}" end)}
 
     Sign in at /users/log-in with #{user.email} (grab the magic link from the server log).
     """)

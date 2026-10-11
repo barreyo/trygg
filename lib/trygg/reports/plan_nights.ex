@@ -10,7 +10,7 @@ defmodule Trygg.Reports.PlanNights do
   figures.
   """
 
-  alias Trygg.Sleep.{Checkins, Plans}
+  alias Trygg.Sleep.{Checkins, Definitions, Plans}
 
   @doc """
   One entry per night from night 1 to the night at `now` (at most the plan's
@@ -23,7 +23,7 @@ defmodule Trygg.Reports.PlanNights do
   asleep_at, pop_in_times, cry_seconds, to_sleep_seconds, ended?}`.
   """
   def build(child, plan, wakes, nights, now) do
-    last = min(Plans.night_number(plan, child, now), Trygg.Sleep.Abcs.nights())
+    last = min(Plans.night_number(plan, child, now), Definitions.nights(plan))
 
     by_night =
       wakes
@@ -36,14 +36,14 @@ defmodule Trygg.Reports.PlanNights do
       bedtime = Enum.find(episodes, &(&1.kind == :bedtime))
       wakings = Enum.filter(episodes, &(&1.kind == :waking))
       night = Enum.find(nights.nights, &(&1.date == date))
-      all = Enum.map(episodes, &episode(&1, now))
+      all = Enum.map(episodes, &episode(&1, now, plan, number))
 
       %{
         number: number,
         date: date,
         bedtime: bedtime && bedtime.started_at,
-        bedtime_to_sleep_seconds: bedtime && episode(bedtime, now).to_sleep_seconds,
-        wakes: Enum.map(wakings, &episode(&1, now)),
+        bedtime_to_sleep_seconds: bedtime && episode(bedtime, now, plan, number).to_sleep_seconds,
+        wakes: Enum.map(wakings, &episode(&1, now, plan, number)),
         wakings: length(wakings),
         cry_seconds: all |> Enum.map(& &1.cry_seconds) |> Enum.sum(),
         longest_sleep_seconds: night && night.longest_sleep_seconds,
@@ -53,8 +53,8 @@ defmodule Trygg.Reports.PlanNights do
     end
   end
 
-  defp episode(wake, now) do
-    state = Checkins.state(wake.events, wake.ended_at || now)
+  defp episode(wake, now, plan, number) do
+    state = Checkins.state(wake.events, wake.ended_at || now, Definitions.schedule(plan, number))
 
     %{
       started_at: wake.started_at,

@@ -1202,3 +1202,42 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
   from { opacity: 0; visibility: hidden; }
   to   { opacity: 1; visibility: visible; }
 }
+
+
+/*
+ * Folded content: `<details class="fold">`. The summary is a 44px row with a
+ * chevron, so opening one is as easy to hit as any button, and it says it opens.
+ */
+.fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.7;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+.fold[open] > summary::after { transform: rotate(-135deg); }
+.fold > summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-field);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fold > summary::after { transition: none; }
+}

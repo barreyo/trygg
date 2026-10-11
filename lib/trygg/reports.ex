@@ -177,10 +177,12 @@ defmodule Trygg.Reports do
   end
 
   @doc """
-  What the Sleep plan page shows: whether "The ABCs of Sleep"
-  (`Trygg.Sleep.Abcs`) can start and what's missing, and while it's running
-  tonight's instructions, the night-by-night chart and progress, plus the nap
-  training signs and the age's day shape. Requires `:viewer`.
+  What the Sleep plan page shows: which plans can start and what's missing for
+  each (`eligibilities`, and `eligibility` for the ABCs), the suggested approach
+  (`Trygg.Sleep.Approaches`), and while one is running tonight's instructions,
+  the night-by-night chart and progress and what the nights say
+  (`assessment`), plus the nap training signs and the age's day shape.
+  Requires `:viewer`.
   """
   def sleep_training(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
     Families.authorize!(scope, child, :viewer)
@@ -197,9 +199,23 @@ defmodule Trygg.Reports do
 
     table = phase && Trygg.Sleep.Schedules.for_age(phase.age_days)
 
+    habits = sleep_habits(scope, child, now)
+    falling = falling_asleep(scope, child, now)
+
     base = %{
       phase: phase,
       eligibility: Trygg.Sleep.Plans.eligibility(child, phase, today),
+      eligibilities:
+        Map.new(Trygg.Sleep.Definitions.ids(), fn definition ->
+          {definition, Trygg.Sleep.Plans.eligibility(child, phase, today, definition)}
+        end),
+      recommendation:
+        Trygg.Sleep.Approaches.recommend(%{
+          age_days: phase && phase.age_days,
+          habits: habits,
+          falling_asleep: falling,
+          plans: Trygg.Sleep.Plans.list(scope, child)
+        }),
       plan: plan,
       setup: suggest_setup(child, nights),
       table: table,
@@ -220,12 +236,23 @@ defmodule Trygg.Reports do
         tonight: Trygg.Sleep.Plans.tonight(plan, child, now),
         weaning_table: Trygg.Sleep.Plans.weaning_table(plan),
         plan_nights: plan_nights,
-        progress: Trygg.Reports.PlanNights.progress(plan_nights)
+        progress: Trygg.Reports.PlanNights.progress(plan_nights),
+        assessment: plan_assessment(plan, plan_nights)
       })
     else
       base
     end
   end
+
+  # What the nights so far say, by plan: the SLIP and SWAP read the trend in time
+  # to fall asleep; the ABCs plan has no verdict of its own.
+  defp plan_assessment(%{definition: :slip}, plan_nights),
+    do: Trygg.Sleep.Slip.assess(plan_nights)
+
+  defp plan_assessment(%{definition: :swap} = plan, plan_nights),
+    do: Trygg.Sleep.Swap.assess(plan_nights, Trygg.Sleep.Definitions.nights(plan))
+
+  defp plan_assessment(_plan, _plan_nights), do: nil
 
   # Night feeds to wean, from the last night: the feeds outside the dream-feed
   # window, up to three, with their times (minutes after local midnight) and
@@ -301,6 +328,9 @@ defmodule Trygg.Reports do
         Trygg.Sleep.NightWakes.summarize(Trygg.Sleep.NightWakes.recent(scope, child, 14)),
       night_feed_gates: gates,
       night_feed_plan: Trygg.Sleep.NightFeeds.plan(child, nights, opts[:last_feed_at], now),
+      night_feed_typical: Trygg.Sleep.NightFeeds.typical(phase && phase.age_days),
+      power_tools: Trygg.Sleep.PowerTools.plan(phase && phase.age_days, child.sleep_checks),
+      safe_sleep: Trygg.Sleep.SafeSleep.evaluate(child.sleep_checks),
       checklists:
         Trygg.Sleep.Checklists.evaluate(%{
           child: child,
@@ -346,14 +376,87 @@ defmodule Trygg.Reports do
       now: now
     }
 
+    age_days = phase && phase.age_days
+    band = Trygg.Sleep.AgeGuide.band(age_days)
+
+    {findings, _naps} =
+      setback_checks(scope, child, now, Child.local_today(child), age_days, s, nights)
+
     %{
       plan: DayPlan.build(child, s.today, s.prediction, now),
+      findings: Enum.take(findings, 3),
       insights: Trygg.Sleep.Coach.insights(context),
       habits: habits,
       nights: nights,
       phase: phase,
       prediction: s.prediction,
-      today: s.today
+      today: s.today,
+      age_guide: %{
+        band: band,
+        wake_time: Trygg.Sleep.AgeGuide.wake_time(age_days),
+        comparison: Trygg.Sleep.AgeGuide.compare(band, Trygg.Sleep.AgeGuide.stats_from(s))
+      }
+    }
+  end
+
+  # What the last two weeks of the log say is worth a look, with the naps checked
+  # against the book's conventions. Shared by the Sleep tab and the Help page.
+  defp setback_checks(scope, child, now, today, age_days, summary, nights) do
+    {days, entries} = load_days(scope, child, Date.add(today, -13), today, now)
+    band = Trygg.Sleep.AgeGuide.band(age_days)
+
+    findings =
+      Trygg.Reports.Setbacks.detect(%{
+        child: child,
+        age_days: age_days,
+        nights: nights,
+        days: days,
+        entries: entries,
+        insights: summary,
+        today: today
+      })
+
+    naps =
+      Trygg.Sleep.NapConventions.assess(%{
+        child: child,
+        entries: entries,
+        today: today,
+        min_window_minutes: band && elem(band.before_bed, 0)
+      })
+
+    {findings, naps}
+  end
+
+  @doc """
+  What the Sleep playbooks page shows: what the log says is worth a look
+  (`Trygg.Reports.Setbacks`), how the naps measure up against the book's
+  conventions, the next clock change, and the child's usual bedtime and wake
+  time to start the planners from. Requires `:viewer`.
+  """
+  def sleep_playbooks(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+
+    phase = Trygg.Sleep.Phase.for_child(child)
+    age_days = phase && phase.age_days
+    s = summary(scope, child, @outlook_window, now)
+    nights = nights(scope, child, now, count: 14)
+    {findings, naps} = setback_checks(scope, child, now, today, age_days, s, nights)
+
+    %{
+      phase: phase,
+      age_days: age_days,
+      findings: findings,
+      naps: naps,
+      dst: Trygg.Sleep.Setbacks.next_dst_change(child, today),
+      usual: %{
+        bed: s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes),
+        wake:
+          s.morning_wake && s.morning_wake.median_minutes && round(s.morning_wake.median_minutes)
+      },
+      power_tools: Trygg.Sleep.PowerTools.plan(age_days, child.sleep_checks),
+      drop: Trygg.Sleep.NapConventions.drop_for(age_days)
     }
   end
 

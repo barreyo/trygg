@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "trygg",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=4011",
+        "mix",
+        "phx.server"
+      ],
+      "port": 4011
+    },
+    {
+      "name": "trygg-lan",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "TRYGG_DEV_BIND=0.0.0.0",
+        "PORT=4012",
+        "mix",
+        "phx.server"
+      ],
+      "port": 4012
+    }
+  ]
+}

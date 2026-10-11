@@ -9,20 +9,21 @@ defmodule TryggWeb.SleepToolkitComponents do
   import TryggWeb.CoreComponents
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
-  alias Trygg.Sleep.{Assist, BedtimePlan, NightFeeds}
+  alias Trygg.Sleep.{Assist, BedtimePlan, NightFeeds, PowerTools, SafeSleep}
   alias Trygg.Units
 
   @doc "Links between the Sleep tab's pages."
-  attr :current, :atom, required: true, values: [:today, :toolkit, :plan, :night]
+  attr :current, :atom, required: true, values: [:today, :toolkit, :plan, :playbooks, :night]
   attr :child, :map, required: true
 
   def sleep_subnav(assigns) do
     ~H"""
-    <nav id="sleep-subnav" class="mb-4 flex gap-2" aria-label="Sleep sections">
+    <nav id="sleep-subnav" class="mb-4 grid grid-cols-5 gap-1.5" aria-label="Sleep sections">
       <.button
         id="subnav-today"
         navigate={"/c/#{@child.id}/sleep"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :today, do: "primary"}
         aria-current={@current == :today && "page"}
       >
@@ -32,6 +33,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         id="subnav-toolkit"
         navigate={"/c/#{@child.id}/sleep/toolkit"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :toolkit, do: "primary"}
         aria-current={@current == :toolkit && "page"}
       >
@@ -41,19 +43,31 @@ defmodule TryggWeb.SleepToolkitComponents do
         id="subnav-plan"
         navigate={"/c/#{@child.id}/sleep/plan"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :plan, do: "primary"}
         aria-current={@current == :plan && "page"}
       >
         Plan
       </.button>
       <.button
+        id="subnav-playbooks"
+        navigate={"/c/#{@child.id}/sleep/playbooks"}
+        size="sm"
+        class="w-full px-1"
+        variant={if @current == :playbooks, do: "primary"}
+        aria-current={@current == :playbooks && "page"}
+      >
+        Fixes
+      </.button>
+      <.button
         id="subnav-night"
         navigate={"/c/#{@child.id}/sleep/night"}
         size="sm"
+        class="w-full px-1"
         variant={if @current == :night, do: "primary"}
         aria-current={@current == :night && "page"}
       >
-        <.icon name="hero-moon" class="size-4" /> Night mode
+        <.icon name="hero-moon" class="size-4" />Night
       </.button>
     </nav>
     """
@@ -107,7 +121,7 @@ defmodule TryggWeb.SleepToolkitComponents do
           </p>
         <% end %>
 
-        <details id="assist-scale" class="mt-3 text-sm">
+        <details id="assist-scale" class="fold mt-3 text-sm">
           <summary class="cursor-pointer font-medium text-primary">
             The scale, from most to least help
           </summary>
@@ -213,9 +227,11 @@ defmodule TryggWeb.SleepToolkitComponents do
         (100–120 minutes before bed).
       </p>
 
-      <div :if={@guide_day} id="guide-day" class="mt-4">
-        <h3 class="text-sm font-semibold">A day by the guide ({@table.label})</h3>
-        <p class="text-xs opacity-70">
+      <details :if={@guide_day} id="guide-day" class="fold mt-4">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          A day by the guide ({@table.label})
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
           {@table.naps} naps, awake {format_duration(elem(@table.wake_window, 0) * 60)}–{format_duration(
             elem(@table.wake_window, 1) * 60
           )} between, and {format_duration(elem(@table.daytime_goal, 0) * 60)}–{format_duration(
@@ -240,7 +256,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         <p class="mt-2 text-xs opacity-70">
           Built from this morning's wake-up. A routine to practise, not a schedule to follow exactly.
         </p>
-      </div>
+      </details>
     </section>
     """
   end
@@ -282,6 +298,7 @@ defmodule TryggWeb.SleepToolkitComponents do
   attr :tz, :string, required: true
   attr :can_write, :boolean, required: true
   attr :child_id, :integer, required: true
+  attr :typical, :map, default: nil
 
   def night_feeds_panel(assigns) do
     ~H"""
@@ -334,6 +351,35 @@ defmodule TryggWeb.SleepToolkitComponents do
         Most healthy babies can go at least 4 hours at night if they feed well every 2–4 hours by day.
         The goal is one night feed by the end of the fourth month. Not medical advice.
       </p>
+
+      <p :if={@typical} id="night-feeds-typical" class="mt-3 text-sm">
+        At {@typical.label}, <span class="font-semibold">{@typical.average}</span>
+        night feeds is typical. Some babies need none ({@typical.low}), and up to {@typical.high} isn't unusual.
+        Feeding more at night is only a problem if it's a problem for you.
+      </p>
+
+      <details id="night-feed-rules" class="fold mt-3">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          Which night wakings get a feed
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
+          For when they fall asleep on their own and you're deciding what to do at 2 a.m.
+        </p>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+          <li :for={rule <- NightFeeds.rules()}>{rule}</li>
+        </ul>
+        <h3 class="mt-3 text-sm font-semibold">Weaning one feed at a time</h3>
+        <p class="mt-1 text-sm">
+          Pick the feed that leaves you the longest unbroken sleep, not the earliest. Take a minute off
+          a nursing session or 2 oz (60 ml) off a bottle each night, and move that food to the day.
+          Once it's down to a minute or two, a feed that's still demanded can be answered by the
+          non-nursing parent with soothing and no food. Then the next feed.
+        </p>
+        <h3 class="mt-3 text-sm font-semibold">When a dream feed helps</h3>
+        <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
+          <li :for={use <- NightFeeds.dream_feed_uses()}>{use}</li>
+        </ul>
+      </details>
     </section>
     """
   end
@@ -344,7 +390,7 @@ defmodule TryggWeb.SleepToolkitComponents do
     ~H"""
     <.icon
       name={if @ok, do: "hero-check-circle", else: "hero-minus-circle"}
-      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-50")}
+      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-70")}
     />
     """
   end
@@ -472,6 +518,139 @@ defmodule TryggWeb.SleepToolkitComponents do
     |> Enum.map_join(", ", fn {step, n} -> "#{step + 1} (#{n}×)" end)
   end
 
+  ## Power tools -------------------------------------------------------------------
+
+  attr :tools, :list, required: true
+  attr :ticks, :map, default: %{}
+  attr :age_days, :integer, default: nil
+  attr :can_write, :boolean, required: true
+
+  def power_tools_panel(assigns) do
+    assigns =
+      assign(assigns,
+        signals:
+          for {id, text} <- PowerTools.signals() do
+            %{id: id, text: text, checked?: Map.has_key?(assigns.ticks || %{}, id)}
+          end,
+        lovey: PowerTools.lovey_note(assigns.age_days)
+      )
+
+    ~H"""
+    <section id="toolkit-power-tools" class={panel_class()}>
+      <h2 class={heading_class()}>Sleep tools</h2>
+      <p class="text-xs opacity-70">
+        The four things that make sleep easier without you doing it for them, and what to do with each one now.
+      </p>
+
+      <ul class="mt-3 space-y-3">
+        <li
+          :for={tool <- @tools}
+          id={"tool-#{tool.id}"}
+          data-state={tool.state}
+          class="rounded-box border border-base-300 px-3 pb-3"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold">{tool.name}</h3>
+            <span class={["badge badge-sm", tool_badge(tool.state)]}>{tool_state(tool.state)}</span>
+          </div>
+          <p :if={tool.state in [:stop, :consider]} class="mt-1 text-sm font-medium">
+            {tool.headline}
+          </p>
+          <details class="fold mt-1">
+            <summary class="cursor-pointer text-xs text-primary">
+              {if tool.state in [:stop, :consider], do: "How", else: "What to do"}
+            </summary>
+            <p :if={tool.state not in [:stop, :consider]} class="mt-1 text-sm">{tool.headline}</p>
+            <ul class="mt-1 list-disc space-y-1 pl-5 text-xs opacity-80">
+              <li :for={point <- tool.points}>{point}</li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+
+      <h3 class="mt-4 text-sm font-semibold">Tell us if</h3>
+      <ul id="tool-signals" class="mt-2 space-y-1.5">
+        <.check_item
+          :for={signal <- @signals}
+          item={
+            %{id: signal.id, text: signal.text, checked?: signal.checked?, auto?: false, detail: nil}
+          }
+          can_write={@can_write}
+        />
+      </ul>
+
+      <p id="lovey-note" class="mt-3 text-xs opacity-70">{@lovey}</p>
+    </section>
+    """
+  end
+
+  defp tool_state(:use), do: "Use"
+  defp tool_state(:consider), do: "Think about stopping"
+  defp tool_state(:stop), do: "Stop"
+  defp tool_state(:optional), do: "Optional"
+
+  defp tool_badge(:use), do: "badge-success"
+  defp tool_badge(:consider), do: "badge-warning"
+  defp tool_badge(:stop), do: "badge-error"
+  defp tool_badge(:optional), do: "badge-ghost"
+
+  ## Safe sleep ---------------------------------------------------------------------
+
+  attr :safe_sleep, :map, required: true
+  attr :can_write, :boolean, required: true
+
+  def safe_sleep_panel(assigns) do
+    assigns = assign(assigns, :cosleeping, SafeSleep.cosleeping_notes())
+
+    ~H"""
+    <section id="toolkit-safe-sleep" class={panel_class()}>
+      <h2 class={heading_class()}>
+        Safe sleep
+        <span id="safe-sleep-count" class="font-normal opacity-70">
+          {@safe_sleep.done} of {@safe_sleep.total}
+        </span>
+      </h2>
+      <div
+        class="mb-2 h-2 overflow-hidden rounded-full bg-base-300"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax={@safe_sleep.total}
+        aria-valuenow={@safe_sleep.done}
+      >
+        <div
+          class="h-full rounded-full bg-success"
+          style={"width: #{round(@safe_sleep.done / max(@safe_sleep.total, 1) * 100)}%"}
+        >
+        </div>
+      </div>
+      <details class="fold" id="safe-sleep-list">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          Run through the list
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
+          What lowers the risk of SIDS and accidents. Show it to your pediatrician, and give it to
+          anyone who looks after them.
+        </p>
+        <ul id="safe-sleep-checklist" class="mt-2 space-y-1.5">
+          <.check_item :for={item <- @safe_sleep.items} item={item} can_write={@can_write} />
+        </ul>
+      </details>
+
+      <details id="cosleeping" class="fold mt-3">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">
+          If you share a bed
+        </summary>
+        <p class="mt-1 text-xs opacity-70">
+          The pediatricians' advice is not to. If it happens anyway, make it as safe as it can be.
+        </p>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+          <li :for={note <- @cosleeping}>{note}</li>
+        </ul>
+      </details>
+    </section>
+    """
+  end
+
   ## Checklists --------------------------------------------------------------------
 
   attr :checklists, :map, required: true
@@ -482,18 +661,20 @@ defmodule TryggWeb.SleepToolkitComponents do
     <section id="toolkit-checklists" class={panel_class()}>
       <h2 class={heading_class()}>Checklists</h2>
 
-      <h3 class="text-sm font-semibold">
-        Success checklist
-        <span id="success-count" class="font-normal opacity-70">
-          {@checklists.success_done} of {@checklists.success_total}
-        </span>
-      </h3>
-      <ul id="success-checklist" class="mt-2 space-y-1.5">
-        <.check_item :for={item <- @checklists.success} item={item} can_write={@can_write} />
-      </ul>
+      <details class="fold" id="success">
+        <summary class="cursor-pointer text-sm font-semibold">
+          Success checklist
+          <span id="success-count" class="font-normal opacity-70">
+            {@checklists.success_done} of {@checklists.success_total}
+          </span>
+        </summary>
+        <ul id="success-checklist" class="mt-2 space-y-1.5">
+          <.check_item :for={item <- @checklists.success} item={item} can_write={@can_write} />
+        </ul>
+      </details>
 
-      <details id="troubleshooting" class="mt-4">
-        <summary class="cursor-pointer text-sm font-semibold text-primary">
+      <details id="troubleshooting" class="fold mt-3">
+        <summary class="cursor-pointer text-sm font-semibold">
           Troubleshooting: when nights are hard
         </summary>
         <p class="mt-1 text-xs opacity-70">Tick each one you've checked.</p>
@@ -514,7 +695,7 @@ defmodule TryggWeb.SleepToolkitComponents do
       <%= if @item.auto? or not @can_write do %>
         <.icon
           name={if @item.checked?, do: "hero-check-circle-solid", else: "hero-minus-circle"}
-          class={"mt-0.5 size-5 shrink-0 " <> if(@item.checked?, do: "text-success", else: "opacity-40")}
+          class={"mt-0.5 size-5 shrink-0 " <> if(@item.checked?, do: "text-success", else: "opacity-70")}
         />
       <% else %>
         <button
@@ -524,11 +705,11 @@ defmodule TryggWeb.SleepToolkitComponents do
           role="checkbox"
           aria-checked={to_string(@item.checked?)}
           aria-label={@item.text}
-          class="mt-0.5 shrink-0"
+          class="-m-3 shrink-0 touch-manipulation p-3"
         >
           <.icon
             name={if @item.checked?, do: "hero-check-circle-solid", else: "hero-stop"}
-            class={"size-5 " <> if(@item.checked?, do: "text-success", else: "opacity-50")}
+            class={"size-5 " <> if(@item.checked?, do: "text-success", else: "opacity-70")}
           />
         </button>
       <% end %>

@@ -30,6 +30,55 @@ defmodule Trygg.Sleep.NightFeeds do
   @goal_feeds 1
   @recent_nights 5
 
+  # How many night feeds is usual, by corrected age in days (*Precious Little
+  # Sleep*): `{from_days, label, low, average, high}`. Breastfed babies tend to
+  # sit in the average or high columns, bottle-fed ones low or average.
+  @typical [
+    {0, "0–3 months", "1–2", "3–4", "6"},
+    {91, "3–6 months", "0", "2–3", "4"},
+    {182, "6–9 months", "0", "0–2", "2–3"},
+    {274, "9–12 months", "0", "0–1", "2"}
+  ]
+
+  # Rules of thumb for deciding which night wakings get a feed once a baby is
+  # falling asleep on their own (the book's chapter on handling night waking).
+  @rules [
+    "Before about midnight, hold off if you can: an early feed can bring back the habit of eating to sleep.",
+    "Keep the gap between feeds like the day's: three to four hours.",
+    "Either go to them within 5–10 minutes or wait until they're back asleep. Letting them complain for 40 minutes and then feeding teaches them to complain.",
+    "A feed that wasn't wanted for an hour is not hungry crying. A short grumble that stops is not hunger either.",
+    "For the first couple of nights be flexible; from the third, stick to the plan.",
+    "Once a feed has gone, it stays gone, apart from illness or a bad week. Don't let weaning turn into whack-a-mole.",
+    "A feed around 4:30–5:30 am (the \"snooze button\") is often worth keeping if the choice is that or a 5 am start."
+  ]
+
+  # When a dream feed (feeding a baby who's mostly asleep, at a time that suits
+  # you) earns its place.
+  @dream_feed_uses [
+    "To move a feed to a better time: a baby who wakes an hour after you go to bed can be fed as you go to bed.",
+    "To help a baby who is very keen on the breast cut back: half asleep, they're easier to pop off early.",
+    "To feed them without rewarding waking: they eat without having to wake themselves up for it."
+  ]
+
+  @doc "How many night feeds are usual at `age_days` as `%{label, low, average, high}`, or `nil`."
+  def typical(age_days) when is_integer(age_days) and age_days >= 0 do
+    case @typical |> Enum.filter(&(elem(&1, 0) <= age_days)) |> List.last() do
+      {_from, label, low, average, high} ->
+        %{label: label, low: low, average: average, high: high}
+
+      nil ->
+        nil
+    end
+  end
+
+  def typical(_), do: nil
+
+  @doc "Rules of thumb for which night wakings get a feed once they fall asleep on their own."
+  def rules, do: @rules
+
+  @doc "When a dream feed earns its place."
+  def dream_feed_uses, do: @dream_feed_uses
+
   @doc "The dream feed window as `{from, to}` in minutes since local midnight."
   def dream_feed_window, do: @dream_feed
 

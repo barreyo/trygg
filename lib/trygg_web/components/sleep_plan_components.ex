@@ -14,8 +14,7 @@ defmodule TryggWeb.SleepPlanComponents do
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
   alias Trygg.Log.Entry
-  alias Trygg.Reports.SleepHabits
-  alias Trygg.Sleep.{Assist, Cries, Cue, Guide}
+  alias Trygg.Sleep.{Assist, BedtimePlan, Cries, Cue, Guide}
 
   @doc "A banner on the Sleep tab while a night waking is being worked through."
   attr :wake, :map, required: true
@@ -40,18 +39,16 @@ defmodule TryggWeb.SleepPlanComponents do
 
   ## Hero ----------------------------------------------------------------------
 
-  @doc "The big header: which phase, how far along, and what's next."
+  @doc "A slim line: which phase, how far along, and when the next one starts."
   attr :phase, :map, default: nil
-  attr :timeline, :list, default: []
   attr :child_name, :string, required: true
 
   def phase_hero(%{phase: nil} = assigns) do
     ~H"""
     <section id="sleep-hero" class={panel_class()}>
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">Sleep plan</p>
-      <h2 class="text-2xl font-bold leading-tight">Starts once {@child_name} is born</h2>
+      <h2 class="text-xl font-bold leading-tight">Starts once {@child_name} is born</h2>
       <p class="mt-1 opacity-80">
-        The plan follows {@child_name}'s age, so it needs a birth date to get going.
+        Sleep coaching follows {@child_name}'s age, so it needs a birth date to get going.
       </p>
     </section>
     """
@@ -59,33 +56,12 @@ defmodule TryggWeb.SleepPlanComponents do
 
   def phase_hero(assigns) do
     ~H"""
-    <section id="sleep-hero" class={panel_class()}>
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">Sleep plan</p>
-      <h2 id="sleep-hero-phase" class="text-2xl font-bold leading-tight">
+    <section id="sleep-hero" class="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 px-1">
+      <h2 id="sleep-hero-phase" class="text-lg font-bold leading-tight tracking-tight">
         {@phase.label} · {week_label(@phase.week)}
       </h2>
-      <p id="sleep-hero-blurb" class="mt-1 max-w-prose opacity-80">{blurb(@phase.id)}</p>
-
-      <ol id="sleep-phase-steps" class="mt-4 grid grid-cols-3 gap-2">
-        <li
-          :for={step <- @timeline}
-          id={"sleep-phase-#{step.id}"}
-          aria-current={step.state == :current && "step"}
-          class={[
-            "rounded-field border-2 p-2 text-sm leading-tight",
-            step.state == :current && "border-primary bg-primary/10",
-            step.state != :current && "border-base-300"
-          ]}
-        >
-          <span class="block font-semibold">{step.label}</span>
-          <span class="block text-xs opacity-70">{step_when(step)}</span>
-        </li>
-      </ol>
-
-      <p :if={@phase.next} id="sleep-hero-next" class="mt-3 text-sm opacity-80">
-        {@phase.next.label} starts {Calendar.strftime(@phase.next.on, "%b %-d")}, {time_to_go(
-          @phase.next.in_days
-        )}.
+      <p :if={@phase.next} id="sleep-hero-next" class="text-sm opacity-70">
+        {@phase.next.label} from {Calendar.strftime(@phase.next.on, "%b %-d")}
       </p>
     </section>
     """
@@ -103,8 +79,11 @@ defmodule TryggWeb.SleepPlanComponents do
   attr :can_write, :boolean, required: true
   attr :tz, :string, required: true
   attr :track_assist, :boolean, default: false
+  attr :plan, :map, default: nil
 
   def right_now(assigns) do
+    assigns = assign(assigns, :next_up, next_up(assigns.plan))
+
     ~H"""
     <section id="sleep-right-now" class={panel_class()}>
       <h2 class={heading_class()}>Right now</h2>
@@ -135,6 +114,14 @@ defmodule TryggWeb.SleepPlanComponents do
         </div>
       <% else %>
         <p class="text-sm opacity-70">{awake_line(@last, @tz)}</p>
+        <p
+          :if={@next_up}
+          id="sleep-next-up"
+          data-state={@next_up.state}
+          class="text-xl font-bold leading-tight tracking-tight"
+        >
+          {next_up_text(@next_up, @tz)}
+        </p>
         <div :if={@can_write}>
           <.cue_chips selected={@pending_cue} label="Showing cues? Tap what you see, then start." />
           <.button
@@ -169,12 +156,12 @@ defmodule TryggWeb.SleepPlanComponents do
       )
 
     ~H"""
-    <.form for={@form} id="assist-form" phx-change="set_assist" class="mt-3 space-y-2">
+    <.form for={@form} id="assist-form" phx-change="set_assist" class="mt-3 grid grid-cols-2 gap-2">
       <.input
         field={@form[:assist]}
         id="assist-select"
         type="select"
-        label="How did they fall asleep?"
+        label="Fell asleep"
         prompt="Not noted"
         options={for {level, text} <- Assist.levels(), do: {"#{level}. #{text}", level}}
       />
@@ -182,7 +169,7 @@ defmodule TryggWeb.SleepPlanComponents do
         field={@form[:settle]}
         id="settle-select"
         type="select"
-        label="How long did it take?"
+        label="It took"
         prompt="Not noted"
         options={for {minutes, label} <- Assist.settle_options(), do: {label, minutes}}
       />
@@ -258,13 +245,20 @@ defmodule TryggWeb.SleepPlanComponents do
                 aria-hidden="true"
               ></span>
             </div>
-            <div class={["min-w-0 flex-1 pb-4", item.state == :done && "opacity-70"]}>
+            <div class={[
+              "min-w-0 flex-1",
+              if(item.state == :done, do: "pb-2 opacity-70", else: "pb-4")
+            ]}>
               <div class="flex items-baseline justify-between gap-3">
                 <p class="font-semibold leading-tight">{item_title(item)}</p>
-                <p class="shrink-0 text-sm tabular-nums">{item_time(item, @tz)}</p>
+                <p class="shrink-0 text-sm tabular-nums">{item_time(item, @tz)}{done_length(item)}</p>
               </div>
-              <p :if={item_sub(item)} class="text-sm leading-snug opacity-80">{item_sub(item)}</p>
-              <p :if={item_note(item)} class="text-xs leading-snug opacity-70">{item_note(item)}</p>
+              <p :if={item.state != :done and item_sub(item)} class="text-sm leading-snug opacity-80">
+                {item_sub(item)}
+              </p>
+              <p :if={item.state != :done and item_note(item)} class="text-xs leading-snug opacity-70">
+                {item_note(item)}
+              </p>
             </div>
           </li>
         </ol>
@@ -277,15 +271,39 @@ defmodule TryggWeb.SleepPlanComponents do
     """
   end
 
-  @doc "Insights and suggestions from `Trygg.Sleep.Coach`."
+  @doc """
+  What's worth acting on: the suggestions from `Trygg.Sleep.Coach` for today and
+  what the last two weeks of the log show (`Trygg.Reports.Setbacks`), each finding
+  with what to try inline.
+  """
   attr :insights, :list, required: true
+  attr :findings, :list, default: []
+  attr :child, :map, default: nil
+  attr :limit, :integer, default: 3
 
   def insights_panel(assigns) do
+    # A glance, not a report: the most pressing few, and the rest in Help.
+    shown =
+      Enum.take(
+        Enum.map(assigns.insights, &{:insight, &1}) ++ Enum.map(assigns.findings, &{:finding, &1}),
+        assigns.limit
+      )
+
+    assigns =
+      assign(assigns,
+        insights: for({:insight, i} <- shown, do: i),
+        findings: for({:finding, f} <- shown, do: f)
+      )
+
     ~H"""
     <section id="sleep-insights" class={panel_class()}>
-      <h2 class={heading_class()}>Insights and suggestions</h2>
+      <h2 class={heading_class()}>Worth a look</h2>
 
-      <p :if={@insights == []} id="sleep-insights-empty" class="text-sm opacity-80">
+      <p
+        :if={@insights == [] and @findings == []}
+        id="sleep-insights-empty"
+        class="text-sm opacity-80"
+      >
         Nothing to flag right now. Things look on track.
       </p>
 
@@ -305,8 +323,59 @@ defmodule TryggWeb.SleepPlanComponents do
             <p class="text-sm leading-snug opacity-90">{insight.detail}</p>
           </div>
         </li>
+        <li
+          :for={finding <- @findings}
+          id={"finding-#{finding.id}"}
+          class="flex items-start gap-3 rounded-box border-2 border-base-300 bg-base-100 p-3"
+        >
+          <.icon name="hero-magnifying-glass" class="mt-0.5 size-5 shrink-0" />
+          <div class="min-w-0">
+            <p class="font-semibold leading-tight">{finding.title}</p>
+            <p class="text-sm leading-snug opacity-90">{finding.detail}</p>
+            <.what_to_try
+              playbook={finding.playbook}
+              points={finding.points}
+              id={"try-#{finding.id}"}
+            />
+          </div>
+        </li>
       </ul>
+
+      <.link
+        :if={@child}
+        id="insights-more"
+        navigate={"/c/#{@child.id}/sleep/playbooks"}
+        class="mt-1 inline-flex min-h-11 items-center text-sm text-primary underline"
+      >
+        Naps, early mornings, travel and more
+      </.link>
     </section>
+    """
+  end
+
+  @doc "What to try for a finding: its playbook, or a few points, folded under it."
+  attr :playbook, :atom, default: nil
+  attr :points, :list, default: []
+  attr :id, :string, default: nil
+
+  def what_to_try(assigns) do
+    book = assigns.playbook && Trygg.Sleep.Setbacks.playbook(assigns.playbook)
+    assigns = assign(assigns, :book, book)
+
+    ~H"""
+    <details :if={@book} id={@id || "try-#{@book.id}"} class="fold mt-1">
+      <summary class="cursor-pointer text-sm text-primary">What to try</summary>
+      <p class="mt-1 text-sm">{@book.summary}</p>
+      <ul class="mt-1 list-disc space-y-1 pl-5 text-sm opacity-90">
+        <li :for={point <- @book.points}>{point}</li>
+      </ul>
+    </details>
+    <details :if={is_nil(@book) and @points != []} id={@id} class="fold mt-1">
+      <summary class="cursor-pointer text-sm text-primary">What to try</summary>
+      <ul class="mt-1 list-disc space-y-1 pl-5 text-sm opacity-90">
+        <li :for={point <- @points}>{point}</li>
+      </ul>
+    </details>
     """
   end
 
@@ -334,15 +403,15 @@ defmodule TryggWeb.SleepPlanComponents do
         <p class="mb-2 text-sm opacity-70">
           Last night, {Calendar.strftime(local(@nights.last.wake, @tz), "%a %-d %b")}
         </p>
-        <dl class="grid grid-cols-2 gap-2">
+        <dl class="grid grid-cols-4 gap-2 text-center">
           <.stat id="night-slept" label="Slept" value={format_duration(@nights.last.asleep_seconds)} />
           <.stat
             id="night-longest"
-            label="Longest sleep"
+            label="Longest"
             value={format_duration(@nights.last.longest_sleep_seconds)}
           />
           <.stat id="night-wakings" label="Wakings" value={@nights.last.wakings} />
-          <.stat id="night-feeds" label="Night feeds" value={@nights.last.feeds} />
+          <.stat id="night-feeds" label="Feeds" value={@nights.last.feeds} />
         </dl>
 
         <ol id="overnight-bars" class="mt-4 space-y-1.5" aria-label="Longest unbroken sleep, by night">
@@ -369,14 +438,6 @@ defmodule TryggWeb.SleepPlanComponents do
 
         <p :if={trend_line(@nights)} id="overnight-trend" class="mt-3 text-sm">
           {trend_line(@nights)}
-        </p>
-        <p :if={@nights.best_baseline_seconds} id="overnight-baseline" class="mt-3 text-sm">
-          Best baseline between feeds:
-          <span class="font-semibold">{format_duration(@nights.best_baseline_seconds)}</span>
-          <span class="block text-xs opacity-70">
-            The longest they've gone on at least two of these nights. It's where stretching night feeds
-            would start from about 13 weeks; for now it's just worth knowing.
-          </span>
         </p>
       <% end %>
     </section>
@@ -418,25 +479,15 @@ defmodule TryggWeb.SleepPlanComponents do
           Log a few sleeps and the patterns show up here.
         </p>
       <% else %>
-        <dl class="grid grid-cols-2 gap-2">
+        <dl class="grid grid-cols-4 gap-2 text-center">
           <.stat id="stat-sleeps" label="Sleeps" value={@habits.week.sleeps} />
-          <.stat id="stat-cued" label="With a cue noted" value={@habits.week.cued} />
-          <.stat id="stat-overtired" label="Started overtired" value={@habits.week.overtired} />
-          <.stat
-            id="stat-fed-to-sleep"
-            label={"Within #{minutes()} of a feed"}
-            value={fed_value(@habits.week)}
-          />
+          <.stat id="stat-cued" label="With a cue" value={@habits.week.cued} />
+          <.stat id="stat-overtired" label="Overtired" value={@habits.week.overtired} />
+          <.stat id="stat-fed-to-sleep" label="After a feed" value={fed_value(@habits.week)} />
         </dl>
 
-        <p :if={windows_line(@habits)} id="sleep-habits-windows" class="mt-3 text-sm">
-          {windows_line(@habits)}
-        </p>
         <p :if={@habits.week.cued == 0} id="sleep-habits-cue-hint" class="mt-3 text-sm opacity-80">
-          Tap a cue before you start a sleep and this will show how long they're usually awake when they're ready.
-        </p>
-        <p :if={@habits.week.measured > 0} class="mt-3 text-xs opacity-70">
-          Just a pattern to see: feeding to sleep is normal at this age.
+          Tap a cue before you start a sleep and the Insights above can learn how long they're usually awake when they're ready.
         </p>
       <% end %>
     </section>
@@ -449,24 +500,50 @@ defmodule TryggWeb.SleepPlanComponents do
 
   defp stat(assigns) do
     ~H"""
-    <div id={@id} class="rounded-field bg-base-100 p-3">
+    <div id={@id} class="rounded-field bg-base-100 px-1 py-2">
       <dt class="text-xs opacity-70 leading-tight">{@label}</dt>
-      <dd class="mt-1 text-2xl font-bold tabular-nums whitespace-nowrap">{@value}</dd>
+      <dd class="mt-0.5 text-xl font-bold tracking-tight tabular-nums whitespace-nowrap">{@value}</dd>
     </div>
     """
   end
 
   ## Reference content ---------------------------------------------------------
 
+  @doc "Guides to look up, folded away: the glanceable page stays short."
+  slot :inner_block, required: true
+
+  def reference_group(assigns) do
+    ~H"""
+    <section id="sleep-reference" class={panel_class()}>
+      <h2 class={heading_class()}>Guides</h2>
+      <div class="space-y-2">{render_slot(@inner_block)}</div>
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  defp guide_item(assigns) do
+    ~H"""
+    <details id={@id} class="fold rounded-box border border-base-300 bg-base-100 px-3 pb-3" {@rest}>
+      <summary class="cursor-pointer text-sm font-semibold">{@title}</summary>
+      <div class="mt-2">{render_slot(@inner_block)}</div>
+    </details>
+    """
+  end
+
   @doc "The five C.R.I.E.S. steps for calming a crying newborn."
   def cries_panel(assigns) do
     assigns = assign(assigns, :steps, Cries.steps())
 
     ~H"""
-    <section id="sleep-cries" class={panel_class()}>
-      <h2 class={heading_class()}>When they cry: C.R.I.E.S.</h2>
+    <.guide_item id="sleep-cries" title="When they cry: C.R.I.E.S.">
       <p class="mb-3 text-sm opacity-80">
-        A calming order to try, from the Taking Cara Babies newborn guidance.
+        A calming order to try, from the Taking Cara Babies newborn guidance. Night mode walks
+        you through it with timers.
       </p>
       <ol id="cries-steps" class="space-y-3">
         <li :for={step <- @steps} id={"cries-#{String.downcase(step.letter)}"} class="flex gap-3">
@@ -483,15 +560,14 @@ defmodule TryggWeb.SleepPlanComponents do
         Hungry, wet or too warm? Check those first. If the crying seems unusual, or they have a fever,
         call your pediatrician.
       </p>
-    </section>
+    </.guide_item>
     """
   end
 
   @doc "What tired, ready and overtired look like."
   def cue_guide(assigns) do
     ~H"""
-    <section id="sleep-cue-guide" class={panel_class()}>
-      <h2 class={heading_class()}>Sleepy cues</h2>
+    <.guide_item id="sleep-cue-guide" title="Sleepy cues">
       <dl class="space-y-3">
         <div :for={cue <- Cue.all()} id={"cue-guide-#{cue.id}"}>
           <dt class="font-semibold">{cue.title}</dt>
@@ -501,7 +577,143 @@ defmodule TryggWeb.SleepPlanComponents do
       <p class="mt-3 text-xs opacity-70">
         Newborns: start a nap as soon as the cues show. Overtired babies often seem wired, not sleepy.
       </p>
+    </.guide_item>
+    """
+  end
+
+  @doc """
+  What a typical day looks like at this age (`Trygg.Sleep.AgeGuide`), next to
+  this child's own numbers.
+  """
+  attr :guide, :map, required: true
+  attr :phase, :map, default: nil
+
+  def age_guide_panel(%{guide: %{band: nil}} = assigns) do
+    ~H"""
+    <section id="age-guide" class={panel_class()}>
+      <h2 class={heading_class()}>A typical day</h2>
+      <p id="age-guide-none" class="text-sm opacity-80">
+        Add a birth date to see what's typical at their age.
+      </p>
     </section>
+    """
+  end
+
+  def age_guide_panel(assigns) do
+    band = assigns.guide.band
+    wake = assigns.guide.wake_time
+
+    assigns =
+      assign(assigns,
+        band: band,
+        wake: wake,
+        rows: [
+          {"Naps a day", range(band.naps)},
+          {"Nap length", mins(band.nap)},
+          {"Awake between naps", band.between && mins(band.between)},
+          {"Awake before bed", mins(band.before_bed)},
+          {"Bedtime", clocks(band.bedtime)},
+          {"Night sleep", hours(band.night_hours)},
+          {"Total sleep", hours(band.total_hours)}
+        ]
+      )
+
+    ~H"""
+    <section id="age-guide" class={panel_class()}>
+      <h2 class={heading_class()}>Typical day: {@band.label}</h2>
+
+      <ul :if={@guide.comparison != []} id="age-guide-compare" class="mb-2 space-y-1.5 text-sm">
+        <li
+          :for={line <- @guide.comparison}
+          id={"compare-#{line.metric}"}
+          data-verdict={line.verdict}
+          class="flex items-baseline justify-between gap-2"
+        >
+          <span>{line.label}</span>
+          <span class="text-right tabular-nums">
+            <span class="font-semibold">{compare_value(line)}</span>
+            <span class="text-xs opacity-70">typical {compare_range(line)}</span>
+            <span class={["badge badge-sm ml-1", verdict_badge(line.verdict)]}>
+              {verdict_text(line.verdict)}
+            </span>
+          </span>
+        </li>
+      </ul>
+
+      <%!-- With nothing of theirs to compare yet the table is the content; with numbers it folds. --%>
+      <details class="fold" open={@guide.comparison == []}>
+        <summary class="cursor-pointer text-sm text-primary">The typical day</summary>
+        <table id="age-guide-table" class="mt-2 w-full text-sm">
+          <tbody>
+            <tr :for={{label, value} <- @rows} :if={value} class="border-t border-base-300">
+              <th scope="row" class="py-1.5 pr-3 text-left font-medium">{label}</th>
+              <td class="tabular-nums">{value}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p :if={@wake} id="age-guide-wake" class="mt-2 text-sm">
+          Awake before a nap: {mins(@wake.wake)}, shortest after the morning wake-up and longest before bed.
+        </p>
+        <p class="mt-2 text-xs opacity-70">
+          Ranges from <em>Precious Little Sleep</em>. Babies vary far more than any chart; their own
+          pattern and how they are in the day matter more.
+        </p>
+      </details>
+    </section>
+    """
+  end
+
+  defp compare_range(%{metric: :bedtime, range: {lo, hi}}),
+    do: "#{BedtimePlan.clock(lo)}–#{BedtimePlan.clock(hi)}"
+
+  defp compare_range(%{metric: :nap_minutes, range: range}), do: mins(range)
+
+  defp compare_range(%{metric: metric, range: range}) when metric in [:night_hours, :total_hours],
+    do: hours(range)
+
+  defp compare_range(%{range: range}), do: range(range)
+
+  defp range({lo, lo}), do: "#{lo}"
+  defp range({lo, hi}), do: "#{lo}–#{hi}"
+
+  defp mins({lo, lo}), do: format_duration(lo * 60)
+  defp mins({lo, hi}), do: "#{format_duration(lo * 60)}–#{format_duration(hi * 60)}"
+
+  defp hours({lo, hi}), do: "#{lo}–#{hi} h"
+
+  defp clocks({lo, hi}), do: "#{BedtimePlan.clock(lo)}–#{BedtimePlan.clock(hi)}"
+
+  defp compare_value(%{metric: :bedtime, value: value}), do: BedtimePlan.clock(round(value))
+
+  defp compare_value(%{metric: :nap_minutes, value: value}),
+    do: format_duration(round(value * 60))
+
+  defp compare_value(%{metric: metric, value: value}) when metric in [:night_hours, :total_hours],
+    do: "#{Float.round(value * 1.0, 1)} h"
+
+  defp compare_value(%{value: value}), do: "#{Float.round(value * 1.0, 1)}"
+
+  defp verdict_text(:within), do: "in range"
+  defp verdict_text(:below), do: "below"
+  defp verdict_text(:above), do: "above"
+
+  defp verdict_badge(:within), do: "badge-success"
+  defp verdict_badge(_), do: "badge-ghost"
+
+  @doc "Why newborn nights are upside down, and the evening fuss."
+  def newborn_nights_panel(assigns) do
+    assigns = assign(assigns, nights: Guide.newborn_nights(), witching: Guide.witching_hours())
+
+    ~H"""
+    <.guide_item id="newborn-nights" title="Newborn nights and the evening fuss">
+      <ul class="list-disc space-y-1.5 pl-5 text-sm">
+        <li :for={line <- @nights}>{line}</li>
+      </ul>
+      <p class="mt-3 text-sm font-semibold">The evening fuss (witching hours)</p>
+      <ul id="witching-hours" class="mt-1 list-disc space-y-1.5 pl-5 text-sm">
+        <li :for={line <- @witching}>{line}</li>
+      </ul>
+    </.guide_item>
     """
   end
 
@@ -511,8 +723,7 @@ defmodule TryggWeb.SleepPlanComponents do
       assign(assigns, principles: Guide.principles(), schedule: Guide.master_schedule())
 
     ~H"""
-    <section id="sleep-rhythm" class={panel_class()}>
-      <h2 class={heading_class()}>A newborn day</h2>
+    <.guide_item id="sleep-rhythm" title="A newborn day">
       <ul class="mb-3 list-disc space-y-1 pl-5 text-sm">
         <li :for={line <- @principles}>{line}</li>
       </ul>
@@ -527,21 +738,24 @@ defmodule TryggWeb.SleepPlanComponents do
       <p class="mt-3 text-xs opacity-70">
         A routine to practise, not a schedule to follow exactly.
       </p>
-    </section>
+    </.guide_item>
     """
   end
 
-  @doc "Every phase with what it's about; the current one is highlighted."
+  @doc "Every phase with what it's about; the current one is marked."
   attr :timeline, :list, required: true
 
   def roadmap(assigns) do
     assigns = assign(assigns, :topics, &Guide.topics/1)
 
     ~H"""
-    <section id="sleep-roadmap" class={panel_class()}>
-      <h2 class={heading_class()}>The road ahead</h2>
+    <.guide_item id="sleep-roadmap" title="The road ahead">
       <ol class="space-y-4">
-        <li :for={step <- @timeline} id={"roadmap-#{step.id}"}>
+        <li
+          :for={step <- @timeline}
+          id={"roadmap-#{step.id}"}
+          aria-current={step.state == :current && "step"}
+        >
           <p class="font-semibold">
             {step.label}
             <span class="font-normal text-sm opacity-70">· {step_when(step)}</span>
@@ -551,7 +765,7 @@ defmodule TryggWeb.SleepPlanComponents do
           </ul>
         </li>
       </ol>
-    </section>
+    </.guide_item>
     """
   end
 
@@ -591,13 +805,16 @@ defmodule TryggWeb.SleepPlanComponents do
   defp item_time(%{estimate?: true} = item, tz), do: "about " <> clock(item.start, tz)
   defp item_time(item, tz), do: clock(item.start, tz)
 
+  # A finished nap is one line: when, and for how long.
+  defp done_length(%{kind: :nap, state: :done, seconds: s}) when is_integer(s),
+    do: " · " <> format_duration(s)
+
+  defp done_length(_item), do: ""
+
   defp item_sub(%{kind: :nap, state: :now, seconds: s}), do: "Asleep #{format_duration(s)} so far"
 
   defp item_sub(%{kind: :nap, state: :due}),
     do: "Window is open: start settling at the first sleepy cues"
-
-  defp item_sub(%{kind: :nap, state: :done} = item),
-    do: join_parts([format_duration(item.seconds), awake_part(item)])
 
   defp item_sub(%{kind: :nap, state: :upcoming} = item),
     do: join_parts([length_part(item), awake_part(item)])
@@ -642,39 +859,21 @@ defmodule TryggWeb.SleepPlanComponents do
   defp week_label(0), do: "first week"
   defp week_label(week), do: "week #{week}"
 
-  defp blurb(:newborn),
-    do:
-      "Feed about every 2.5–3 hours, practise feed → awake time → sleep when it's easy, and catch sleepy cues before they tip into overtired."
-
-  defp blurb(:foundations),
-    do:
-      "Sleep cycles are maturing and wake windows are getting longer. Keep watching both the cues and the clock."
-
-  defp blurb(_phase), do: "Keep watching cues and the clock."
-
   defp step_when(%{state: :current}), do: "now"
   defp step_when(%{starts_on: on}), do: "from " <> Calendar.strftime(on, "%b %-d")
+
+  # The next nap or bedtime still to come, from today's schedule.
+  defp next_up(nil), do: nil
+
+  defp next_up(%{items: items}),
+    do: Enum.find(items, &(&1.state in [:due, :upcoming] and &1.kind in [:nap, :bed]))
+
+  defp next_up_text(%{state: :due} = item, _tz), do: "#{item_title(item)}: the window is open"
+  defp next_up_text(item, tz), do: "#{item_title(item)} · #{item_time(item, tz)}"
 
   defp awake_line(%Entry{ended_at: %DateTime{} = at}, tz), do: "Awake since #{clock(at, tz)}"
   defp awake_line(_last, _tz), do: "No sleep logged yet"
 
-  defp windows_line(%{cue_windows: windows}) when map_size(windows) == 0, do: nil
-
-  defp windows_line(%{cue_windows: windows}) do
-    parts =
-      for cue <- Cue.all(), %{median_seconds: seconds} <- [windows[cue.id]] do
-        "#{cue.label} #{format_duration(seconds)}"
-      end
-
-    "Typical time awake before sleep: " <> Enum.join(parts, " · ")
-  end
-
   defp fed_value(%{measured: 0}), do: "—"
   defp fed_value(%{fed_to_sleep: n, measured: m}), do: "#{n} of #{m}"
-
-  defp minutes, do: "#{div(SleepHabits.fed_to_sleep_seconds(), 60)} min"
-
-  defp time_to_go(days) when days >= 14, do: "about #{div(days, 7)} weeks to go"
-  defp time_to_go(1), do: "1 day to go"
-  defp time_to_go(days), do: "#{days} days to go"
 end

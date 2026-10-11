@@ -44,6 +44,9 @@ defmodule TryggWeb.SleepPlanLiveTest do
     plan
   end
 
+  # The page suggests a gradual plan first; the ABCs are a click away.
+  defp choose_abcs(lv), do: lv |> element("#approach-abcs") |> render_click()
+
   describe "auth and navigation" do
     test "anonymous users are sent to log in", %{conn: conn} do
       child = child_fixture()
@@ -81,6 +84,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
 
     test "sees the plan explained and locked, with the date it opens", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
 
       assert has_element?(lv, "#abcs-intro", "14-night plan")
       assert has_element?(lv, "#abcs-gate-age", "5 months")
@@ -110,6 +114,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
 
     test "shows the gates, the pre-flight list and a blocked start", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
 
       assert has_element?(lv, "#abcs-gate-age", "past 5 months")
       assert has_element?(lv, "#abcs-gate-clearance", "pediatrician")
@@ -124,6 +129,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
       child: child
     } do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
 
       lv |> element("#toggle-training-clearance") |> render_click()
       assert Families.get_child!(scope, child.id).sleep_training_cleared_on == Date.utc_today()
@@ -139,6 +145,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
 
     test "the go-ahead can be taken back", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
       lv |> element("#toggle-training-clearance") |> render_click()
       lv |> element("#toggle-training-clearance") |> render_click()
       assert Families.get_child!(scope, child.id).sleep_training_cleared_on == nil
@@ -147,6 +154,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
     test "starting with no night feeds begins the plan", %{conn: conn, scope: scope, child: child} do
       child = ready(scope, child)
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
 
       lv |> form("#abcs-setup-form", plan: %{count: "0"}) |> render_submit()
 
@@ -162,6 +170,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
     } do
       child = ready(scope, child)
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
 
       lv |> form("#abcs-setup-form", plan: %{count: "2"}) |> render_change()
       assert has_element?(lv, "#setup-feed-1")
@@ -192,6 +201,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
     test "nursing feeds are in minutes", %{conn: conn, scope: scope, child: child} do
       child = ready(scope, child)
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
       lv |> form("#abcs-setup-form", plan: %{count: "1"}) |> render_change()
 
       lv
@@ -209,6 +219,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
     test "missing feed details are refused", %{conn: conn, scope: scope, child: child} do
       child = ready(scope, child)
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      choose_abcs(lv)
       lv |> form("#abcs-setup-form", plan: %{count: "1"}) |> render_change()
 
       lv
@@ -219,11 +230,11 @@ defmodule TryggWeb.SleepPlanLiveTest do
       assert render(lv) =~ "Check the feed times and amounts"
     end
 
-    test "the nap signs are there with the N.A.P. steps", %{conn: conn, child: child} do
+    test "naps wait until the plan is running", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
-      assert has_element?(lv, "#abcs-naps #nap-signs li")
-      assert has_element?(lv, "#nap-steps", "Naptime routine")
-      assert has_element?(lv, "#nap-table")
+      choose_abcs(lv)
+      refute has_element?(lv, "#abcs-naps")
+      refute has_element?(lv, "#nap-master-plan")
     end
   end
 
@@ -232,6 +243,18 @@ defmodule TryggWeb.SleepPlanLiveTest do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
       child = old_child(scope) |> then(&ready(scope, &1))
       %{conn: conn, scope: scope, child: child}
+    end
+
+    test "the nap signs are there with the N.A.P. steps", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      start_plan(scope, child, 3)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/plan")
+      assert has_element?(lv, "#abcs-naps #nap-signs li")
+      assert has_element?(lv, "#nap-steps", "Naptime routine")
+      assert has_element?(lv, "#nap-table")
     end
 
     test "night 1 shows tonight's instructions with touch comfort", %{
@@ -332,6 +355,8 @@ defmodule TryggWeb.SleepPlanLiveTest do
       lv |> element("#stop-plan") |> render_click()
 
       assert Plans.active(scope, child) == nil
+      assert has_element?(lv, "#approach-picker")
+      choose_abcs(lv)
       assert has_element?(lv, "#abcs-gates")
       assert [%{status: :stopped}] = Plans.list(scope, child)
     end
@@ -360,7 +385,7 @@ defmodule TryggWeb.SleepPlanLiveTest do
       {:ok, wake} = NightWakes.record(scope, wake, "pop_in", 1)
       {:ok, _} = NightWakes.asleep(scope, wake, 2)
 
-      assert has_element?(lv, "#abcs-chart", "1 pop-ins")
+      assert has_element?(lv, "#abcs-chart", "1 pop-in,")
     end
 
     test "viewers see the plan but no controls", %{conn: conn, scope: owner, child: child} do
