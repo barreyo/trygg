@@ -1739,7 +1739,7 @@ defmodule TryggWeb.DashboardLive do
                     id="bottle-amount"
                     value={@form.params["amount"]}
                     aria-label={"Amount in #{@unit}"}
-                    class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <span class="text-base font-normal opacity-60">{@unit}</span>
                 </div>

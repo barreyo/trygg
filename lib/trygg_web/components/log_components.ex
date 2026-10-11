@@ -150,7 +150,7 @@ defmodule TryggWeb.LogComponents do
             id={@timer && "timer-#{@timer.id}"}
             phx-hook={@timer && "Timer"}
             data-since={@timer && DateTime.to_unix(@timer.started_at)}
-            class="text-3xl font-extrabold leading-[1.1] tabular-nums break-words"
+            class="text-3xl font-extrabold leading-[1.1] tracking-tight tabular-nums break-words"
           >
             {@value}
           </div>

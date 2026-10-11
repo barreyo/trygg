@@ -336,6 +336,30 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 }
 
 /*
+ * Translucent chrome — the top bar and the tab bar. A tinted, blurred layer the
+ * page scrolls underneath, instead of an opaque strip. `--material-tint` picks
+ * the surface colour (default: the page). Both accessibility preferences turn it
+ * back into a plain solid surface: "reduce transparency" drops the blur, and
+ * "more contrast" also firms up the edge.
+ */
+.material {
+  background: color-mix(in oklab, var(--material-tint, var(--color-base-100)) 82%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .material {
+    background: var(--material-tint, var(--color-base-100));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .material { border-color: color-mix(in oklab, var(--color-base-content) 55%, transparent); }
+  :root:root, :root[data-theme="light"], :root[data-theme="dark"] { --input-edge: 62%; }
+}
+
+/*
  * Touch floor for the compact button sizes. With the roomier `--size-field`
  * token, daisyUI's `xs`/`sm` come out at ~26px / ~35px tall with 11px / 12px
  * labels: fine for a mouse, too small for a thumb at 3 AM. These keep the
