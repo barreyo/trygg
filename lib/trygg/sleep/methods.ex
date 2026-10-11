@@ -89,11 +89,13 @@ defmodule Trygg.Sleep.Methods do
 
   @methods %{
     cries: %{id: :cries, label: "C.R.I.E.S.", steps: @cries},
-    sit_back: %{id: :sit_back, label: "S.I.T. B.A.C.K.", steps: @sit_back}
+    sit_back: %{id: :sit_back, label: "S.I.T. B.A.C.K.", steps: @sit_back},
+    # Check-ins aren't a sequence of steps; see `Trygg.Sleep.Checkins`.
+    abcs: %{id: :abcs, label: "ABCs check-ins", steps: []}
   }
 
   @doc "The method ids, in the order they're offered."
-  def ids, do: [:cries, :sit_back]
+  def ids, do: [:cries, :sit_back, :abcs]
 
   @doc "The method with `id` (`%{id, label, steps}`), or `nil`."
   def get(id) when is_atom(id), do: Map.get(@methods, id)

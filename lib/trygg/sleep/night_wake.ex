@@ -6,7 +6,8 @@ defmodule Trygg.Sleep.NightWake do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @methods [:cries, :sit_back]
+  @methods [:cries, :sit_back, :abcs]
+  @kinds [:waking, :bedtime]
   @outcomes [:settled, :fed, :stopped]
 
   schema "night_wakes" do
@@ -18,9 +19,15 @@ defmodule Trygg.Sleep.NightWake do
     field :outcome, Ecto.Enum, values: @outcomes
     # The step they settled at, for the "settled at step 4" picture.
     field :settled_step, :integer
+    # "bedtime" for the put-down at the start of a night, else "waking".
+    field :kind, Ecto.Enum, values: @kinds, default: :waking
+    # Timestamped happenings in a check-in waking (see `Trygg.Sleep.Checkins`).
+    field :events, {:array, :map}, default: []
+    field :cry_seconds, :integer
 
     belongs_to :child, Trygg.Families.Child
     belongs_to :started_by, Trygg.Accounts.User
+    belongs_to :plan, Trygg.Sleep.Plan
 
     timestamps(type: :utc_datetime)
   end
@@ -35,7 +42,11 @@ defmodule Trygg.Sleep.NightWake do
       :step_started_at,
       :ended_at,
       :outcome,
-      :settled_step
+      :settled_step,
+      :kind,
+      :events,
+      :cry_seconds,
+      :plan_id
     ])
     |> validate_required([:method, :started_at, :step, :step_started_at])
     |> validate_number(:step, greater_than_or_equal_to: 0)

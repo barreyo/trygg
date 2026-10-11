@@ -167,12 +167,97 @@ defmodule Trygg.Reports do
   sleep, wakings, the longest unbroken sleep and the longest stretch between
   feeds. Requires `:viewer`.
   """
-  def nights(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+  def nights(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now(), opts \\ []) do
     Families.authorize!(scope, child, :viewer)
     today = Child.local_today(child)
+    count = Keyword.get(opts, :count, Nights.count())
     # One more day than the nights shown: each night needs the morning after it.
-    {days, entries} = load_days(scope, child, Date.add(today, -Nights.count()), today, now)
-    Nights.summarize(child, days, entries)
+    {days, entries} = load_days(scope, child, Date.add(today, -count), today, now)
+    Nights.summarize(child, days, entries, count: count)
+  end
+
+  @doc """
+  What the Sleep plan page shows: whether "The ABCs of Sleep"
+  (`Trygg.Sleep.Abcs`) can start and what's missing, and while it's running
+  tonight's instructions, the night-by-night chart and progress, plus the nap
+  training signs and the age's day shape. Requires `:viewer`.
+  """
+  def sleep_training(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
+
+    phase = Trygg.Sleep.Phase.for_child(child)
+    plan = Trygg.Sleep.Plans.active(scope, child)
+    nights = nights(scope, child, now, count: 14)
+    s = summary(scope, child, @outlook_window, now)
+
+    nap_medians =
+      for %{median: median} when is_number(median) <- s.naps.by_ordinal, do: median
+
+    table = phase && Trygg.Sleep.Schedules.for_age(phase.age_days)
+
+    base = %{
+      phase: phase,
+      eligibility: Trygg.Sleep.Plans.eligibility(child, phase, today),
+      plan: plan,
+      setup: suggest_setup(child, nights),
+      table: table,
+      nap_readiness:
+        Trygg.Sleep.NapTraining.readiness(%{
+          child: child,
+          nights: nights,
+          nap_medians: nap_medians,
+          age_days: phase && phase.age_days
+        })
+    }
+
+    if plan do
+      wakes = Trygg.Sleep.NightWakes.for_plan(scope, plan)
+      plan_nights = Trygg.Reports.PlanNights.build(child, plan, wakes, nights, now)
+
+      Map.merge(base, %{
+        tonight: Trygg.Sleep.Plans.tonight(plan, child, now),
+        weaning_table: Trygg.Sleep.Plans.weaning_table(plan),
+        plan_nights: plan_nights,
+        progress: Trygg.Reports.PlanNights.progress(plan_nights)
+      })
+    else
+      base
+    end
+  end
+
+  # Night feeds to wean, from the last night: the feeds outside the dream-feed
+  # window, up to three, with their times (minutes after local midnight) and
+  # amounts (ml for a bottle, minutes for nursing). `nil` with no night feeds.
+  defp suggest_setup(child, nights) do
+    {dream_from, dream_to} = Trygg.Sleep.NightFeeds.dream_feed_window()
+
+    with %{feed_events: [_ | _] = events} <- nights.last do
+      feeds =
+        for event <- events,
+            local = DateTime.shift_zone!(event.at, child.timezone),
+            minutes = local.hour * 60 + local.minute,
+            not (minutes >= dream_from and minutes <= dream_to),
+            amount = event.ml || event.minutes,
+            is_number(amount) and amount > 0 do
+          {minutes, round(amount), event.kind}
+        end
+        |> Enum.take(3)
+
+      case feeds do
+        [] ->
+          nil
+
+        [{_, _, kind} | _] ->
+          %{
+            kind: if(kind == :feeding, do: :bottle, else: :nursing),
+            feeds: Enum.map(feeds, fn {time, amount, _} -> {time, amount} end)
+          }
+      end
+    else
+      _ -> nil
+    end
   end
 
   @doc """

@@ -14,7 +14,8 @@ defmodule TryggWeb.SleepNightLive do
   alias Trygg.Families.Child
   alias Trygg.Log
   alias Trygg.Reports
-  alias Trygg.Sleep.{Methods, NightWake, NightWakes, Phase}
+  alias Trygg.Sleep.{Methods, NightWake, NightWakes, Phase, Plans}
+  alias TryggWeb.SleepAbcsComponents
   alias TryggWeb.Loading
 
   @impl true
@@ -27,9 +28,9 @@ defmodule TryggWeb.SleepNightLive do
       socket =
         socket
         |> assign(:can_write, socket.assigns.role in [:owner, :caregiver])
-        |> assign(:method, Methods.for_phase(phase_id(child)))
         |> assign(active: NightWakes.active(scope, child), recent: [], hint: nil)
         |> assign(:last_wake, nil)
+        |> assign_plan(scope, child)
         |> Loading.init()
         |> load()
 
@@ -43,6 +44,32 @@ defmodule TryggWeb.SleepNightLive do
        )
        |> push_navigate(to: ~p"/c/#{child}")}
     end
+  end
+
+  # While a sleep-training plan is running, night mode is the plan's check-ins;
+  # otherwise the method for the child's age.
+  defp assign_plan(socket, scope, child) do
+    plan = Plans.active(scope, child)
+    tonight = plan && Plans.tonight(plan, child, DateTime.utc_now())
+
+    socket
+    |> assign(:plan, plan)
+    |> assign(:tonight, tonight)
+    |> assign(:bedtime_at, bedtime_at(scope, plan, child, tonight))
+    |> assign(:method, if(plan, do: :abcs, else: Methods.for_phase(phase_id(child))))
+  end
+
+  # When they were put down tonight, from the plan's bedtime waking.
+  defp bedtime_at(_scope, nil, _child, _tonight), do: nil
+  defp bedtime_at(_scope, _plan, _child, %{night: night}) when night < 1, do: nil
+
+  defp bedtime_at(scope, plan, child, %{night: night}) do
+    scope
+    |> NightWakes.for_plan(plan)
+    |> Enum.find(
+      &(&1.kind == :bedtime and Plans.night_number(plan, child, &1.started_at) == night)
+    )
+    |> then(&(&1 && &1.started_at))
   end
 
   defp phase_id(child) do
@@ -65,6 +92,10 @@ defmodule TryggWeb.SleepNightLive do
     do: {:noreply, assign(socket, :active, wake)}
 
   def handle_info({:log, _action, _entry}, socket), do: {:noreply, refresh(socket)}
+
+  def handle_info({:sleep_plan, _action, _plan}, socket) do
+    {:noreply, assign_plan(socket, socket.assigns.current_scope, socket.assigns.current_child)}
+  end
 
   def handle_info({:child_updated, child}, socket),
     do: {:noreply, assign(socket, :current_child, %{child | role: socket.assigns.role})}
@@ -113,6 +144,53 @@ defmodule TryggWeb.SleepNightLive do
       {:noreply, assign(socket, active: wake, last_wake: nil)}
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_event("start_abcs", %{"kind" => kind}, socket) do
+    kind = if kind == "bedtime", do: :bedtime, else: :waking
+
+    if socket.assigns.can_write and socket.assigns.method == :abcs do
+      plan = socket.assigns.plan
+
+      {:ok, wake} =
+        NightWakes.start(socket.assigns.current_scope, socket.assigns.current_child, :abcs,
+          kind: kind,
+          plan_id: plan && plan.id
+        )
+
+      {:noreply,
+       socket
+       |> assign(active: wake, last_wake: nil)
+       |> assign_plan(socket.assigns.current_scope, socket.assigns.current_child)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("record", %{"kind" => kind, "seen" => seen}, socket) do
+    with true <- socket.assigns.can_write,
+         %NightWake{method: :abcs} = wake <- socket.assigns.active,
+         {seen, ""} <- Integer.parse(seen),
+         {:ok, updated} <- NightWakes.record(socket.assigns.current_scope, wake, kind, seen) do
+      {:noreply, assign(socket, :active, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("asleep", %{"seen" => seen}, socket) do
+    with true <- socket.assigns.can_write,
+         %NightWake{method: :abcs} = wake <- socket.assigns.active,
+         {seen, ""} <- Integer.parse(seen),
+         {:ok, finished} <- NightWakes.asleep(socket.assigns.current_scope, wake, seen) do
+      {:noreply,
+       socket
+       |> assign(active: nil, last_wake: finished)
+       |> assign_plan(socket.assigns.current_scope, socket.assigns.current_child)
+       |> refresh_recent()}
+    else
+      _ -> {:noreply, socket}
     end
   end
 
@@ -222,24 +300,43 @@ defmodule TryggWeb.SleepNightLive do
             <div class="h-64 animate-pulse rounded-box bg-[#140d0a]"></div>
           </:skeleton>
 
-          <%= if @active do %>
-            <.step_screen
-              wake={@active}
-              step={@step_info}
-              method={Methods.get(@active.method)}
-              can_write={@can_write}
-              hint={@hint}
-              now={DateTime.utc_now()}
-              tz={@current_child.timezone}
-            />
-          <% else %>
-            <.idle_screen
-              method={@method_info}
-              can_write={@can_write}
-              last_wake={@last_wake}
-              summary={@summary}
-              child={@current_child}
-            />
+          <%= cond do %>
+            <% @active && @active.method == :abcs -> %>
+              <SleepAbcsComponents.abcs_screen
+                wake={@active}
+                tonight={@tonight}
+                bedtime_at={@bedtime_at}
+                can_write={@can_write}
+                now={DateTime.utc_now()}
+                tz={@current_child.timezone}
+              />
+            <% @active -> %>
+              <.step_screen
+                wake={@active}
+                step={@step_info}
+                method={Methods.get(@active.method)}
+                can_write={@can_write}
+                hint={@hint}
+                now={DateTime.utc_now()}
+                tz={@current_child.timezone}
+              />
+            <% @method == :abcs -> %>
+              <SleepAbcsComponents.abcs_idle
+                plan={@plan}
+                tonight={@tonight}
+                can_write={@can_write}
+                unit_system={@current_scope.user.unit_system}
+                tz={@current_child.timezone}
+                last_wake={@last_wake}
+              />
+            <% true -> %>
+              <.idle_screen
+                method={@method_info}
+                can_write={@can_write}
+                last_wake={@last_wake}
+                summary={@summary}
+                child={@current_child}
+              />
           <% end %>
         </.loadable>
       </section>
