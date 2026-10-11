@@ -105,6 +105,29 @@ defmodule Trygg.Sleep.NapConventions do
     }
   ]
 
+  # The book's "Nap Master Plan" for teaching independent sleep at naps, once
+  # bedtime is sorted.
+  @master_plan [
+    %{
+      name: "Pick the plan",
+      detail:
+        "Use the one that worked at bedtime. If bedtime was a mess, go straight to the sleep learning plan. If you started with sleep learning, you can carry on with it or try a gradual plan for naps. If you begin naps with sleep learning, you're committed."
+    },
+    %{
+      name: "Commit for five days",
+      detail:
+        "Start with the first nap. Do the wind-down routine and your plan for up to an hour. If they fall asleep, let them sleep as long as they like (but wake them if it would spoil the next nap). If they nap for a bit and wake, naptime is over: a micro-nap is a win. If an hour passes and they haven't slept, get up and try again at the next nap. No feeding, rocking or stroller naps to rescue it. For the third nap, an outing is fine, but not whatever you're weaning off."
+    },
+    %{
+      name: "Judge by the trend",
+      detail:
+        "Keep notes. You're looking for less help or fewer tears than on day one, longer naps than on day one, and any independent sleep at all. A full week with no sleep at all, or a gut feeling that it's wrong, means rethink. Expect it to take longer than bedtime: daytime sleep drive is small. Move bedtime 30–60 minutes earlier on days with no naps."
+    }
+  ]
+
+  @doc "The Nap Master Plan: three steps."
+  def master_plan, do: @master_plan
+
   @doc "The four conventions."
   def conventions, do: @conventions
 

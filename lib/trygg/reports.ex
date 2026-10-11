@@ -177,10 +177,12 @@ defmodule Trygg.Reports do
   end
 
   @doc """
-  What the Sleep plan page shows: whether "The ABCs of Sleep"
-  (`Trygg.Sleep.Abcs`) can start and what's missing, and while it's running
-  tonight's instructions, the night-by-night chart and progress, plus the nap
-  training signs and the age's day shape. Requires `:viewer`.
+  What the Sleep plan page shows: which plans can start and what's missing for
+  each (`eligibilities`, and `eligibility` for the ABCs), the suggested approach
+  (`Trygg.Sleep.Approaches`), and while one is running tonight's instructions,
+  the night-by-night chart and progress and what the nights say
+  (`assessment`), plus the nap training signs and the age's day shape.
+  Requires `:viewer`.
   """
   def sleep_training(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
     Families.authorize!(scope, child, :viewer)
@@ -197,9 +199,23 @@ defmodule Trygg.Reports do
 
     table = phase && Trygg.Sleep.Schedules.for_age(phase.age_days)
 
+    habits = sleep_habits(scope, child, now)
+    falling = falling_asleep(scope, child, now)
+
     base = %{
       phase: phase,
       eligibility: Trygg.Sleep.Plans.eligibility(child, phase, today),
+      eligibilities:
+        Map.new(Trygg.Sleep.Definitions.ids(), fn definition ->
+          {definition, Trygg.Sleep.Plans.eligibility(child, phase, today, definition)}
+        end),
+      recommendation:
+        Trygg.Sleep.Approaches.recommend(%{
+          age_days: phase && phase.age_days,
+          habits: habits,
+          falling_asleep: falling,
+          plans: Trygg.Sleep.Plans.list(scope, child)
+        }),
       plan: plan,
       setup: suggest_setup(child, nights),
       table: table,
@@ -220,12 +236,23 @@ defmodule Trygg.Reports do
         tonight: Trygg.Sleep.Plans.tonight(plan, child, now),
         weaning_table: Trygg.Sleep.Plans.weaning_table(plan),
         plan_nights: plan_nights,
-        progress: Trygg.Reports.PlanNights.progress(plan_nights)
+        progress: Trygg.Reports.PlanNights.progress(plan_nights),
+        assessment: plan_assessment(plan, plan_nights)
       })
     else
       base
     end
   end
+
+  # What the nights so far say, by plan: the SLIP and SWAP read the trend in time
+  # to fall asleep; the ABCs plan has no verdict of its own.
+  defp plan_assessment(%{definition: :slip}, plan_nights),
+    do: Trygg.Sleep.Slip.assess(plan_nights)
+
+  defp plan_assessment(%{definition: :swap} = plan, plan_nights),
+    do: Trygg.Sleep.Swap.assess(plan_nights, Trygg.Sleep.Definitions.nights(plan))
+
+  defp plan_assessment(_plan, _plan_nights), do: nil
 
   # Night feeds to wean, from the last night: the feeds outside the dream-feed
   # window, up to three, with their times (minutes after local midnight) and

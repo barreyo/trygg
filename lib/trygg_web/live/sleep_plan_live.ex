@@ -1,25 +1,28 @@
 defmodule TryggWeb.SleepPlanLive do
   @moduledoc """
-  The Sleep plan page (`/c/:id/sleep/plan`): "The ABCs of Sleep"
-  (`Trygg.Sleep.Abcs`), the 14-night plan for babies over 5 months.
+  The Sleep plan page (`/c/:id/sleep/plan`): teaching independent sleep, by
+  one of three plans: a gradual Sleep With Assistance Plan (`Trygg.Sleep.Swap`),
+  the Sleep Learning Independence Plan (`Trygg.Sleep.Slip`) or "The ABCs of
+  Sleep" (`Trygg.Sleep.Abcs`).
 
-  Before it starts: what it asks of you, the gates (5 months corrected, the
-  pediatrician's go-ahead, the pre-flight list) and the night-feed setup. Once
-  it's running: tonight's instructions, the night chart, progress, the
-  night-weaning table and the nap training signs. The nights themselves are
-  worked through in night mode (`TryggWeb.SleepNightLive`).
+  Before one starts: a suggestion of which, what each asks of you, its gates
+  (age, the pediatrician's go-ahead where the plan needs it, the pre-flight
+  list) and its setup. Once one is running: tonight's instructions, the night
+  chart, progress and what the nights say, and what comes next (naps, night
+  feeds). The nights themselves are worked through in night mode
+  (`TryggWeb.SleepNightLive`).
   """
   use TryggWeb, :live_view
 
   alias Trygg.Families
   alias Trygg.Families.Child
   alias Trygg.Reports
-  alias Trygg.Sleep.{Abcs, BedtimePlan, NapTraining, Plans}
+  alias Trygg.Sleep.{BedtimePlan, Definitions, NapTraining, Plans, Swap}
   alias Trygg.Units
   alias TryggWeb.Loading
-  alias TryggWeb.SleepAbcsComponents
+  alias TryggWeb.{SleepAbcsComponents, SleepApproachesComponents}
 
-  @manual_ids Abcs.preflight_ids() ++ ["n-day-sleep", "n-battle"]
+  @manual_ids Definitions.all_preflight_ids() ++ ["n-day-sleep", "n-battle"]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -32,6 +35,7 @@ defmodule TryggWeb.SleepPlanLive do
         |> assign(:unit_system, socket.assigns.current_scope.user.unit_system)
         |> assign(:training, nil)
         |> assign(:form, nil)
+        |> assign(choice: nil, swap_form: nil, slip_form: nil)
         |> Loading.init()
         |> load()
 
@@ -128,8 +132,29 @@ defmodule TryggWeb.SleepPlanLive do
     end
   end
 
+  def handle_event("choose", %{"approach" => approach}, socket) do
+    choice = Enum.find(Definitions.ids(), &(Atom.to_string(&1) == approach))
+    {:noreply, assign(socket, :choice, choice)}
+  end
+
   def handle_event("setup_change", %{"plan" => params}, socket),
     do: {:noreply, assign(socket, :form, to_form(params, as: :plan))}
+
+  def handle_event("swap_change", %{"plan" => params}, socket),
+    do: {:noreply, assign(socket, :swap_form, to_form(params, as: :plan))}
+
+  def handle_event("slip_change", %{"plan" => params}, socket),
+    do: {:noreply, assign(socket, :slip_form, to_form(params, as: :plan))}
+
+  def handle_event("go_full", _params, socket) do
+    with true <- socket.assigns.can_write,
+         %{plan: %{definition: :slip} = plan} <- socket.assigns.training,
+         {:ok, _} <- Plans.go_full(socket.assigns.current_scope, plan) do
+      {:noreply, refresh(socket)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
 
   def handle_event("start_plan", %{"plan" => params}, socket) do
     scope = socket.assigns.current_scope
@@ -151,7 +176,15 @@ defmodule TryggWeb.SleepPlanLive do
         {:noreply, refresh(socket)}
 
       {:error, %Ecto.Changeset{}} ->
-        {:noreply, put_flash(socket, :error, "Check the feed times and amounts.")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           if(params["definition"] in ["swap", "slip"],
+             do: "Check the plan's settings.",
+             else: "Check the feed times and amounts."
+           )
+         )}
     end
   end
 
@@ -185,6 +218,22 @@ defmodule TryggWeb.SleepPlanLive do
 
   # The setup form's params into plan attrs: times as minutes after midnight,
   # bottle amounts from the display unit into ml.
+  defp plan_attrs(%{"definition" => "swap"} = params, _unit_system) do
+    options =
+      %{"variant" => params["variant"]}
+      |> then(fn options ->
+        case parse_int(params["start_minutes"]) do
+          nil -> options
+          minutes -> Map.put(options, "start_minutes", minutes)
+        end
+      end)
+
+    %{definition: :swap, options: options}
+  end
+
+  defp plan_attrs(%{"definition" => "slip"} = params, _unit_system),
+    do: %{definition: :slip, options: %{"mode" => params["mode"] || "graduated"}}
+
   defp plan_attrs(params, unit_system) do
     count = parse_int(params["count"]) || 0
     kind = if params["kind"] == "bottle", do: :bottle, else: :nursing
@@ -258,10 +307,32 @@ defmodule TryggWeb.SleepPlanLive do
 
   defp apply_data(socket, %{training: training}) do
     socket = assign(socket, :training, training)
-    # Keep what's been typed into the setup form; start it from the suggestion.
-    if socket.assigns.form,
-      do: socket,
-      else: assign(socket, :form, initial_form(training, socket.assigns.unit_system))
+    suggested = training.recommendation.suggested
+
+    # Keep what's been typed into the setup forms and what was chosen; start
+    # them from the suggestion.
+    socket
+    |> assign_new_form(:form, initial_form(training, socket.assigns.unit_system))
+    |> assign_new_form(
+      :swap_form,
+      to_form(
+        %{
+          "variant" => Atom.to_string(training.recommendation.variant),
+          "start_minutes" => "30"
+        },
+        as: :plan
+      )
+    )
+    |> assign_new_form(:slip_form, to_form(%{"mode" => "graduated"}, as: :plan))
+    |> then(fn socket ->
+      if socket.assigns.choice,
+        do: socket,
+        else: assign(socket, :choice, if(suggested == :tools, do: nil, else: suggested))
+    end)
+  end
+
+  defp assign_new_form(socket, key, form) do
+    if socket.assigns[key], do: socket, else: assign(socket, key, form)
   end
 
   defp initial_form(%{setup: nil}, _system),
@@ -313,73 +384,170 @@ defmodule TryggWeb.SleepPlanLive do
         </:skeleton>
 
         <%= if @training.plan do %>
-          <Layouts.columns id="plan-columns">
-            <:left>
-              <SleepAbcsComponents.tonight_panel
-                tonight={@training.tonight}
-                plan={@training.plan}
-                table={@training.table}
-                unit_system={@unit_system}
-                can_write={@can_write}
-                child_id={@current_child.id}
-              />
-              <SleepAbcsComponents.night_chart_panel
-                nights={@training.plan_nights}
-                tz={@current_child.timezone}
-                tonight={@training.tonight}
-                can_write={@can_write}
-              />
-              <SleepAbcsComponents.progress_panel
-                progress={@training.progress}
-                nights={@training.plan_nights}
-              />
-            </:left>
-            <:right>
-              <SleepAbcsComponents.weaning_table_panel
-                table={@training.weaning_table}
-                unit_system={@unit_system}
-              />
-              <SleepAbcsComponents.plan_controls
-                plan={@training.plan}
-                tonight={@training.tonight}
-                can_write={@can_write}
-              />
-              <SleepAbcsComponents.nap_panel
-                readiness={@training.nap_readiness}
-                table={@training.table}
-                night={@training.tonight.night}
-                can_write={@can_write}
-              />
-            </:right>
-          </Layouts.columns>
+          <.running_plan
+            training={@training}
+            unit_system={@unit_system}
+            can_write={@can_write}
+            child={@current_child}
+          />
         <% else %>
-          <Layouts.columns id="plan-columns">
-            <:left>
-              <SleepAbcsComponents.abcs_intro />
-              <SleepAbcsComponents.gates_panel
-                eligibility={@training.eligibility}
-                can_write={@can_write}
-              />
-            </:left>
-            <:right>
-              <SleepAbcsComponents.setup_form
-                :if={match?({:ok, _}, @training.eligibility.age) and @can_write}
-                form={@form}
-                count={parse_int(@form.params["count"]) || 0}
-                kind={@form.params["kind"] || "bottle"}
-                unit_system={@unit_system}
-                ready?={@training.eligibility.ready?}
-              />
-              <SleepAbcsComponents.nap_panel
-                readiness={@training.nap_readiness}
-                table={@training.table}
-                can_write={@can_write}
-              />
-            </:right>
-          </Layouts.columns>
+          <.choosing
+            training={@training}
+            choice={@choice}
+            form={@form}
+            swap_form={@swap_form}
+            slip_form={@slip_form}
+            unit_system={@unit_system}
+            can_write={@can_write}
+            child={@current_child}
+          />
         <% end %>
       </.loadable>
     </Layouts.app>
+    """
+  end
+
+  attr :training, :map, required: true
+  attr :unit_system, :atom, required: true
+  attr :can_write, :boolean, required: true
+  attr :child, :map, required: true
+
+  defp running_plan(assigns) do
+    assigns = assign(assigns, :definition, assigns.training.plan.definition)
+
+    ~H"""
+    <Layouts.columns id="plan-columns">
+      <:left>
+        <SleepAbcsComponents.tonight_panel
+          :if={@definition == :abcs}
+          tonight={@training.tonight}
+          plan={@training.plan}
+          table={@training.table}
+          unit_system={@unit_system}
+          can_write={@can_write}
+          child_id={@child.id}
+        />
+        <SleepApproachesComponents.slip_tonight_panel
+          :if={@definition == :slip}
+          tonight={@training.tonight}
+          plan={@training.plan}
+          can_write={@can_write}
+          child_id={@child.id}
+        />
+        <SleepApproachesComponents.swap_tonight_panel
+          :if={@definition == :swap}
+          tonight={@training.tonight}
+          plan={@training.plan}
+          can_write={@can_write}
+          child_id={@child.id}
+        />
+        <SleepAbcsComponents.night_chart_panel
+          nights={@training.plan_nights}
+          tz={@child.timezone}
+          tonight={@training.tonight}
+          can_write={@can_write}
+          definition={@definition}
+        />
+        <SleepAbcsComponents.progress_panel
+          progress={@training.progress}
+          nights={@training.plan_nights}
+          definition={@definition}
+          assessment={@training.assessment}
+        />
+      </:left>
+      <:right>
+        <SleepAbcsComponents.weaning_table_panel
+          :if={@definition == :abcs}
+          table={@training.weaning_table}
+          unit_system={@unit_system}
+        />
+        <SleepApproachesComponents.swap_checks :if={@definition == :swap} />
+        <SleepApproachesComponents.feed_rules_panel :if={@definition != :abcs} />
+        <SleepAbcsComponents.plan_controls
+          plan={@training.plan}
+          tonight={@training.tonight}
+          can_write={@can_write}
+        />
+        <SleepAbcsComponents.nap_panel
+          :if={@definition == :abcs}
+          readiness={@training.nap_readiness}
+          table={@training.table}
+          night={@training.tonight.night}
+          can_write={@can_write}
+        />
+        <SleepApproachesComponents.nap_master_plan :if={@definition != :abcs} />
+      </:right>
+    </Layouts.columns>
+    """
+  end
+
+  attr :training, :map, required: true
+  attr :choice, :atom, default: nil
+  attr :form, :any, required: true
+  attr :swap_form, :any, required: true
+  attr :slip_form, :any, required: true
+  attr :unit_system, :atom, required: true
+  attr :can_write, :boolean, required: true
+  attr :child, :map, required: true
+
+  defp choosing(assigns) do
+    assigns =
+      assign(assigns,
+        eligibility: assigns.choice && assigns.training.eligibilities[assigns.choice],
+        variant:
+          Swap.variant(assigns.swap_form.params["variant"]) ||
+            Swap.variant(assigns.training.recommendation.variant)
+      )
+
+    ~H"""
+    <Layouts.columns id="plan-columns">
+      <:left>
+        <SleepApproachesComponents.approach_picker
+          recommendation={@training.recommendation}
+          eligibilities={@training.eligibilities}
+          choice={@choice}
+          child_id={@child.id}
+        />
+        <SleepApproachesComponents.swap_intro :if={@choice == :swap} />
+        <SleepApproachesComponents.slip_intro :if={@choice == :slip} />
+        <SleepAbcsComponents.abcs_intro :if={@choice == :abcs} />
+        <SleepAbcsComponents.gates_panel
+          :if={@choice}
+          definition={@choice}
+          eligibility={@eligibility}
+          can_write={@can_write}
+        />
+      </:left>
+      <:right>
+        <SleepApproachesComponents.swap_setup_form
+          :if={@choice == :swap and match?({:ok, _}, @eligibility.age) and @can_write}
+          form={@swap_form}
+          variant={@variant}
+          suggested={@training.recommendation.variant}
+          ready?={@eligibility.ready?}
+        />
+        <SleepApproachesComponents.slip_setup_form
+          :if={@choice == :slip and match?({:ok, _}, @eligibility.age) and @can_write}
+          form={@slip_form}
+          ready?={@eligibility.ready?}
+        />
+        <SleepAbcsComponents.setup_form
+          :if={@choice == :abcs and match?({:ok, _}, @eligibility.age) and @can_write}
+          form={@form}
+          count={parse_int(@form.params["count"]) || 0}
+          kind={@form.params["kind"] || "bottle"}
+          unit_system={@unit_system}
+          ready?={@eligibility.ready?}
+        />
+        <SleepAbcsComponents.nap_panel
+          :if={@choice == :abcs}
+          readiness={@training.nap_readiness}
+          table={@training.table}
+          can_write={@can_write}
+        />
+        <SleepApproachesComponents.nap_master_plan :if={@choice in [:swap, :slip]} />
+      </:right>
+    </Layouts.columns>
     """
   end
 end

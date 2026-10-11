@@ -1,13 +1,15 @@
 defmodule Trygg.Sleep.Plan do
   @moduledoc """
-  A sleep-training plan being followed for a child (today "The ABCs of Sleep",
-  `Trygg.Sleep.Abcs`). `started_on` is the local date of the evening of night 1.
+  A sleep-training plan being followed for a child: "The ABCs of Sleep"
+  (`Trygg.Sleep.Abcs`), the Sleep Learning Independence Plan (`Trygg.Sleep.Slip`)
+  or a gradual Sleep With Assistance Plan (`Trygg.Sleep.Swap`), as `definition`.
+  `started_on` is the local date of the evening of night 1.
   See `Trygg.Sleep.Plans` for starting, stopping and where in the plan tonight is.
   """
   use Ecto.Schema
   import Ecto.Changeset
 
-  @definitions [:abcs]
+  @definitions [:abcs, :slip, :swap]
   @statuses [:active, :completed, :stopped]
   @feed_kinds [:nursing, :bottle]
 
@@ -24,6 +26,9 @@ defmodule Trygg.Sleep.Plan do
     field :feed_amounts, {:array, :integer}, default: []
     # Notes by night number (as a string): "3" => "…".
     field :notes, :map, default: %{}
+    # Choices of the plan's method: `"mode"` ("graduated" or "full") for a SLIP,
+    # `"variant"` and `"start_minutes"` for a SWAP.
+    field :options, :map, default: %{}
 
     belongs_to :child, Trygg.Families.Child
     belongs_to :started_by, Trygg.Accounts.User
@@ -42,11 +47,40 @@ defmodule Trygg.Sleep.Plan do
       :feed_kind,
       :feed_times,
       :feed_amounts,
-      :notes
+      :notes,
+      :options
     ])
     |> validate_required([:definition, :status, :started_on])
     |> validate_feeds()
+    |> validate_options()
     |> unique_constraint(:child_id, name: :sleep_plans_one_active_per_child)
+  end
+
+  defp validate_options(changeset) do
+    options = get_field(changeset, :options) || %{}
+
+    case get_field(changeset, :definition) do
+      :slip ->
+        if options["mode"] in ["graduated", "full"],
+          do: changeset,
+          else: add_error(changeset, :options, "choose graduated or full")
+
+      :swap ->
+        cond do
+          is_nil(Trygg.Sleep.Swap.variant(options["variant"])) ->
+            add_error(changeset, :options, "choose a variant")
+
+          Map.has_key?(options, "start_minutes") and
+              not (is_integer(options["start_minutes"]) and options["start_minutes"] in 1..120) ->
+            add_error(changeset, :options, "start minutes must be between 1 and 120")
+
+          true ->
+            changeset
+        end
+
+      _ ->
+        changeset
+    end
   end
 
   defp validate_feeds(changeset) do
