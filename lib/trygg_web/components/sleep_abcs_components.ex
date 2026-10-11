@@ -115,7 +115,7 @@ defmodule TryggWeb.SleepAbcsComponents do
               role="checkbox"
               aria-checked={to_string(id not in @eligibility.preflight.missing)}
               aria-label={text}
-              class="mt-0.5 shrink-0"
+              class="-m-3 shrink-0 touch-manipulation p-3"
             >
               <.icon
                 name={
@@ -123,7 +123,7 @@ defmodule TryggWeb.SleepAbcsComponents do
                     do: "hero-stop",
                     else: "hero-check-circle-solid"
                 }
-                class={"size-5 " <> if(id in @eligibility.preflight.missing, do: "opacity-50", else: "text-success")}
+                class={"size-5 " <> if(id in @eligibility.preflight.missing, do: "opacity-70", else: "text-success")}
               />
             </button>
           <% else %>
@@ -133,7 +133,7 @@ defmodule TryggWeb.SleepAbcsComponents do
                   do: "hero-minus-circle",
                   else: "hero-check-circle-solid"
               }
-              class={"mt-0.5 size-5 shrink-0 " <> if(id in @eligibility.preflight.missing, do: "opacity-40", else: "text-success")}
+              class={"mt-0.5 size-5 shrink-0 " <> if(id in @eligibility.preflight.missing, do: "opacity-70", else: "text-success")}
             />
           <% end %>
           <span>{text}</span>
@@ -153,7 +153,7 @@ defmodule TryggWeb.SleepAbcsComponents do
     ~H"""
     <.icon
       name={if @ok, do: "hero-check-circle", else: "hero-minus-circle"}
-      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-50")}
+      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-70")}
     />
     """
   end
@@ -365,7 +365,7 @@ defmodule TryggWeb.SleepAbcsComponents do
         Night 1 starts tonight. Each night you work through shows up here.
       </p>
 
-      <details :if={@nights != []} id="abcs-chart-log">
+      <details :if={@nights != []} class="fold" id="abcs-chart-log">
         <summary class="cursor-pointer text-sm text-primary">
           {length(@nights)} {if length(@nights) == 1, do: "night", else: "nights"} logged
         </summary>
@@ -540,7 +540,7 @@ defmodule TryggWeb.SleepAbcsComponents do
     ~H"""
     <section id="abcs-controls" class={panel_class()}>
       <h2 class={heading_class()}>If something changes</h2>
-      <details id="plan-if-changes">
+      <details class="fold" id="plan-if-changes">
         <summary class="cursor-pointer text-sm text-primary">When to pause the plan</summary>
         <ul class="space-y-1.5 text-sm leading-snug">
           <li>
@@ -630,7 +630,7 @@ defmodule TryggWeb.SleepAbcsComponents do
           <%= if sign.auto? or not @can_write do %>
             <.icon
               name={if sign.checked?, do: "hero-check-circle-solid", else: "hero-minus-circle"}
-              class={"mt-0.5 size-5 shrink-0 " <> if(sign.checked?, do: "text-success", else: "opacity-40")}
+              class={"mt-0.5 size-5 shrink-0 " <> if(sign.checked?, do: "text-success", else: "opacity-70")}
             />
           <% else %>
             <button
@@ -640,11 +640,11 @@ defmodule TryggWeb.SleepAbcsComponents do
               role="checkbox"
               aria-checked={to_string(sign.checked?)}
               aria-label={sign.text}
-              class="mt-0.5 shrink-0"
+              class="-m-3 shrink-0 touch-manipulation p-3"
             >
               <.icon
                 name={if sign.checked?, do: "hero-check-circle-solid", else: "hero-stop"}
-                class={"size-5 " <> if(sign.checked?, do: "text-success", else: "opacity-50")}
+                class={"size-5 " <> if(sign.checked?, do: "text-success", else: "opacity-70")}
               />
             </button>
           <% end %>
@@ -682,7 +682,7 @@ defmodule TryggWeb.SleepAbcsComponents do
         </p>
       </div>
 
-      <details id="nap-tips" class="mt-3 text-sm">
+      <details id="nap-tips" class="fold mt-3 text-sm">
         <summary class="cursor-pointer font-medium text-primary">Nap questions</summary>
         <ul class="mt-2 list-disc space-y-1.5 pl-5 leading-snug">
           <li :for={tip <- @tips}>{tip}</li>

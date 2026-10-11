@@ -60,22 +60,20 @@ defmodule TryggWeb.SleepApproachesComponents do
       </p>
 
       <div class="grid gap-2">
-        <button
+        <.button
           :for={card <- @cards}
           id={"approach-#{card.id}"}
           type="button"
+          variant={if @choice == card.id, do: "primary"}
           phx-click="choose"
           phx-value-approach={card.id}
           aria-pressed={to_string(@choice == card.id)}
           data-suggested={to_string(@recommendation.suggested == card.id)}
-          class={[
-            "rounded-box border-2 p-3 text-left",
-            if(@choice == card.id, do: "border-primary bg-primary/10", else: "border-base-300")
-          ]}
+          class="h-auto min-h-11 w-full flex-col items-stretch gap-0.5 py-3 text-left font-normal normal-case"
         >
           <span class="flex items-center justify-between gap-2">
-            <span class="text-sm font-semibold">{card.title}</span>
-            <span :if={@recommendation.suggested == card.id} class="badge badge-sm badge-primary">
+            <span class="text-base font-semibold tracking-tight">{card.title}</span>
+            <span :if={@recommendation.suggested == card.id} class="badge badge-sm badge-neutral">
               Suggested
             </span>
             <span
@@ -85,16 +83,16 @@ defmodule TryggWeb.SleepApproachesComponents do
               Locked
             </span>
           </span>
-          <span class="block text-xs opacity-70">{card.tag}</span>
-          <span class="mt-1 block text-sm opacity-90">{card.text}</span>
-        </button>
+          <span class="block text-xs font-normal opacity-80">{card.tag}</span>
+          <span class="block text-sm font-normal">{card.text}</span>
+        </.button>
       </div>
 
       <p :if={@recommendation.suggested != :tools} id="approach-why" class="mt-3 text-sm">
         {@recommendation.why}
       </p>
 
-      <details :if={@recommendation.suggested != :tools} id="approach-reasons" class="mt-2">
+      <details :if={@recommendation.suggested != :tools} id="approach-reasons" class="fold mt-2">
         <summary class="cursor-pointer text-sm text-primary">How to choose</summary>
         <ul class="mt-2 list-disc space-y-1 pl-5 text-sm opacity-90">
           <li :for={reason <- @recommendation.reasons}>{reason}</li>
@@ -258,7 +256,7 @@ defmodule TryggWeb.SleepApproachesComponents do
       <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
         <li :for={sign <- @progress}>{sign}</li>
       </ul>
-      <details id="swap-stalls" class="mt-3">
+      <details id="swap-stalls" class="fold mt-3">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
           If it isn't after a week
         </summary>
@@ -266,7 +264,7 @@ defmodule TryggWeb.SleepApproachesComponents do
           <li :for={reason <- @stalls}>{reason}</li>
         </ul>
       </details>
-      <details id="swap-still-waking" class="mt-3">
+      <details id="swap-still-waking" class="fold mt-3">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
           Bedtime is fine but nights are still broken
         </summary>
@@ -507,7 +505,7 @@ defmodule TryggWeb.SleepApproachesComponents do
         Learning to fall asleep alone isn't night weaning. A baby who has been eating a lot at night
         will keep wanting to for a while. Feed by the rules, not by the loudest cry.
       </p>
-      <details class="mt-2">
+      <details class="fold mt-2">
         <summary class="cursor-pointer text-sm text-primary">The rules</summary>
         <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
           <li :for={rule <- @rules}>{rule}</li>
@@ -532,7 +530,7 @@ defmodule TryggWeb.SleepApproachesComponents do
         Independent sleep is learned twice: once at bedtime, and again for naps. Do bedtime first, then
         use the same plan for naps.
       </p>
-      <details id="nap-master-steps" class="mt-2">
+      <details id="nap-master-steps" class="fold mt-2">
         <summary class="cursor-pointer text-sm text-primary">The three steps</summary>
         <ol class="mt-2 space-y-2 text-sm">
           <li :for={{step, i} <- Enum.with_index(@steps, 1)}>

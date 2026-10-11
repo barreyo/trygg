@@ -57,7 +57,7 @@ defmodule TryggWeb.SleepPlanComponents do
   def phase_hero(assigns) do
     ~H"""
     <section id="sleep-hero" class="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 px-1">
-      <h2 id="sleep-hero-phase" class="text-lg font-bold leading-tight">
+      <h2 id="sleep-hero-phase" class="text-lg font-bold leading-tight tracking-tight">
         {@phase.label} · {week_label(@phase.week)}
       </h2>
       <p :if={@phase.next} id="sleep-hero-next" class="text-sm opacity-70">
@@ -118,7 +118,7 @@ defmodule TryggWeb.SleepPlanComponents do
           :if={@next_up}
           id="sleep-next-up"
           data-state={@next_up.state}
-          class="text-xl font-bold leading-tight"
+          class="text-xl font-bold leading-tight tracking-tight"
         >
           {next_up_text(@next_up, @tz)}
         </p>
@@ -345,7 +345,7 @@ defmodule TryggWeb.SleepPlanComponents do
         :if={@child}
         id="insights-more"
         navigate={"/c/#{@child.id}/sleep/playbooks"}
-        class="mt-3 inline-block text-sm text-primary underline"
+        class="mt-1 inline-flex min-h-11 items-center text-sm text-primary underline"
       >
         Naps, early mornings, travel and more
       </.link>
@@ -363,14 +363,14 @@ defmodule TryggWeb.SleepPlanComponents do
     assigns = assign(assigns, :book, book)
 
     ~H"""
-    <details :if={@book} id={@id || "try-#{@book.id}"} class="mt-1">
+    <details :if={@book} id={@id || "try-#{@book.id}"} class="fold mt-1">
       <summary class="cursor-pointer text-sm text-primary">What to try</summary>
       <p class="mt-1 text-sm">{@book.summary}</p>
       <ul class="mt-1 list-disc space-y-1 pl-5 text-sm opacity-90">
         <li :for={point <- @book.points}>{point}</li>
       </ul>
     </details>
-    <details :if={is_nil(@book) and @points != []} id={@id} class="mt-1">
+    <details :if={is_nil(@book) and @points != []} id={@id} class="fold mt-1">
       <summary class="cursor-pointer text-sm text-primary">What to try</summary>
       <ul class="mt-1 list-disc space-y-1 pl-5 text-sm opacity-90">
         <li :for={point <- @points}>{point}</li>
@@ -502,7 +502,7 @@ defmodule TryggWeb.SleepPlanComponents do
     ~H"""
     <div id={@id} class="rounded-field bg-base-100 px-1 py-2">
       <dt class="text-xs opacity-70 leading-tight">{@label}</dt>
-      <dd class="mt-0.5 text-xl font-bold tabular-nums whitespace-nowrap">{@value}</dd>
+      <dd class="mt-0.5 text-xl font-bold tracking-tight tabular-nums whitespace-nowrap">{@value}</dd>
     </div>
     """
   end
@@ -528,7 +528,7 @@ defmodule TryggWeb.SleepPlanComponents do
 
   defp guide_item(assigns) do
     ~H"""
-    <details id={@id} class="rounded-box border border-base-300 bg-base-100 p-3" {@rest}>
+    <details id={@id} class="fold rounded-box border border-base-300 bg-base-100 px-3 pb-3" {@rest}>
       <summary class="cursor-pointer text-sm font-semibold">{@title}</summary>
       <div class="mt-2">{render_slot(@inner_block)}</div>
     </details>
@@ -632,7 +632,7 @@ defmodule TryggWeb.SleepPlanComponents do
           <span>{line.label}</span>
           <span class="text-right tabular-nums">
             <span class="font-semibold">{compare_value(line)}</span>
-            <span class="text-xs opacity-60">typical {compare_range(line)}</span>
+            <span class="text-xs opacity-70">typical {compare_range(line)}</span>
             <span class={["badge badge-sm ml-1", verdict_badge(line.verdict)]}>
               {verdict_text(line.verdict)}
             </span>
@@ -641,7 +641,7 @@ defmodule TryggWeb.SleepPlanComponents do
       </ul>
 
       <%!-- With nothing of theirs to compare yet the table is the content; with numbers it folds. --%>
-      <details open={@guide.comparison == []}>
+      <details class="fold" open={@guide.comparison == []}>
         <summary class="cursor-pointer text-sm text-primary">The typical day</summary>
         <table id="age-guide-table" class="mt-2 w-full text-sm">
           <tbody>

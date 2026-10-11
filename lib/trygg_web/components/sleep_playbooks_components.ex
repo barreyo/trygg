@@ -33,7 +33,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
             :if={finding.playbook}
             href={"#playbook-#{finding.playbook}"}
             phx-click={JS.set_attribute({"open", ""}, to: "#playbook-#{finding.playbook}")}
-            class="text-sm text-primary underline"
+            class="inline-flex min-h-11 items-center text-sm text-primary underline"
           >
             See the playbook below
           </a>
@@ -70,7 +70,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <p :if={@naps.place} id="nap-place">
           <.icon
             name={if @naps.place.ok?, do: "hero-check-circle", else: "hero-minus-circle"}
-            class={"mr-1 size-4 align-text-bottom " <> if(@naps.place.ok?, do: "text-success", else: "opacity-50")}
+            class={"mr-1 size-4 align-text-bottom " <> if(@naps.place.ok?, do: "text-success", else: "opacity-70")}
           />
           {round(@naps.place.share * 100)}% of the last {@naps.place.count} naps were in the same place ({@naps.place.where}).
           The aim is about 80%.
@@ -81,7 +81,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <p id="nap-catnaps">
           <.icon
             name={if @naps.catnaps.ok?, do: "hero-check-circle", else: "hero-minus-circle"}
-            class={"mr-1 size-4 align-text-bottom " <> if(@naps.catnaps.ok?, do: "text-success", else: "opacity-50")}
+            class={"mr-1 size-4 align-text-bottom " <> if(@naps.catnaps.ok?, do: "text-success", else: "opacity-70")}
           />
           {catnap_text(@naps.catnaps)}
         </p>
@@ -92,7 +92,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
       </p>
 
       <div class="mt-3 space-y-2">
-        <details id="nap-conventions-wrap" class="rounded-box border border-base-300 p-3">
+        <details id="nap-conventions-wrap" class="fold rounded-box border border-base-300 px-3 pb-3">
           <summary class="cursor-pointer text-sm font-semibold">The four jobs</summary>
           <p class="mt-2 text-sm">
             You can't make them nap, but you can soothe, be consistent, get the timing right and, from
@@ -106,7 +106,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
           </ol>
         </details>
 
-        <details id="short-naps" class="rounded-box border border-base-300 p-3">
+        <details id="short-naps" class="fold rounded-box border border-base-300 px-3 pb-3">
           <summary class="cursor-pointer text-sm font-semibold">Short naps</summary>
           <ul id="short-nap-fixes" class="mt-2 space-y-1.5 text-sm">
             <li :for={fix <- @fixes}>
@@ -116,7 +116,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
           </ul>
         </details>
 
-        <details id="nap-drop-signs" class="rounded-box border border-base-300 p-3">
+        <details id="nap-drop-signs" class="fold rounded-box border border-base-300 px-3 pb-3">
           <summary class="cursor-pointer text-sm font-semibold">Dropping a nap</summary>
           <p class="mt-2 text-sm font-medium">Signs a nap is on its way out</p>
           <ul class="mt-1 list-disc space-y-1 pl-5 text-sm">
@@ -147,7 +147,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
 
   def shift_planner(assigns) do
     ~H"""
-    <details id="shift-planner" class={panel_class()} open={@open}>
+    <details id="shift-planner" class={["fold", panel_class()]} open={@open}>
       <summary class={[heading_class(), "cursor-pointer"]}>Move bedtime</summary>
       <p class="text-sm">
         15 minutes a day, a little at a time. Leave the wake time alone if they're getting enough sleep;
@@ -191,7 +191,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
 
   def dst_planner(assigns) do
     ~H"""
-    <details id="dst-planner" class={panel_class()} open={@open}>
+    <details id="dst-planner" class={["fold", panel_class()]} open={@open}>
       <summary class={[heading_class(), "cursor-pointer"]}>Clock change</summary>
       <.form for={@form} id="dst-form" phx-change="dst_change" class="mt-2">
         <div class="grid grid-cols-2 gap-3">
@@ -242,7 +242,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
 
   def travel_planner(assigns) do
     ~H"""
-    <details id="travel-planner" class={panel_class()} open={@open}>
+    <details id="travel-planner" class={["fold", panel_class()]} open={@open}>
       <summary class={[heading_class(), "cursor-pointer"]}>Travel</summary>
       <.form for={@form} id="travel-form" phx-change="travel_change" class="mt-2">
         <div class="grid grid-cols-3 gap-3">
@@ -290,7 +290,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <details
           :for={book <- @playbooks}
           id={"playbook-#{book.id}"}
-          class="rounded-box border border-base-300 p-3"
+          class="fold rounded-box border border-base-300 px-3 pb-3"
         >
           <summary class="cursor-pointer text-sm font-semibold">{book.title}</summary>
           <p class="mt-2 text-sm">{book.summary}</p>
@@ -317,7 +317,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <details
           :for={item <- @items}
           id={"medical-#{item.id}"}
-          class="rounded-box border border-base-300 p-3"
+          class="fold rounded-box border border-base-300 px-3 pb-3"
         >
           <summary class="cursor-pointer text-sm font-semibold">{item.title}</summary>
           <ul class="mt-2 list-disc space-y-1 pl-5 text-sm opacity-90">

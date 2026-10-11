@@ -57,7 +57,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         variant={if @current == :playbooks, do: "primary"}
         aria-current={@current == :playbooks && "page"}
       >
-        Help
+        Fixes
       </.button>
       <.button
         id="subnav-night"
@@ -121,7 +121,7 @@ defmodule TryggWeb.SleepToolkitComponents do
           </p>
         <% end %>
 
-        <details id="assist-scale" class="mt-3 text-sm">
+        <details id="assist-scale" class="fold mt-3 text-sm">
           <summary class="cursor-pointer font-medium text-primary">
             The scale, from most to least help
           </summary>
@@ -227,7 +227,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         (100–120 minutes before bed).
       </p>
 
-      <details :if={@guide_day} id="guide-day" class="mt-4">
+      <details :if={@guide_day} id="guide-day" class="fold mt-4">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
           A day by the guide ({@table.label})
         </summary>
@@ -358,7 +358,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         Feeding more at night is only a problem if it's a problem for you.
       </p>
 
-      <details id="night-feed-rules" class="mt-3">
+      <details id="night-feed-rules" class="fold mt-3">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
           Which night wakings get a feed
         </summary>
@@ -390,7 +390,7 @@ defmodule TryggWeb.SleepToolkitComponents do
     ~H"""
     <.icon
       name={if @ok, do: "hero-check-circle", else: "hero-minus-circle"}
-      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-50")}
+      class={"mt-0.5 size-5 shrink-0 " <> if(@ok, do: "text-success", else: "opacity-70")}
     />
     """
   end
@@ -547,7 +547,7 @@ defmodule TryggWeb.SleepToolkitComponents do
           :for={tool <- @tools}
           id={"tool-#{tool.id}"}
           data-state={tool.state}
-          class="rounded-box border border-base-300 p-3"
+          class="rounded-box border border-base-300 px-3 pb-3"
         >
           <div class="flex items-center justify-between gap-2">
             <h3 class="text-sm font-semibold">{tool.name}</h3>
@@ -556,7 +556,7 @@ defmodule TryggWeb.SleepToolkitComponents do
           <p :if={tool.state in [:stop, :consider]} class="mt-1 text-sm font-medium">
             {tool.headline}
           </p>
-          <details class="mt-1">
+          <details class="fold mt-1">
             <summary class="cursor-pointer text-xs text-primary">
               {if tool.state in [:stop, :consider], do: "How", else: "What to do"}
             </summary>
@@ -623,7 +623,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         >
         </div>
       </div>
-      <details id="safe-sleep-list">
+      <details class="fold" id="safe-sleep-list">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
           Run through the list
         </summary>
@@ -636,7 +636,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         </ul>
       </details>
 
-      <details id="cosleeping" class="mt-3">
+      <details id="cosleeping" class="fold mt-3">
         <summary class="cursor-pointer text-sm font-semibold text-primary">
           If you share a bed
         </summary>
@@ -661,7 +661,7 @@ defmodule TryggWeb.SleepToolkitComponents do
     <section id="toolkit-checklists" class={panel_class()}>
       <h2 class={heading_class()}>Checklists</h2>
 
-      <details id="success">
+      <details class="fold" id="success">
         <summary class="cursor-pointer text-sm font-semibold">
           Success checklist
           <span id="success-count" class="font-normal opacity-70">
@@ -673,7 +673,7 @@ defmodule TryggWeb.SleepToolkitComponents do
         </ul>
       </details>
 
-      <details id="troubleshooting" class="mt-3">
+      <details id="troubleshooting" class="fold mt-3">
         <summary class="cursor-pointer text-sm font-semibold">
           Troubleshooting: when nights are hard
         </summary>
@@ -695,7 +695,7 @@ defmodule TryggWeb.SleepToolkitComponents do
       <%= if @item.auto? or not @can_write do %>
         <.icon
           name={if @item.checked?, do: "hero-check-circle-solid", else: "hero-minus-circle"}
-          class={"mt-0.5 size-5 shrink-0 " <> if(@item.checked?, do: "text-success", else: "opacity-40")}
+          class={"mt-0.5 size-5 shrink-0 " <> if(@item.checked?, do: "text-success", else: "opacity-70")}
         />
       <% else %>
         <button
@@ -705,11 +705,11 @@ defmodule TryggWeb.SleepToolkitComponents do
           role="checkbox"
           aria-checked={to_string(@item.checked?)}
           aria-label={@item.text}
-          class="mt-0.5 shrink-0"
+          class="-m-3 shrink-0 touch-manipulation p-3"
         >
           <.icon
             name={if @item.checked?, do: "hero-check-circle-solid", else: "hero-stop"}
-            class={"size-5 " <> if(@item.checked?, do: "text-success", else: "opacity-50")}
+            class={"size-5 " <> if(@item.checked?, do: "text-success", else: "opacity-70")}
           />
         </button>
       <% end %>
