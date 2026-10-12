@@ -102,9 +102,13 @@ defmodule TryggWeb.SkeletonComponents do
     <div class="divide-y divide-base-300">
       <div :for={i <- 1..@count} class="py-3 flex items-center gap-3">
         <.bone class="size-9 rounded-full shrink-0" />
-        <div class="flex-1 min-w-0 space-y-1.5">
-          <.bone class={["h-4 rounded", row_width(i)]} />
-          <.bone class="h-3 w-1/4 rounded" />
+        <div class="flex-1 min-w-0">
+          <div class="flex h-5 items-center">
+            <.bone class={["h-4 rounded", row_width(i)]} />
+          </div>
+          <div class="mt-0.5 flex h-[17.5px] items-center">
+            <.bone class="h-3 w-1/4 rounded" />
+          </div>
         </div>
         <div class="shrink-0 flex flex-col items-end gap-1.5">
           <.bone class={["h-4 rounded", if(@show_date, do: "w-24", else: "w-12")]} />
@@ -140,34 +144,62 @@ defmodule TryggWeb.SkeletonComponents do
   attr :class, :any, default: nil
   attr :action, :boolean, default: false, doc: "include the row of log buttons"
 
+  attr :type, :atom,
+    default: :sleep,
+    values: [:feeding, :diaper, :sleep, :breastfeeding],
+    doc: "diaper logs with three buttons side by side; the rest have a single full-width one"
+
   def glance_card_skeleton(assigns) do
     ~H"""
-    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-3", @class]}>
+    <div
+      class={["rounded-[var(--radius-card)] border-2 border-transparent bg-base-200/70 p-3", @class]}
+      data-skeleton-card={@type}
+    >
       <div class="flex items-center gap-3">
-        <.bone class="size-14 shrink-0 rounded-full" />
+        <.bone class="size-14 [@media(max-width:24rem)]:size-12 shrink-0 rounded-full" />
+        <%!-- Line boxes sized to the real label / value / sub lines (20, 33 and
+             22px), with the bones centered in them. --%>
         <div class="min-w-0 flex-1">
-          <.bone class="my-[3px] h-3.5 w-1/4 rounded" />
-          <.bone class="my-[3px] h-[1.9rem] w-3/5 rounded" />
-          <.bone class="my-[3px] h-4 w-4/5 rounded" />
+          <div class="flex h-5 items-center"><.bone class="h-3.5 w-1/4 rounded" /></div>
+          <div class="flex h-[2.0625rem] items-center"><.bone class="h-7 w-3/5 rounded" /></div>
+          <div class="flex h-[1.375rem] items-center"><.bone class="h-4 w-4/5 rounded" /></div>
         </div>
       </div>
       <div class="mt-1.5 flex items-center gap-3">
-        <.bone class="h-7 w-32 rounded-full" />
+        <.bone :if={@type != :breastfeeding} class="h-7 w-32 rounded-full" />
         <.bone class="h-3.5 w-24 rounded" />
       </div>
-      <.bone :if={@action} class="mt-2 h-12 w-full rounded-field" />
+      <div :if={@action && @type == :diaper} class="mt-2 grid grid-cols-3 gap-2">
+        <.bone :for={_ <- 1..3} class="h-11 rounded-field" />
+      </div>
+      <.bone :if={@action && @type != :diaper} class="mt-2 h-11 w-full rounded-field" />
     </div>
     """
   end
 
-  @doc "Home: the at-a-glance cards, each with its log buttons."
+  @doc """
+  Home: one ghost card per tracked type (in the child's order), then the
+  "Log from earlier / Customize" row that follows the cards for caregivers.
+  """
   attr :can_write, :boolean, default: true
+
+  attr :types, :list,
+    default: [:feeding, :diaper, :sleep],
+    doc: "the child's `tracked_types`, so the ghost count and card shapes match"
 
   def home_status_skeleton(assigns) do
     ~H"""
     <section class="space-y-3">
-      <.glance_card_skeleton :for={_ <- 1..3} action={@can_write} />
+      <.glance_card_skeleton :for={type <- @types} type={type} action={@can_write} />
     </section>
+    <div
+      :if={@can_write}
+      id="home-skeleton-footer"
+      class="mt-3 flex items-center justify-center gap-1"
+    >
+      <.bone class="h-10 w-36 rounded-field" />
+      <.bone class="h-10 w-28 rounded-field" />
+    </div>
     """
   end
 

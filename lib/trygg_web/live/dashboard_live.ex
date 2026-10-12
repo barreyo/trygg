@@ -1137,7 +1137,12 @@ defmodule TryggWeb.DashboardLive do
       <Layouts.columns id="home-columns">
         <:left>
           <.loadable id="home-status" loaded={@loaded?} failed={@load_failed?}>
-            <:skeleton><.home_status_skeleton can_write={@can_write} /></:skeleton>
+            <:skeleton>
+              <.home_status_skeleton
+                can_write={@can_write}
+                types={@current_child.tracked_types}
+              />
+            </:skeleton>
             <%!-- Typical-day dial: the child's rhythm at a glance, with the next
                actionable moment (or a running timer) called out in the middle.
                Hidden for now — not needed yet. --%>
