@@ -102,9 +102,13 @@ defmodule TryggWeb.SkeletonComponents do
     <div class="divide-y divide-base-300">
       <div :for={i <- 1..@count} class="py-3 flex items-center gap-3">
         <.bone class="size-9 rounded-full shrink-0" />
-        <div class="flex-1 min-w-0 space-y-1.5">
-          <.bone class={["h-4 rounded", row_width(i)]} />
-          <.bone class="h-3 w-1/4 rounded" />
+        <div class="flex-1 min-w-0">
+          <div class="flex h-5 items-center">
+            <.bone class={["h-4 rounded", row_width(i)]} />
+          </div>
+          <div class="mt-0.5 flex h-[17.5px] items-center">
+            <.bone class="h-3 w-1/4 rounded" />
+          </div>
         </div>
         <div class="shrink-0 flex flex-col items-end gap-1.5">
           <.bone class={["h-4 rounded", if(@show_date, do: "w-24", else: "w-12")]} />
@@ -148,25 +152,27 @@ defmodule TryggWeb.SkeletonComponents do
   def glance_card_skeleton(assigns) do
     ~H"""
     <div
-      class={["rounded-[var(--radius-card)] bg-base-200/70 p-3", @class]}
+      class={["rounded-[var(--radius-card)] border-2 border-transparent bg-base-200/70 p-3", @class]}
       data-skeleton-card={@type}
     >
       <div class="flex items-center gap-3">
-        <.bone class="size-14 shrink-0 rounded-full" />
+        <.bone class="size-14 [@media(max-width:24rem)]:size-12 shrink-0 rounded-full" />
+        <%!-- Line boxes sized to the real label / value / sub lines (20, 33 and
+             22px), with the bones centered in them. --%>
         <div class="min-w-0 flex-1">
-          <.bone class="my-[3px] h-3.5 w-1/4 rounded" />
-          <.bone class="my-[3px] h-[1.9rem] w-3/5 rounded" />
-          <.bone class="my-[3px] h-4 w-4/5 rounded" />
+          <div class="flex h-5 items-center"><.bone class="h-3.5 w-1/4 rounded" /></div>
+          <div class="flex h-[2.0625rem] items-center"><.bone class="h-7 w-3/5 rounded" /></div>
+          <div class="flex h-[1.375rem] items-center"><.bone class="h-4 w-4/5 rounded" /></div>
         </div>
       </div>
       <div class="mt-1.5 flex items-center gap-3">
-        <.bone class="h-7 w-32 rounded-full" />
+        <.bone :if={@type != :breastfeeding} class="h-7 w-32 rounded-full" />
         <.bone class="h-3.5 w-24 rounded" />
       </div>
       <div :if={@action && @type == :diaper} class="mt-2 grid grid-cols-3 gap-2">
-        <.bone :for={_ <- 1..3} class="h-12 rounded-field" />
+        <.bone :for={_ <- 1..3} class="h-11 rounded-field" />
       </div>
-      <.bone :if={@action && @type != :diaper} class="mt-2 h-12 w-full rounded-field" />
+      <.bone :if={@action && @type != :diaper} class="mt-2 h-11 w-full rounded-field" />
     </div>
     """
   end
@@ -191,8 +197,8 @@ defmodule TryggWeb.SkeletonComponents do
       id="home-skeleton-footer"
       class="mt-3 flex items-center justify-center gap-1"
     >
-      <.bone class="h-8 w-36 rounded-field" />
-      <.bone class="h-8 w-28 rounded-field" />
+      <.bone class="h-10 w-36 rounded-field" />
+      <.bone class="h-10 w-28 rounded-field" />
     </div>
     """
   end
