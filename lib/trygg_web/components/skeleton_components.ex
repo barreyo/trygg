@@ -140,9 +140,17 @@ defmodule TryggWeb.SkeletonComponents do
   attr :class, :any, default: nil
   attr :action, :boolean, default: false, doc: "include the row of log buttons"
 
+  attr :type, :atom,
+    default: :sleep,
+    values: [:feeding, :diaper, :sleep, :breastfeeding],
+    doc: "diaper logs with three buttons side by side; the rest have a single full-width one"
+
   def glance_card_skeleton(assigns) do
     ~H"""
-    <div class={["rounded-[var(--radius-card)] bg-base-200/70 p-3", @class]}>
+    <div
+      class={["rounded-[var(--radius-card)] bg-base-200/70 p-3", @class]}
+      data-skeleton-card={@type}
+    >
       <div class="flex items-center gap-3">
         <.bone class="size-14 shrink-0 rounded-full" />
         <div class="min-w-0 flex-1">
@@ -155,19 +163,37 @@ defmodule TryggWeb.SkeletonComponents do
         <.bone class="h-7 w-32 rounded-full" />
         <.bone class="h-3.5 w-24 rounded" />
       </div>
-      <.bone :if={@action} class="mt-2 h-12 w-full rounded-field" />
+      <div :if={@action && @type == :diaper} class="mt-2 grid grid-cols-3 gap-2">
+        <.bone :for={_ <- 1..3} class="h-12 rounded-field" />
+      </div>
+      <.bone :if={@action && @type != :diaper} class="mt-2 h-12 w-full rounded-field" />
     </div>
     """
   end
 
-  @doc "Home: the at-a-glance cards, each with its log buttons."
+  @doc """
+  Home: one ghost card per tracked type (in the child's order), then the
+  "Log from earlier / Customize" row that follows the cards for caregivers.
+  """
   attr :can_write, :boolean, default: true
+
+  attr :types, :list,
+    default: [:feeding, :diaper, :sleep],
+    doc: "the child's `tracked_types`, so the ghost count and card shapes match"
 
   def home_status_skeleton(assigns) do
     ~H"""
     <section class="space-y-3">
-      <.glance_card_skeleton :for={_ <- 1..3} action={@can_write} />
+      <.glance_card_skeleton :for={type <- @types} type={type} action={@can_write} />
     </section>
+    <div
+      :if={@can_write}
+      id="home-skeleton-footer"
+      class="mt-3 flex items-center justify-center gap-1"
+    >
+      <.bone class="h-8 w-36 rounded-field" />
+      <.bone class="h-8 w-28 rounded-field" />
+    </div>
     """
   end
 
