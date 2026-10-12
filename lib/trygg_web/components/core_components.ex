@@ -61,7 +61,8 @@ defmodule TryggWeb.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      phx-click={JS.push("lv:clear-flash", value: %{key: @kind})}
+      phx-remove={flash_exit(@id)}
       phx-hook={@dismiss_after && "AutoDismiss"}
       data-dismiss-after={@dismiss_after}
       role="alert"
@@ -97,6 +98,20 @@ defmodule TryggWeb.CoreComponents do
       </div>
     </div>
     """
+  end
+
+  # The exit plays on the inner card, not on the `.toast` wrapper: daisyUI centres
+  # the wrapper with the `translate` property, and a Tailwind `translate-y-*`
+  # class replaces it, so the whole toast would jump sideways mid-exit. It runs
+  # from `phx-remove`, which keeps the element in the DOM until it's done, so
+  # tapping, the timer and a server-side clear all leave the same way.
+  defp flash_exit(id) do
+    JS.transition(
+      {"transition-all ease-in duration-200", "opacity-100 translate-y-0 scale-100",
+       "opacity-0 translate-y-3 scale-95"},
+      to: "##{id} > .flash-pop",
+      time: 200
+    )
   end
 
   @doc """
