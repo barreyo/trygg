@@ -275,27 +275,6 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
   end
 
-  # Backs every quick time chip in the "Log from earlier" sheets (sleep,
-  # bottle, diaper) — `field` is whichever datetime-local input the chip row
-  # sits above, so one handler covers all of them consistently.
-  def handle_event("nudge_time", %{"field" => field, "by" => by}, socket) do
-    at = DateTime.add(now(), String.to_integer(by) * 60, :second)
-    local = Child.to_local_input(socket.assigns.current_child, at)
-
-    params =
-      socket
-      |> current_sheet_params()
-      |> Map.put(field, local)
-
-    {:noreply,
-     assign(socket, :sheet_form, to_form(params, as: sheet_form_as(socket.assigns.sheet)))}
-  end
-
-  def handle_event("set_note", %{"text" => text}, socket) do
-    params = Map.put(current_sheet_params(socket), "note", text)
-    {:noreply, assign(socket, :sheet_form, to_form(params, as: :sleep))}
-  end
-
   def handle_event("save_sleep", %{"sleep" => params}, socket) do
     {:noreply, save_sleep(socket, socket.assigns.sheet, params)}
   end
@@ -324,25 +303,6 @@ defmodule TryggWeb.DashboardLive do
 
     {:noreply,
      assign(socket, sheet: :layout, sheet_form: layout_form(layout_order(types), types))}
-  end
-
-  # Ticking a tracker keeps the form in step with the page, so the move
-  # buttons (which carry no form data) act on what's currently shown.
-  def handle_event("layout_change", %{"layout" => params}, socket) do
-    order = layout_order(List.wrap(params["order"]))
-    {:noreply, assign(socket, :sheet_form, layout_form(order, checked_types(params)))}
-  end
-
-  def handle_event("move_layout", %{"type" => type, "dir" => dir}, socket) do
-    %{"order" => order, "tracked_types" => checked} = socket.assigns.sheet_form.params
-    {:noreply, assign(socket, :sheet_form, layout_form(move_type(order, type, dir), checked))}
-  end
-
-  # A drag in the Customize sheet drops with the whole new order (see the
-  # `LayoutReorder` hook); the up/down buttons stay for everyone who can't drag.
-  def handle_event("set_layout_order", %{"order" => order}, socket) when is_list(order) do
-    %{"tracked_types" => checked} = socket.assigns.sheet_form.params
-    {:noreply, assign(socket, :sheet_form, layout_form(layout_order(order), checked))}
   end
 
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
@@ -517,19 +477,6 @@ defmodule TryggWeb.DashboardLive do
     scope = socket.assigns.current_scope
     {entry, socket} = UndoDelete.take(socket)
     {:noreply, UndoDelete.restore(socket, entry, &Log.restore_entry(scope, &1))}
-  end
-
-  def handle_event("bump_amount", %{"by" => by}, socket) do
-    step = parse_number(by) || 0
-    current = parse_number(current_sheet_params(socket)["amount"]) || 0
-    new_amount = trim(max(current + step, 0) * 1.0)
-    params = Map.put(current_sheet_params(socket), "amount", new_amount)
-    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
-  end
-
-  def handle_event("reset_amount", _params, socket) do
-    params = Map.put(current_sheet_params(socket), "amount", trim(0.0))
-    {:noreply, assign(socket, :sheet_form, to_form(params, as: :entry))}
   end
 
   def handle_event("save_sheet", %{"entry" => params}, socket) do
@@ -978,12 +925,6 @@ defmodule TryggWeb.DashboardLive do
     |> stream(:entries, entries, reset: true)
   end
 
-  defp current_sheet_params(%{assigns: %{sheet_form: %{params: params}}}) when is_map(params),
-    do: params
-
-  defp current_sheet_params(_socket), do: %{}
-
-  # The sleep sheets submit as `sleep` params, everything else as `entry`.
   # Someone else rearranged Home while this device has the Customize sheet open:
   # show the arrangement that is now live, so saving can't quietly undo it.
   defp resync_layout_sheet(%{assigns: %{sheet: :layout}} = socket, previous, current)
@@ -1008,28 +949,11 @@ defmodule TryggWeb.DashboardLive do
   defp checked_types(params),
     do: params["tracked_types"] |> List.wrap() |> Enum.reject(&(&1 == ""))
 
-  defp move_type(order, type, dir) do
-    case Enum.find_index(order, &(&1 == type)) do
-      nil -> order
-      i -> swap(order, i, if(dir == "up", do: i - 1, else: i + 1))
-    end
-  end
-
-  defp swap(order, i, j) when i < 0 or j < 0 or j >= length(order), do: order
-
-  defp swap(order, i, j) do
-    order |> List.replace_at(i, Enum.at(order, j)) |> List.replace_at(j, Enum.at(order, i))
-  end
-
   defp tracker_label(name),
     do:
       Enum.find_value(Child.tracker_options(), fn {type, label} ->
         to_string(type) == name && label
       end)
-
-  defp sheet_form_as(sheet) when sheet in [:sleep_stop, :sleep_start, :sleep_past], do: :sleep
-  defp sheet_form_as(:breastfeeding_stop), do: :breastfeeding
-  defp sheet_form_as(_sheet), do: :entry
 
   # Accessible name of each sheet — the same words as its on-screen heading.
   defp sheet_label(:earlier), do: "Log from earlier"
@@ -1360,6 +1284,7 @@ defmodule TryggWeb.DashboardLive do
         photo_upload={@uploads.photo}
         vitamin_d_prompt?={vitamin_d_prompt?(@current_child, @summary)}
         tracked_types={@current_child.tracked_types}
+        timezone={@current_child.timezone}
       />
 
       <.edit_modal
@@ -1602,9 +1527,13 @@ defmodule TryggWeb.DashboardLive do
   attr :photo_upload, :any, required: true
   attr :vitamin_d_prompt?, :boolean, default: false
   attr :tracked_types, :list, default: [:feeding, :diaper, :sleep]
+  attr :timezone, :string, required: true
 
   defp sheet(assigns) do
-    assigns = assign(assigns, :unit, Units.unit_label(:volume, assigns.unit_system))
+    assigns =
+      assigns
+      |> assign(:unit, Units.unit_label(:volume, assigns.unit_system))
+      |> assign(:controls, sheet_controls(assigns.timezone))
 
     ~H"""
     <.sheet_frame id="quick-sheet" close="close_sheet" label={sheet_label(@kind)} modal_back>
@@ -1658,7 +1587,12 @@ defmodule TryggWeb.DashboardLive do
             </.button>
           </div>
           <div class="pt-4">
-            <.button type="button" variant="ghost" class="w-full" phx-click="close_sheet">
+            <.button
+              type="button"
+              variant="ghost"
+              class="w-full"
+              phx-click={close_sheet("close_sheet", "quick-sheet")}
+            >
               Cancel
             </.button>
           </div>
@@ -1672,7 +1606,6 @@ defmodule TryggWeb.DashboardLive do
             for={@form}
             id="layout-form"
             phx-hook="LayoutReorder"
-            phx-change="layout_change"
             phx-submit="save_layout"
             class="space-y-2"
           >
@@ -1711,9 +1644,7 @@ defmodule TryggWeb.DashboardLive do
                 variant="ghost"
                 size="sm"
                 class="btn-circle"
-                phx-click="move_layout"
-                phx-value-type={type}
-                phx-value-dir="up"
+                data-move="up"
                 disabled={i == 0}
                 aria-label={"Move #{tracker_label(type)} up"}
               >
@@ -1725,9 +1656,7 @@ defmodule TryggWeb.DashboardLive do
                 variant="ghost"
                 size="sm"
                 class="btn-circle"
-                phx-click="move_layout"
-                phx-value-type={type}
-                phx-value-dir="down"
+                data-move="down"
                 disabled={i == length(order) - 1}
                 aria-label={"Move #{tracker_label(type)} down"}
               >
@@ -1752,6 +1681,7 @@ defmodule TryggWeb.DashboardLive do
             phx-change="sheet_change"
             phx-submit="save_sheet"
             class="space-y-4"
+            {@controls}
           >
             <div>
               <div class="flex items-center justify-center gap-4">
@@ -1759,8 +1689,7 @@ defmodule TryggWeb.DashboardLive do
                   type="button"
                   variant="outline"
                   class="btn-circle"
-                  phx-click="bump_amount"
-                  phx-value-by={-fine_step(@unit_system)}
+                  data-bump={-fine_step(@unit_system)}
                   aria-label={"Decrease by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
                 >
                   <.icon name="hero-minus" class="size-4" />
@@ -1774,6 +1703,7 @@ defmodule TryggWeb.DashboardLive do
                     min="0"
                     name="entry[amount]"
                     id="bottle-amount"
+                    data-client-owned
                     value={@form.params["amount"]}
                     aria-label={"Amount in #{@unit}"}
                     class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1785,8 +1715,7 @@ defmodule TryggWeb.DashboardLive do
                   type="button"
                   variant="outline"
                   class="btn-circle"
-                  phx-click="bump_amount"
-                  phx-value-by={fine_step(@unit_system)}
+                  data-bump={fine_step(@unit_system)}
                   aria-label={"Increase by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
                 >
                   <.icon name="hero-plus" class="size-4" />
@@ -1799,8 +1728,7 @@ defmodule TryggWeb.DashboardLive do
                   type="button"
                   variant="outline"
                   size="sm"
-                  phx-click="bump_amount"
-                  phx-value-by={step}
+                  data-bump={step}
                 >
                   +{step}
                 </.button>
@@ -1809,7 +1737,7 @@ defmodule TryggWeb.DashboardLive do
                   variant="ghost"
                   size="sm"
                   id="bottle-reset"
-                  phx-click="reset_amount"
+                  data-amount-reset
                 >
                   Reset
                 </.button>
@@ -1840,6 +1768,7 @@ defmodule TryggWeb.DashboardLive do
             <input
               type="text"
               name="entry[note]"
+              data-client-owned
               value={@form.params["note"]}
               placeholder="Note (optional)"
               aria-label="Note"
@@ -1858,6 +1787,7 @@ defmodule TryggWeb.DashboardLive do
             phx-change="sheet_change"
             phx-submit="save_sleep"
             class="space-y-4"
+            {@controls}
           >
             <.input field={@form[:ended_at]} type="datetime-local" label="Woke up at" />
             <.note_field form={@form} />
@@ -1878,6 +1808,7 @@ defmodule TryggWeb.DashboardLive do
             phx-change="sheet_change"
             phx-submit="save_sleep"
             class="space-y-4"
+            {@controls}
           >
             <.time_field form={@form} field={:started_at} label="Fell asleep" />
             <.time_field form={@form} field={:ended_at} label="Woke up" />
@@ -1893,6 +1824,7 @@ defmodule TryggWeb.DashboardLive do
             phx-change="sheet_change"
             phx-submit="save_breastfeeding"
             class="space-y-4"
+            {@controls}
           >
             <.input field={@form[:ended_at]} type="datetime-local" label="Finished at" />
             <.breastfeeding_pattern_fieldset form={@form} name="breastfeeding" />
@@ -1911,6 +1843,7 @@ defmodule TryggWeb.DashboardLive do
             phx-change="sheet_change"
             phx-submit="save_diaper"
             class="space-y-4"
+            {@controls}
           >
             <div class="join w-full">
               <input
@@ -1949,8 +1882,7 @@ defmodule TryggWeb.DashboardLive do
           type="button"
           variant="outline"
           size="sm"
-          phx-click="set_note"
-          phx-value-text={n}
+          data-note-text={n}
         >
           {n}
         </.button>
@@ -1960,6 +1892,7 @@ defmodule TryggWeb.DashboardLive do
         type="text"
         label="Note"
         placeholder="Anything to remember? (optional)"
+        data-client-owned
       />
     </div>
     """
@@ -1981,14 +1914,13 @@ defmodule TryggWeb.DashboardLive do
           type="button"
           variant="outline"
           size="sm"
-          phx-click="nudge_time"
-          phx-value-field={@field}
-          phx-value-by={mins}
+          data-nudge-field={@field}
+          data-nudge-by={mins}
         >
           {label}
         </.button>
       </div>
-      <.input field={@form[@field]} type="datetime-local" label={@label} />
+      <.input field={@form[@field]} type="datetime-local" label={@label} data-client-owned />
     </div>
     """
   end
@@ -2000,12 +1932,25 @@ defmodule TryggWeb.DashboardLive do
     ~H"""
     <div class="flex gap-2 pt-1">
       <.save_button label={@save} uploading?={@uploading?} class="flex-1" />
-      <.button type="button" variant="ghost" phx-click="close_sheet">Cancel</.button>
+      <.button type="button" variant="ghost" phx-click={close_sheet("close_sheet", "quick-sheet")}>
+        Cancel
+      </.button>
     </div>
     """
   end
 
   ## Presentation helpers ----------------------------------------------
+
+  # What `SheetControls` (assets/js/hooks/sheet_controls.js) needs to run the
+  # sheet's chips and steppers without the server: the child's time zone and the
+  # server's clock, so "now" is the instant the server will check against.
+  defp sheet_controls(timezone) do
+    [
+      "phx-hook": "SheetControls",
+      "data-timezone": timezone,
+      "data-server-now": DateTime.to_unix(DateTime.utc_now(), :millisecond)
+    ]
+  end
 
   defp nudge_minutes, do: @nudge_minutes
   defp note_suggestions, do: @note_suggestions

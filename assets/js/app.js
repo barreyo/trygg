@@ -33,6 +33,7 @@ import PushNotifications from "./hooks/push_notifications"
 import PushPrompt from "./hooks/push_prompt"
 import ModalBack from "./hooks/modal_back"
 import SheetDrag from "./hooks/sheet_drag"
+import SheetControls from "./hooks/sheet_controls"
 import AutoDismiss from "./hooks/auto_dismiss"
 import LayoutReorder from "./hooks/layout_reorder"
 import PullToRefresh from "./hooks/pull_to_refresh"
@@ -57,6 +58,12 @@ const liveSocket = new LiveSocket("/live", Socket, {
     // re-renders around it: a form change, a tick, a realtime update.
     onBeforeElUpdated(from, to) {
       if (from.tagName === "DETAILS" && from.classList.contains("fold")) to.open = from.open
+      // An input the `SheetControls` hook edits locally (bottle amount, time,
+      // note) keeps what the user sees: a render answering an earlier change
+      // event carries the value from back then and would undo newer taps.
+      if (from.tagName === "INPUT" && from.hasAttribute("data-client-owned")) {
+        to.setAttribute("value", from.value)
+      }
     },
   },
   hooks: {
@@ -70,6 +77,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PushPrompt,
     ModalBack,
     SheetDrag,
+    SheetControls,
     AutoDismiss,
     LayoutReorder,
     PullToRefresh,

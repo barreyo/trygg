@@ -412,7 +412,7 @@ defmodule TryggWeb.CoreComponents do
       role="dialog"
       aria-modal="true"
       aria-label={@label}
-      phx-window-keydown={@close}
+      phx-window-keydown={close_sheet(@close, @id)}
       phx-key="escape"
       phx-hook={@modal_back && "ModalBack"}
       data-close-event={@close}
@@ -421,7 +421,7 @@ defmodule TryggWeb.CoreComponents do
       <div
         id={"#{@id}-backdrop"}
         class="sheet-backdrop absolute inset-0 bg-black/60"
-        phx-click={@close}
+        phx-click={close_sheet(@close, @id)}
       >
       </div>
       <div
@@ -442,6 +442,26 @@ defmodule TryggWeb.CoreComponents do
       </div>
     </div>
     """
+  end
+
+  @doc """
+  Closes sheet `id`: the panel drops away right now and `event` tells the
+  server to drop it for good, so closing never waits on the connection. For
+  anything that dismisses a sheet (Cancel, the backdrop, Escape).
+  """
+  def close_sheet(event, id) do
+    event
+    |> JS.push()
+    |> JS.hide(
+      to: "##{id}-panel",
+      transition: {"transition-all ease-in duration-200", "translate-y-0", "translate-y-full"},
+      time: 200
+    )
+    |> JS.hide(
+      to: "##{id}-backdrop",
+      transition: {"transition-opacity ease-in duration-200", "opacity-100", "opacity-0"},
+      time: 200
+    )
   end
 
   # The way out when the server removes a sheet: the panel drops away and the

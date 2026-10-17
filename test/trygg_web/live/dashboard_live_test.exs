@@ -7,18 +7,6 @@ defmodule TryggWeb.DashboardLiveTest do
 
   alias Trygg.{Families, Log}
 
-  # A "-N minute" quick-time chip bakes `now() - N*60` into the form at click
-  # time, then round-trips through a minute-granularity datetime-local input.
-  # `before`/`after_` must bracket the click itself (captured immediately
-  # around the `render_click` call) — asserting only what that ordering
-  # guarantees keeps this immune to CI scheduler jitter, however long the
-  # click itself takes to actually run.
-  defp assert_nudged_to(before, after_, entry_time, offset_seconds) do
-    assert DateTime.diff(after_, entry_time, :second) >= offset_seconds
-    assert DateTime.diff(after_, entry_time, :second) < offset_seconds + 300
-    assert DateTime.diff(before, entry_time, :second) < offset_seconds + 60
-  end
-
   describe "auth boundary" do
     test "GET / redirects anonymous users to log in", %{conn: conn} do
       assert {:error, {:redirect, %{to: "/users/log-in"}}} = live_loaded(conn, ~p"/")
@@ -275,9 +263,8 @@ defmodule TryggWeb.DashboardLiveTest do
       assert render(lv) =~ "Poo diaper"
     end
 
-    test "the quick time chip back-dates a past diaper", %{
+    test "the past diaper sheet has quick time chips that run without the server", %{
       conn: conn,
-      scope: scope,
       child: child
     } do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
@@ -285,18 +272,12 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="diaper_past"])) |> render_click()
 
-      before_click = DateTime.utc_now()
+      assert has_element?(lv, ~s(#diaper-form[phx-hook="SheetControls"][data-timezone]))
 
-      lv
-      |> element(~s(button[phx-value-field="started_at"][phx-value-by="-15"]))
-      |> render_click()
-
-      after_click = DateTime.utc_now()
-
-      lv |> form("#diaper-form", entry: %{kind: "pee", note: ""}) |> render_submit()
-
-      assert [%{type: :diaper} = entry] = Log.list_entries(scope, child)
-      assert_nudged_to(before_click, after_click, entry.started_at, 900)
+      assert has_element?(
+               lv,
+               ~s|#diaper-form button[data-nudge-field="started_at"][data-nudge-by="-15"]:not([phx-click])|
+             )
     end
 
     test "a future diaper time is rejected", %{conn: conn, scope: scope, child: child} do
@@ -327,9 +308,10 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
-      lv |> element(~s(button[phx-value-by="30"])) |> render_click()
-      lv |> form("#bottle-form", entry: %{bottle_contents: "formula"}) |> render_submit()
+
+      lv
+      |> form("#bottle-form", entry: %{amount: "90", bottle_contents: "formula"})
+      |> render_submit()
 
       assert [
                %{type: :feeding, data: %{"amount_ml" => 90.0, "bottle_contents" => "formula"}} =
@@ -359,33 +341,26 @@ defmodule TryggWeb.DashboardLiveTest do
                Log.list_entries(scope, child)
     end
 
-    test "the fine +/- steps nudge the bottle amount by a small increment", %{
+    test "the bottle steppers and presets adjust the amount without the server", %{
       conn: conn,
-      scope: scope,
       child: child
     } do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="5"])) |> render_click()
-      lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="5"])) |> render_click()
 
-      assert has_element?(lv, "input#bottle-amount[value='10']")
-
-      lv |> element(~s(button[phx-click="bump_amount"][phx-value-by="-5"])) |> render_click()
-
-      assert has_element?(lv, "input#bottle-amount[value='5']")
-
-      lv |> form("#bottle-form", entry: %{bottle_contents: "formula"}) |> render_submit()
-
-      assert [%{data: %{"amount_ml" => 5.0}}] = Log.list_entries(scope, child)
+      assert has_element?(lv, ~s(#bottle-form[phx-hook="SheetControls"]))
+      assert has_element?(lv, ~s|#bottle-form button[data-bump="5"]:not([phx-click])|)
+      assert has_element?(lv, ~s|#bottle-form button[data-bump="-5"]:not([phx-click])|)
+      assert has_element?(lv, ~s|#bottle-form button[data-bump="60"]:not([phx-click])|)
+      assert has_element?(lv, "#bottle-reset[data-amount-reset]:not([phx-click])")
+      assert has_element?(lv, "input#bottle-amount[data-client-owned]")
     end
 
     test "a bottle can be back-dated through the sheet", %{conn: conn, scope: scope, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
 
       earlier =
         DateTime.utc_now()
@@ -407,7 +382,6 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
 
       later =
         DateTime.utc_now()
@@ -578,9 +552,8 @@ defmodule TryggWeb.DashboardLiveTest do
       assert Log.running_timers(scope, child) == []
     end
 
-    test "the quick time chips back-date a past sleep's start and end", %{
+    test "the past sleep sheet has quick time chips for start and end", %{
       conn: conn,
-      scope: scope,
       child: child
     } do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
@@ -588,29 +561,14 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("button", "Log from earlier") |> render_click()
       lv |> element(~s(button[phx-value-kind="sleep_past"])) |> render_click()
 
-      before_start = DateTime.utc_now()
+      assert has_element?(lv, ~s(#sleep-form[phx-hook="SheetControls"][data-timezone]))
 
-      lv
-      |> element(~s(button[phx-value-field="started_at"][phx-value-by="-30"]))
-      |> render_click()
-
-      after_start = DateTime.utc_now()
-      before_end = DateTime.utc_now()
-
-      lv
-      |> element(~s(button[phx-value-field="ended_at"][phx-value-by="-5"]))
-      |> render_click()
-
-      after_end = DateTime.utc_now()
-
-      lv |> form("#sleep-form", sleep: %{note: "quick chips"}) |> render_submit()
-
-      assert [%{type: :sleep, ended_at: %DateTime{}, note: "quick chips"} = nap] =
-               Log.list_entries(scope, child)
-
-      assert_nudged_to(before_start, after_start, nap.started_at, 1800)
-      assert_nudged_to(before_end, after_end, nap.ended_at, 300)
-      assert DateTime.diff(nap.ended_at, nap.started_at, :second) in 1450..1550
+      for {field, by} <- [{"started_at", "-30"}, {"ended_at", "-5"}] do
+        assert has_element?(
+                 lv,
+                 ~s|#sleep-form button[data-nudge-field="#{field}"][data-nudge-by="#{by}"]:not([phx-click])|
+               )
+      end
     end
 
     test "a past sleep with the end before the start is rejected", %{conn: conn, child: child} do
@@ -763,7 +721,6 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
       lv |> form("#bottle-form", entry: %{bottle_contents: "formula"}) |> render_submit()
 
       assert_push_event(lv, "log-splash", %{kind: "bottle"})
@@ -791,7 +748,6 @@ defmodule TryggWeb.DashboardLiveTest do
         |> Calendar.strftime("%Y-%m-%dT%H:%M")
 
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
 
       html =
         lv
@@ -856,7 +812,6 @@ defmodule TryggWeb.DashboardLiveTest do
 
     defp open_bottle_sheet(lv) do
       lv |> element("button", "Log a bottle") |> render_click()
-      lv |> element(~s(button[phx-value-by="60"])) |> render_click()
     end
 
     test "can be logged with a bottle and shows on the feed", %{
@@ -1013,12 +968,14 @@ defmodule TryggWeb.DashboardLiveTest do
       assert [%{data: %{"amount_ml" => 90.0}}] = Log.list_entries(scope, child)
     end
 
-    test "reset zeros a fractional ounce amount in the bottle sheet", %{
+    test "the bottle sheet starts from the last amount and offers a local reset", %{
       conn: conn,
       scope: scope,
       child: child
     } do
-      # 74 ml displays as 2.5 oz. Reset used to trunc(-amount), leaving 0.5.
+      # 74 ml displays as 2.5 oz. Resetting happens in the browser
+      # (assets/js/hooks/sheet_controls.js), so here we only check the seed and
+      # that the button is wired for it.
       Trygg.LogFixtures.entry_fixture(scope, child, %{
         :type => :feeding,
         "data" => %{"bottle_contents" => "formula", "amount_ml" => 74}
@@ -1028,11 +985,7 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("button", "Log a bottle") |> render_click()
 
       assert has_element?(lv, "input#bottle-amount[value='2.5']")
-
-      lv |> element("#bottle-reset") |> render_click()
-
-      assert has_element?(lv, "input#bottle-amount[value='0']")
-      refute has_element?(lv, "input#bottle-amount[value='0.5']")
+      assert has_element?(lv, "#bottle-reset[data-amount-reset]:not([phx-click])")
     end
   end
 
@@ -1177,16 +1130,23 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#layout-up-feeding[disabled]")
       assert has_element?(lv, "#layout-down-breastfeeding[disabled]")
 
-      lv |> element("#layout-down-feeding") |> render_click()
-      lv |> element("#layout-up-sleep") |> render_click()
-      lv |> form("#layout-form") |> render_submit()
+      # Moving a row happens in the browser (LayoutReorder); the form then
+      # submits the rows in their new order.
+      assert has_element?(lv, "#layout-down-feeding[data-move=down]:not([phx-click])")
+      assert has_element?(lv, "#layout-up-sleep[data-move=up]:not([phx-click])")
+
+      lv
+      |> form("#layout-form",
+        layout: %{order: ["diaper", "sleep", "feeding", "breastfeeding"]}
+      )
+      |> render_submit()
 
       assert Families.get_child!(scope, child.id).tracked_types == [:diaper, :sleep, :feeding]
       assert card_order(lv) == ["glance-diaper", "glance-sleep", "glance-feed"]
       assert card_order(owner_lv) == ["glance-diaper", "glance-sleep", "glance-feed"]
     end
 
-    test "dropping a dragged row sets the whole order and keeps the ticks", %{
+    test "the submitted row order becomes the whole order and keeps the ticks", %{
       conn: conn,
       scope: scope,
       child: child
@@ -1194,15 +1154,14 @@ defmodule TryggWeb.DashboardLiveTest do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       lv |> element("#customize-home") |> render_click()
 
-      render_hook(lv, "set_layout_order", %{"order" => ["sleep", "feeding", "diaper", "bogus"]})
-
-      assert has_element?(lv, "#layout-up-sleep[disabled]")
-      lv |> form("#layout-form") |> render_submit()
+      lv
+      |> form("#layout-form", layout: %{order: ["sleep", "feeding", "diaper", "breastfeeding"]})
+      |> render_submit()
 
       assert Families.get_child!(scope, child.id).tracked_types == [:sleep, :feeding, :diaper]
     end
 
-    test "moving a tracker keeps the other ticks as they were", %{
+    test "reordering and unticking in one go saves both", %{
       conn: conn,
       scope: scope,
       child: child
@@ -1212,13 +1171,13 @@ defmodule TryggWeb.DashboardLiveTest do
       lv |> element("#customize-home") |> render_click()
 
       lv
-      |> form("#layout-form", layout: %{tracked_types: ["", "feeding", "sleep"]})
-      |> render_change()
-
-      lv |> element("#layout-down-feeding") |> render_click()
-      refute has_element?(lv, "#layout-diaper[checked]")
-
-      lv |> form("#layout-form") |> render_submit()
+      |> form("#layout-form",
+        layout: %{
+          tracked_types: ["", "feeding", "sleep"],
+          order: ["diaper", "feeding", "sleep", "breastfeeding"]
+        }
+      )
+      |> render_submit()
 
       assert Families.get_child!(scope, child.id).tracked_types == [:feeding, :sleep]
     end
