@@ -1,22 +1,24 @@
 // Reordering in the "Customize Home" sheet.
 //
 // Lives on the sheet's form. Rows are `[data-reorder-row]` (their ids are
-// stable), each with a `[data-drag-handle]`; the up/down buttons stay as the
-// accessible way to do the same thing.
+// stable), each with a `[data-drag-handle]`; the up/down buttons
+// (`[data-move="up|down"]`) stay as the accessible way to do the same thing.
+//
+// The order is edited right here in the DOM and the server only hears about it
+// when the form is submitted (the `layout[order][]` hidden inputs are read in
+// DOM order), so nothing waits on the connection.
 //
 //  * Rows glide to their new place whenever the order changes, whatever
 //    changed it (a drop, a button, or someone else rearranging Home): the hook
-//    records where every row is before a patch and springs each from there to
-//    where it landed (FLIP).
+//    records where every row is before the change and springs each from there
+//    to where it landed (FLIP).
 //  * Dragging a handle lifts the row: it follows the finger 1:1, the rows it
 //    passes slide out of its way, and on release it springs into its slot with
-//    the finger's velocity. Then the new order is pushed as `set_layout_order`.
-//    Because the rows are already sitting where the new order puts them, the
-//    patch that follows changes nothing visible.
+//    the finger's velocity. Then the row is moved to that slot in the DOM.
+//    Because the rows are already sitting where the new order puts them, that
+//    changes nothing visible.
 
 import {spring, VelocityTracker} from "../spring"
-
-const FAILSAFE_MS = 900 // if the server never answers, put every row back
 
 const LayoutReorder = {
   mounted() {
@@ -36,7 +38,6 @@ const LayoutReorder = {
       const gap = rects.length > 1 ? rects[1].top - rects[0].bottom : 0
 
       this.stopAnims()
-      clearTimeout(this.failsafe)
       this.drag = {
         row,
         rows,
@@ -101,6 +102,16 @@ const LayoutReorder = {
       )
     }
 
+    this.onClick = (e) => {
+      const btn = e.target.closest && e.target.closest("[data-move]")
+      if (!btn || btn.disabled || this.drag) return
+      const row = btn.closest("[data-reorder-row]")
+      const next = btn.dataset.move === "up" ? row.previousElementSibling : row.nextElementSibling
+      if (!row || !next || !next.matches("[data-reorder-row]")) return
+      this.flip(() => (btn.dataset.move === "up" ? next.before(row) : next.after(row)))
+    }
+
+    this.el.addEventListener("click", this.onClick)
     this.el.addEventListener("pointerdown", this.onDown)
     this.el.addEventListener("pointermove", this.onMove)
     this.el.addEventListener("pointerup", this.onUp)
@@ -108,11 +119,11 @@ const LayoutReorder = {
   },
 
   destroyed() {
+    this.el.removeEventListener("click", this.onClick)
     this.el.removeEventListener("pointerdown", this.onDown)
     this.el.removeEventListener("pointermove", this.onMove)
     this.el.removeEventListener("pointerup", this.onUp)
     this.el.removeEventListener("pointercancel", this.onUp)
-    clearTimeout(this.failsafe)
     this.stopAnims()
   },
 
@@ -144,22 +155,39 @@ const LayoutReorder = {
     })
   },
 
-  // The row is in its slot: hand the new order to the server. Everything stays
-  // where it is until the patch lands (and is cleared if it never does).
+  // The row is in its slot: make that the order. Everything already sits where
+  // the new order puts it, so clearing the offsets after the move shows no jump.
   drop(d) {
     this.anims.delete(d.row)
     this.drag = null
     d.row.classList.remove("shadow-lg")
 
-    if (d.to === d.from) {
-      this.resetRows(d.rows)
-      return
+    if (d.to !== d.from) {
+      const anchor = d.rows[d.to]
+      if (d.to > d.from) anchor.after(d.row)
+      else anchor.before(d.row)
     }
+    this.resetRows(d.rows)
+    this.syncButtons()
+  },
 
-    const order = d.rows.map((r) => r.id.replace(/^layout-row-/, ""))
-    order.splice(d.to, 0, order.splice(d.from, 1)[0])
-    this.failsafe = setTimeout(() => this.resetRows(d.rows), FAILSAFE_MS)
-    this.pushEvent("set_layout_order", {order})
+  // The first row can't go up, the last can't go down.
+  syncButtons() {
+    const rows = this.rows()
+    rows.forEach((row, i) => {
+      const up = row.querySelector('[data-move="up"]')
+      const down = row.querySelector('[data-move="down"]')
+      if (up) up.disabled = i === 0
+      if (down) down.disabled = i === rows.length - 1
+    })
+  },
+
+  // Run `mutate` (which reorders rows) and glide every row from where it was.
+  flip(mutate) {
+    const before = new Map(this.rows().map((r) => [r.id, r.getBoundingClientRect().top]))
+    mutate()
+    this.syncButtons()
+    this.glide(before)
   },
 
   resetRows(rows) {
@@ -178,12 +206,15 @@ const LayoutReorder = {
 
   // ... then spring each one from there to where it landed.
   updated() {
-    clearTimeout(this.failsafe)
     const before = this.before
     this.before = null
     if (!before || this.drag) return
+    this.glide(before)
+  },
 
-    // Measure against the natural layout, whatever inline styles survived the patch.
+  // Spring every row from its old top (`before`, by id) to where it is now.
+  glide(before) {
+    // Measure against the natural layout, whatever inline styles survived.
     const rows = this.rows()
     for (const row of rows) {
       row.style.transform = ""

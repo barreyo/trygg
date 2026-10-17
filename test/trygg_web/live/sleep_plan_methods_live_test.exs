@@ -8,9 +8,8 @@ defmodule TryggWeb.SleepPlanMethodsLiveTest do
   alias Trygg.Families
   alias Trygg.Sleep.{Abcs, NightWakes, Phase, Plans, Slip, Swap}
 
-  defp child_aged(scope, days),
-    do:
-      child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -days), timezone: "Etc/UTC"})
+  defp child_aged(scope, days, timezone \\ "Etc/UTC"),
+    do: child_fixture(scope, %{birth_date: Date.add(Date.utc_today(), -days), timezone: timezone})
 
   defp tick(scope, child, ids) do
     checks = Map.new(ids, &{&1, Date.to_iso8601(Date.utc_today())})
@@ -247,9 +246,11 @@ defmodule TryggWeb.SleepPlanMethodsLiveTest do
 
   describe "running a SLIP" do
     setup %{scope: scope} do
+      # A midday zone, so these don't depend on the hour they run at: before
+      # midday the small hours still count as last night, so "Night 1" wouldn't show.
       child =
         scope
-        |> child_aged(150)
+        |> child_aged(150, Trygg.LogFixtures.midday_timezone())
         |> then(&clear(scope, &1))
         |> then(&tick(scope, &1, Slip.preflight_ids()))
 

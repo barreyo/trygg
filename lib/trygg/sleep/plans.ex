@@ -160,6 +160,9 @@ defmodule Trygg.Sleep.Plans do
     child = child_for(plan)
     Families.authorize!(scope, child, :caregiver)
 
+    # `child_for/1` is only an id; the end date needs the child's own time zone.
+    child = Repo.get!(Child, plan.child_id)
+
     with {:ok, updated} <-
            plan
            |> Plan.changeset(%{status: status, ended_on: Child.local_today(child)})
