@@ -68,6 +68,9 @@ defmodule TryggWeb.Router do
     post "/children/:child_id/entries/:id/stop", EntryController, :stop
     delete "/children/:child_id/entries/:id", EntryController, :delete
 
+    get "/devices", DeviceController, :index
+    post "/devices/:hardware_id/readings", DeviceController, :create
+
     get "/firmware/button", FirmwareController, :show
     get "/firmware/button/image", FirmwareController, :image
   end
@@ -155,6 +158,7 @@ defmodule TryggWeb.Router do
       live "/c/:id/vitals", VitalsLive, :index
       live "/c/:id/reports", ReportsLive, :index
       live "/c/:id/caregivers", CaregiverLive, :index
+      live "/c/:id/devices", DevicesLive, :index
 
       live "/invites/:token", InviteLive, :show
       live "/preferences", PreferencesLive, :edit

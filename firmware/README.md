@@ -9,30 +9,53 @@ Feedback: the moment a button is let go the whole screen turns green for 4 secon
 emoji, "PEE logged" and the local time, and plays a little rising chime. Buttons are ignored
 while it's up, so a fumbled double tap can't log twice.
 
-## Battery: WiFi is off until there's something to send
+## Network: WiFi stays connected
 
-The press is only *queued* at that moment; delivery happens in the background (a sync task on
-the other CPU core, so the buttons never wait on the network):
+The button is meant to run from USB/mains power, so the radio is always on (no modem sleep) and
+the device stays joined to WiFi. A press is *queued* at that moment and delivered in the
+background (a sync task on the other CPU core, so the buttons never wait on the network):
 
 1. A press puts `{child, kind, time, client_id}` on a queue and wakes the sync task.
-2. The task switches WiFi on, joins (rejoining the last access point directly, which skips
-   the channel scan), makes sure the clock is set, and POSTs the queue oldest first.
-3. Presses made while it's running join the same WiFi session: the task re-checks the queue
-   before it lets go. Otherwise a later press simply starts a new cycle.
-4. WiFi goes off again and the device waits for the next press.
+2. The task POSTs the queue oldest first. Presses made while it's running join the same
+   run: the task re-checks the queue before it finishes.
+3. If the link has dropped, the task first gives the stack's auto-reconnect a few seconds to
+   restore it, then joins afresh.
 
-Entries are stamped with when the button was pressed, not when they were delivered. The
-clock keeps running with WiFi off and is re-synced over NTP on every join. Each press has its
+Entries are stamped with when the button was pressed, not when they were delivered. The clock is
+set over NTP after the first join and kept in step by the SNTP client. Each press has its
 own `client_id`, so a retry after a lost response can never log the same change twice.
 
 If the network or server is out of reach the entries stay queued (up to 20, in RAM) and the
-banner reads "N waiting to send"; the retry interval doubles from 15 s up to 5 min, and the
+banner reads "N waiting to send"; the retry interval doubles from 5 s up to 1 min, and the
 next press retries at once. An entry the server rejects outright (`Bad token`, `Token is
 read-only`, `Child not found`…) is dropped and the banner says why, with a low beep. A press
 before the first successful connection after boot is refused ("Not connected yet"), since
 there's no child to log it for yet.
 
 A power cut or reset loses whatever is still queued.
+
+## Room sensor (ENV Pro)
+
+Plug an [ENV Pro unit](https://docs.m5stack.com/en/unit/Unit_ENV-Pro) (U169, a BME688 at I2C address
+`0x77`) into **Port A** (the red HY2.0 connector, GPIO21/22). Nothing needs configuring: the button looks
+for it at boot and every minute after that, so it can be plugged in later. Once found it takes a sample
+every 30 s (a forced-mode measurement that doesn't block the buttons) and posts it with the same token as
+the diaper entries:
+
+```
+POST /api/v1/devices/<this board's WiFi MAC>/readings
+{"model": "env_pro", "temperature_c": 21.4, "humidity_pct": 46, "pressure_hpa": 1012, "gas_ohms": 91000}
+```
+
+The first reading **registers the board as a device** in the family, unnamed. Open the app's menu →
+**Devices** (`/c/:id/devices`), where it appears live; give it a name ("Nursery") and every later sample
+shows up on that card the moment it arrives (PubSub, no refresh). Samples are kept for 30 days. Only the
+latest sample is retried when the network is down; there is no backlog.
+
+`gas_ohms` is the sensor's raw gas resistance (it drops when VOCs rise), shown as a trend, not an air
+quality index: the IAQ score needs Bosch's BSEC library, whose licence forbids shipping a compiled
+binary, and this firmware is published over the air. The temperature reads a little high if the ENV Pro
+sits right against the button; give it some cable.
 
 ## Night mode
 
@@ -99,11 +122,11 @@ make fw-release         # build (without credentials), write priv/firmware/butto
 git add priv/firmware && git commit   # then deploy Trygg as usual
 ```
 
-WiFi is off until there's something to send, so the update check rides on the sync task
-(see "Battery" above): on the first sync after boot, then at most every 6 hours, the task joins
-WiFi, sets the clock (the HTTPS download needs it), delivers any queued presses, and then asks
-`GET /api/v1/firmware/button` (with the token) whether a newer build exists. Nothing else wakes
-the radio for it, and it only checks when nobody has pressed a button for a minute. If the server's
+The update check rides on the sync task (see "Network" above): on the first sync after boot,
+then at most every 6 hours, the task makes sure WiFi is up and the clock is set (the HTTPS
+download needs it), delivers any queued presses, and then asks `GET /api/v1/firmware/button`
+(with the token) whether a newer build exists. It only checks when nobody has pressed a button
+for a minute. If the server's
 `version` is newer than the running build, the task downloads `/api/v1/firmware/button/image` while
 the banner shows "Updating NN%" (presses in the meantime are queued as usual), verifies the MD5,
 and the device restarts into the new image once the queue is empty and the buttons are idle, since
@@ -125,8 +148,7 @@ keeps running; a failed check is retried after 15 minutes.
 
 ## Notes
 
-- The children (names, new child) are refreshed on a sync when they're over an hour old; the
-  device never wakes WiFi just for that.
+- The children (names, new child) are re-fetched when they're over an hour old.
 - The first build downloads the ESP32 toolchain (~1 GB, cached in `~/.platformio`).
   `make` creates the Python venv in `firmware/.venv` on demand.
 - Icons are rendered from the macOS emoji font into `src/icons.h` (`make fw-icons`);

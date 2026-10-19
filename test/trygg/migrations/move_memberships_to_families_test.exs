@@ -16,6 +16,9 @@ defmodule Trygg.Migrations.MoveMembershipsToFamiliesTest do
 
   # The inverse of the migration's structural changes, on empty tables.
   defp rewind_to_legacy_schema! do
+    # Later tables that reference families.
+    sql!("DROP TABLE device_readings")
+    sql!("DROP TABLE devices")
     sql!("DROP TABLE api_tokens")
 
     for {table, index, new_index} <- [

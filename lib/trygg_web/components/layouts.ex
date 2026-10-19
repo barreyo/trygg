@@ -46,7 +46,7 @@ defmodule TryggWeb.Layouts do
 
   attr :child_switch_to, :atom,
     default: :home,
-    values: [:home, :sleep, :log, :vitals, :reports, :caregivers],
+    values: [:home, :sleep, :log, :vitals, :reports, :caregivers, :devices],
     doc: "which child page a switch should land on"
 
   attr :title, :string, default: nil, doc: "heading shown in the top bar"
@@ -661,6 +661,7 @@ defmodule TryggWeb.Layouts do
   defp child_path(child, :vitals), do: ~p"/c/#{child}/vitals"
   defp child_path(child, :reports), do: ~p"/c/#{child}/reports"
   defp child_path(child, :caregivers), do: ~p"/c/#{child}/caregivers"
+  defp child_path(child, :devices), do: ~p"/c/#{child}/devices"
   defp child_path(child, _), do: ~p"/c/#{child}"
 
   defp child_initial(%{name: name}) when is_binary(name) do
@@ -698,6 +699,11 @@ defmodule TryggWeb.Layouts do
           <li>
             <.link id="app-menu-sharing" navigate={~p"/c/#{@current_child}/caregivers"}>
               <.icon name="hero-user-group" class="size-4" /> Sharing
+            </.link>
+          </li>
+          <li>
+            <.link id="app-menu-devices" navigate={~p"/c/#{@current_child}/devices"}>
+              <.icon name="hero-cpu-chip" class="size-4" /> Devices
             </.link>
           </li>
         <% end %>
