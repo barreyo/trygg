@@ -47,7 +47,8 @@ defmodule TryggWeb.DeviceLiveTest do
 
     for id <- ~w(temperature humidity pressure air) do
       assert has_element?(lv, "#device-chart-#{id}-plot svg polyline")
-      assert has_element?(lv, "#device-chart-#{id}-readout")
+      assert has_element?(lv, "#device-chart-#{id}-readout", "Avg")
+      assert has_element?(lv, "#device-chart-#{id}-avg-line")
     end
 
     # Embedded for the scrubbing hook: [x, y, when, value] per point.
