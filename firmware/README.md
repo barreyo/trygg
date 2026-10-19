@@ -61,12 +61,25 @@ quality index: the IAQ score needs Bosch's BSEC library, whose licence forbids s
 binary, and this firmware is published over the air. The temperature reads a little high if the ENV Pro
 sits right against the button; give it some cable.
 
-## Night mode
+## Motion sensor and screen brightness (Unit PIR)
 
-From 8 PM to 8 AM (local time, per `TIMEZONE`) the screen is dimmed to a low backlight so it
-doesn't light up the room, including the green "logged" screen; it comes back at 8 AM. Until the
-clock has synced after boot the brightness is left at the daytime level. The hours and levels are
-constants at the top of `src/main.cpp`.
+Plug a [Unit PIR](https://docs.m5stack.com/en/unit/pir) (U004) into **Port B** (the black HY2.0
+connector; the unit's signal is on G36). The screen is lit only while something is near, and for 30 s
+after the last motion or button press:
+
+| | nobody near | someone near / just pressed |
+|---|---|---|
+| Day (8 AM to 8 PM) | dim | bright |
+| Night (8 PM to 8 AM) | backlight **off** | low |
+
+At night the buttons still work with the screen off, and a press also wakes the screen. Local time
+follows `TIMEZONE`; until the clock has synced after boot it counts as daytime. Without a PIR plugged in
+the pin floats low, so the screen just idles dim by day (and off at night, apart from presses). The
+levels, hours and wake time are constants at the top of `src/main.cpp`.
+
+A PIR senses motion, not distance: "near" is set with the sensitivity trimmer on the back of the unit
+(turn it down until only something within about 2 ft sets it off). The other trimmer is how long its
+output stays high after motion.
 
 ## Switching children
 
