@@ -23,6 +23,16 @@ defmodule TryggWeb.Api.DeviceJSON do
   defp reading(nil), do: nil
 
   defp reading(%Reading{} = reading) do
-    Map.take(reading, [:measured_at, :temperature_c, :humidity_pct, :pressure_hpa, :gas_ohms])
+    Map.take(reading, [
+      :measured_at,
+      :temperature_c,
+      :humidity_pct,
+      :pressure_hpa,
+      :gas_ohms,
+      :iaq,
+      :iaq_accuracy,
+      :co2_ppm,
+      :voc_ppm
+    ])
   end
 end

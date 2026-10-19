@@ -54,6 +54,88 @@ defmodule TryggWeb.DeviceLiveTest do
     assert render(lv) =~ "21.5 °C"
   end
 
+  describe "air quality" do
+    test "a unit without BSEC doesn't get its graphs or notes", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/c/#{ctx.child}/devices/#{ctx.device.id}")
+
+      refute has_element?(lv, "#device-chart-iaq")
+      refute has_element?(lv, "#device-chart-co2")
+      refute has_element?(lv, "#device-air-calibrating")
+      refute has_element?(lv, "#device-air-alert")
+    end
+
+    test "a unit running BSEC graphs the index and CO₂ equivalent, and says while it is learning",
+         ctx do
+      {:ok, _} =
+        Devices.record_reading(
+          ctx.scope,
+          ctx.child.family_id,
+          "AA:BB",
+          Map.merge(@sample, %{
+            "iaq" => 62.0,
+            "iaq_accuracy" => 2,
+            "co2_ppm" => 640.0
+          })
+        )
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/c/#{ctx.child}/devices/#{ctx.device.id}")
+
+      assert has_element?(
+               lv,
+               "#device-chart-iaq-plot svg polyline, #device-chart-iaq-plot svg circle"
+             )
+
+      assert has_element?(lv, "#device-chart-co2-readout")
+      assert has_element?(lv, "#device-air-calibrating")
+
+      {:ok, _} =
+        Devices.record_reading(
+          ctx.scope,
+          ctx.child.family_id,
+          "AA:BB",
+          Map.merge(@sample, %{"iaq" => 55.0, "iaq_accuracy" => 3})
+        )
+
+      refute has_element?(lv, "#device-air-calibrating")
+      assert has_element?(lv, "#today-device-#{ctx.device.id}-gas", "Good")
+    end
+
+    test "explains the alert when the air is below its usual level, even if the device isn't pinned",
+         ctx do
+      now = DateTime.utc_now()
+
+      rows =
+        for i <- 1..1_200 do
+          at = DateTime.add(now, -(20 + i * 4) * 60, :second)
+
+          %{
+            device_id: ctx.device.id,
+            measured_at: at,
+            gas_ohms: 100_000.0,
+            inserted_at: DateTime.truncate(at, :second)
+          }
+        end
+
+      rows
+      |> Enum.chunk_every(500)
+      |> Enum.each(&Trygg.Repo.insert_all(Trygg.Devices.Reading, &1))
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/c/#{ctx.child}/devices/#{ctx.device.id}")
+      refute has_element?(lv, "#device-air-alert")
+
+      for _ <- 1..3 do
+        {:ok, _} =
+          Devices.record_reading(ctx.scope, ctx.child.family_id, "AA:BB", %{
+            @sample
+            | "gas_ohms" => 50_000.0
+          })
+      end
+
+      assert has_element?(lv, "#device-air-alert", "50 % below usual")
+      assert has_element?(lv, "#device-air-alert", "100 kΩ")
+    end
+  end
+
   test "switching the range patches the page and keeps the current values", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/c/#{ctx.child}/devices/#{ctx.device.id}")
     assert has_element?(lv, "#device-range-24h[aria-current]")

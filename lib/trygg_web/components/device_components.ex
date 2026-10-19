@@ -51,6 +51,46 @@ defmodule TryggWeb.DeviceComponents do
   def format_gas(%{gas_ohms: g}) when is_number(g), do: "#{round(g / 1000)} kΩ"
   def format_gas(_reading), do: "—"
 
+  @doc """
+  How the air is, in a word. A device running BSEC reports an index (0 clean .. 500
+  bad) that starts out unreliable and is trusted once its accuracy reaches 1; until
+  then it is "Learning…". A device without one falls back to the raw gas resistance.
+  """
+  def format_air(%{iaq: iaq, iaq_accuracy: acc})
+      when is_number(iaq) and is_integer(acc) and acc >= 1,
+      do: iaq_label(iaq)
+
+  def format_air(%{iaq: iaq}) when is_number(iaq), do: "Learning…"
+  def format_air(reading), do: format_gas(reading)
+
+  @doc "The numbers behind `format_air/1`, for a tooltip; `nil` when the reading has no index."
+  def format_air_detail(%{iaq: iaq} = reading) when is_number(iaq) do
+    [
+      "IAQ #{round(iaq)}",
+      equivalent("CO₂", Map.get(reading, :co2_ppm)),
+      equivalent("VOC", Map.get(reading, :voc_ppm)),
+      accuracy_note(Map.get(reading, :iaq_accuracy))
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
+
+  def format_air_detail(_reading), do: nil
+
+  defp iaq_label(iaq) when iaq <= 50, do: "Excellent"
+  defp iaq_label(iaq) when iaq <= 100, do: "Good"
+  defp iaq_label(iaq) when iaq <= 150, do: "Fair"
+  defp iaq_label(iaq) when iaq <= 200, do: "Poor"
+  defp iaq_label(iaq) when iaq <= 250, do: "Bad"
+  defp iaq_label(_iaq), do: "Very bad"
+
+  defp equivalent(_name, nil), do: nil
+  defp equivalent(name, ppm) when ppm >= 10, do: "#{name} ≈ #{round(ppm)} ppm"
+  defp equivalent(name, ppm), do: "#{name} ≈ #{Float.round(ppm * 1.0, 1)} ppm"
+
+  defp accuracy_note(3), do: nil
+  defp accuracy_note(_), do: "still calibrating to this room"
+
   ## Mood -------------------------------------------------------------------
 
   # {emoji, call-out, tone}: how the room feels, for the bubble and the pill.
@@ -145,6 +185,15 @@ defmodule TryggWeb.DeviceComponents do
 
         <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span id={"today-device-#{@device.id}-status"} class="glance-pill">{@status}</span>
+          <span
+            :if={@device.air_alert}
+            id={"today-device-#{@device.id}-air-alert"}
+            class="glance-pill glance-pill-warning"
+            role="status"
+            title={air_alert_detail(@device.air_alert)}
+          >
+            🍃 Air is {@device.air_alert.percent_below} % below usual
+          </span>
         </div>
 
         <dl
@@ -158,8 +207,13 @@ defmodule TryggWeb.DeviceComponents do
           <.tile id={"today-device-#{@device.id}-pressure"} emoji="🎈" label="Pressure">
             {format_pressure(@device.latest)}
           </.tile>
-          <.tile id={"today-device-#{@device.id}-gas"} emoji="🍃" label="Air">
-            {format_gas(@device.latest)}
+          <.tile
+            id={"today-device-#{@device.id}-gas"}
+            emoji="🍃"
+            label="Air"
+            title={format_air_detail(@device.latest)}
+          >
+            {format_air(@device.latest)}
           </.tile>
         </dl>
       </div>
@@ -170,11 +224,12 @@ defmodule TryggWeb.DeviceComponents do
   attr :id, :string, required: true
   attr :emoji, :string, required: true
   attr :label, :string, required: true
+  attr :title, :string, default: nil
   slot :inner_block, required: true
 
   defp tile(assigns) do
     ~H"""
-    <div id={@id} class="device-tile">
+    <div id={@id} class="device-tile" title={@title}>
       <dt class="whitespace-nowrap text-xs font-semibold opacity-70">
         <span aria-hidden="true">{@emoji}</span> {@label}
       </dt>
@@ -184,6 +239,13 @@ defmodule TryggWeb.DeviceComponents do
     </div>
     """
   end
+
+  @doc "What the \"air is below usual\" alert compares, in a sentence."
+  def air_alert_detail(%{usual_ohms: usual, current_ohms: current}),
+    do:
+      "Gas resistance #{round(current / 1000)} kΩ now against a usual #{round(usual / 1000)} kΩ " <>
+        "(median of the last 7 days). A sustained drop means more airborne compounds than normal; " <>
+        "humidity and cooking move it too."
 
   defp updated(%Device{last_seen_at: nil}, _now), do: "No readings yet"
 

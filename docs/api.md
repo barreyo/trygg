@@ -63,11 +63,15 @@ token.
 ```sh
 curl -X POST "https://<host>/api/v1/devices/AA:BB:CC:DD:EE:FF/readings" \
   -H "Authorization: Bearer trygg_…" -H "Content-Type: application/json" \
-  -d '{"model": "env_pro", "temperature_c": 21.4, "humidity_pct": 46, "pressure_hpa": 1012, "gas_ohms": 91000}'
+  -d '{"model": "env_pro", "temperature_c": 21.4, "humidity_pct": 46, "pressure_hpa": 1012, "gas_ohms": 91000,
+       "iaq": 48, "iaq_accuracy": 3, "co2_ppm": 620, "voc_ppm": 0.6}'
 ```
 
 - Any of `temperature_c` (-40…85), `humidity_pct` (0…100), `pressure_hpa` (300…1100) and `gas_ohms`
-  (raw gas resistance); at least one is required, out-of-range values are `422`. `measured_at`
+  (raw gas resistance). A device running Bosch's BSEC also sends `iaq` (static indoor air quality,
+  0 clean … 500 bad), `iaq_accuracy` (0 still learning … 3 calibrated to the room), `co2_ppm` and
+  `voc_ppm` (CO2 and breath-VOC *equivalents*, estimated from the gas sensor). At least one is
+  required, out-of-range values are `422`. `measured_at`
   (ISO 8601) defaults to now; `model` is stored on the device.
 - Every reading is broadcast to open screens of the family, which update live. Readings older than
   30 days are deleted. Forgetting a device in the app deletes its readings; if it keeps reporting it

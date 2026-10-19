@@ -2,7 +2,7 @@ defmodule TryggWeb.DeviceChartComponents do
   @moduledoc """
   Line graphs of a sensor device's readings over time, for the device detail page.
 
-  `specs/1` lists the four measurements, `build/3` turns a `Trygg.Devices.history/3`
+  `specs/1` lists the measurements, `build/3` turns a `Trygg.Devices.history/3`
   result into the geometry for one of them, and `reading_chart/1` draws it. The SVG
   is rendered on the server (so it updates live with the readings); the
   `DeviceChart` hook only moves a crosshair and a readout across it, from the
@@ -25,6 +25,8 @@ defmodule TryggWeb.DeviceChartComponents do
   The measurements to graph, in display order. Each is `%{field, id, label, emoji,
   color, unit, decimals, convert}`: `field` is the reading's key, `convert` maps its
   stored value to the number shown (°C → °F, Ω → kΩ), and `color` is a CSS color.
+  A spec with a `needs` key (a reading field) is only graphed for a device that reports
+  it, see `shown?/2`.
   """
   def specs(unit_system) do
     {temp_unit, temp_convert} =
@@ -66,15 +68,44 @@ defmodule TryggWeb.DeviceChartComponents do
       %{
         field: :gas_ohms,
         id: "air",
-        label: "Air",
+        label: "Gas resistance",
         emoji: "🍃",
         color: "var(--color-success)",
         unit: "kΩ",
         decimals: 0,
         convert: &(&1 / 1000)
+      },
+      %{
+        field: :iaq,
+        id: "iaq",
+        needs: :iaq,
+        label: "Air quality index",
+        emoji: "🌬️",
+        color: "var(--color-warning)",
+        unit: "IAQ",
+        decimals: 0,
+        convert: & &1
+      },
+      %{
+        field: :co2_ppm,
+        id: "co2",
+        needs: :iaq,
+        label: "CO₂ equivalent",
+        emoji: "🫁",
+        color: "var(--color-secondary)",
+        unit: "ppm",
+        decimals: 0,
+        convert: & &1
       }
     ]
   end
+
+  @doc """
+  Whether a device's page graphs `spec`: always, unless it `needs` a field the device
+  has never reported (the air quality graphs mean nothing for a unit without BSEC).
+  """
+  def shown?(%{needs: field}, device), do: Map.get(device.latest || %{}, field) != nil
+  def shown?(_spec, _device), do: true
 
   ## Geometry -----------------------------------------------------------------
 

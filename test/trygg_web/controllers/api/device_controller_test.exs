@@ -48,6 +48,23 @@ defmodule TryggWeb.Api.DeviceControllerTest do
     assert [%{model: "env_pro", name: nil}] = Devices.list_devices(scope, child.family_id)
   end
 
+  test "air quality from BSEC is stored and listed", %{conn: conn, scope: scope, child: child} do
+    air = %{iaq: 48.5, iaq_accuracy: 2, co2_ppm: 620.0, voc_ppm: 0.6}
+
+    conn
+    |> bearer(scope, child, :caregiver)
+    |> reading("dev-1", Map.merge(@sample, air))
+    |> json_response(201)
+
+    assert %{"data" => [%{"latest" => latest}]} =
+             conn
+             |> bearer(scope, child, :viewer)
+             |> get(~p"/api/v1/devices")
+             |> json_response(200)
+
+    assert %{"iaq" => 48.5, "iaq_accuracy" => 2, "co2_ppm" => 620.0, "voc_ppm" => 0.6} = latest
+  end
+
   test "readings reach subscribers live", %{conn: conn, scope: scope, child: child} do
     Devices.subscribe(child.family_id)
     conn |> bearer(scope, child, :caregiver) |> reading("dev-1", @sample) |> json_response(201)

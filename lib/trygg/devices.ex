@@ -19,7 +19,7 @@ defmodule Trygg.Devices do
   import Ecto.Query, warn: false
 
   alias Trygg.Accounts.Scope
-  alias Trygg.Devices.{Device, Reading}
+  alias Trygg.Devices.{AirBaseline, Device, Reading}
   alias Trygg.Families
   alias Trygg.Repo
 
@@ -59,7 +59,7 @@ defmodule Trygg.Devices do
 
     devices = Repo.all(from d in Device, where: d.family_id == ^family_id, order_by: d.id)
     latest = latest_readings(Enum.map(devices, & &1.id))
-    Enum.map(devices, &%{&1 | latest: latest[&1.id]})
+    Enum.map(devices, &with_pinned_air_alert(%{&1 | latest: latest[&1.id]}))
   end
 
   defp latest_readings([]), do: %{}
@@ -78,7 +78,7 @@ defmodule Trygg.Devices do
   def get_device!(%Scope{} = scope, family_id, id) do
     Families.authorize_family!(scope, family_id, :viewer)
     device = Repo.get_by!(Device, id: id, family_id: family_id)
-    %{device | latest: latest_readings([device.id])[device.id]}
+    with_air_alert(%{device | latest: latest_readings([device.id])[device.id]})
   end
 
   @doc "The graphable windows as `{param, label, seconds}`, shortest first."
@@ -88,8 +88,10 @@ defmodule Trygg.Devices do
   The device's readings over the last `seconds`, thinned to about #{@history_points}
   points by averaging each time bucket. Returns `%{points: [point], bucket: seconds,
   from: DateTime, to: DateTime}`, oldest point first; a point is `%{at: DateTime,
-  temperature_c:, humidity_pct:, pressure_hpa:, gas_ohms:}` (a field is `nil` when
-  nothing in the bucket reported it). Any member can look.
+  temperature_c:, humidity_pct:, pressure_hpa:, gas_ohms:, iaq:, co2_ppm:, voc_ppm:}`
+  (a field is `nil` when nothing in the bucket reported it). The air quality fields
+  average only the readings BSEC had begun to trust (accuracy 1 or more), since its
+  first minutes are a placeholder value. Any member can look.
   """
   def history(%Scope{} = scope, %Device{} = device, seconds) when seconds > 0 do
     Families.authorize_family!(scope, device.family_id, :viewer)
@@ -117,7 +119,10 @@ defmodule Trygg.Devices do
           temperature_c: type(avg(r.temperature_c), :float),
           humidity_pct: type(avg(r.humidity_pct), :float),
           pressure_hpa: type(avg(r.pressure_hpa), :float),
-          gas_ohms: type(avg(r.gas_ohms), :float)
+          gas_ohms: type(avg(r.gas_ohms), :float),
+          iaq: type(filter(avg(r.iaq), r.iaq_accuracy >= 1), :float),
+          co2_ppm: type(filter(avg(r.co2_ppm), r.iaq_accuracy >= 1), :float),
+          voc_ppm: type(filter(avg(r.voc_ppm), r.iaq_accuracy >= 1), :float)
         }
       )
       |> Repo.all()
@@ -159,7 +164,7 @@ defmodule Trygg.Devices do
       {1, _} =
         Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: wanted])
 
-      updated = %{device | on_today: wanted, latest: latest[device.id]}
+      updated = with_pinned_air_alert(%{device | on_today: wanted, latest: latest[device.id]})
       broadcast(family_id, {:device_changed, updated})
       updated
     end
@@ -172,7 +177,7 @@ defmodule Trygg.Devices do
     {1, _} =
       Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: on_today])
 
-    updated = %{device | on_today: on_today}
+    updated = with_air_alert(%{device | on_today: on_today})
     broadcast(updated.family_id, {:device_changed, updated})
     {:ok, updated}
   end
@@ -195,7 +200,8 @@ defmodule Trygg.Devices do
   @doc """
   Records a reading from the device `hardware_id` in the family, registering the
   device if it is new. `attrs` takes `"temperature_c"`, `"humidity_pct"`,
-  `"pressure_hpa"`, `"gas_ohms"`, an optional `"measured_at"` (defaults to now)
+  `"pressure_hpa"`, `"gas_ohms"`, `"iaq"`, `"iaq_accuracy"`, `"co2_ppm"`,
+  `"voc_ppm"`, an optional `"measured_at"` (defaults to now)
   and an optional `"model"` for the device.
 
   Returns `{:ok, %{device: device, reading: reading}}` (`device.latest` is the
@@ -253,8 +259,16 @@ defmodule Trygg.Devices do
       [last_seen_at: seen] ++ if(is_binary(model) and model != "", do: [model: model], else: [])
 
     Repo.update_all(from(d in Device, where: d.id == ^device.id), set: changes)
-    struct(device, Keyword.put(changes, :latest, reading))
+    device |> struct(Keyword.put(changes, :latest, reading)) |> with_air_alert()
   end
+
+  defp with_air_alert(%Device{} = device),
+    do: %{device | air_alert: AirBaseline.alert(device.id)}
+
+  # Lists are mostly read for the Today screen, where only pinned devices show the alert;
+  # the others aren't worth a history query each.
+  defp with_pinned_air_alert(%Device{on_today: true} = device), do: with_air_alert(device)
+  defp with_pinned_air_alert(%Device{} = device), do: %{device | air_alert: nil}
 
   @doc "Deletes readings older than the retention period. Returns how many went."
   def prune_readings(days \\ @retention_days) do

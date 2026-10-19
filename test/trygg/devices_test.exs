@@ -76,6 +76,30 @@ defmodule Trygg.DevicesTest do
       assert Devices.list_devices(ctx.scope, ctx.family_id) == []
     end
 
+    test "stores BSEC's air quality alongside the raw readings", ctx do
+      air = %{"iaq" => 48.5, "iaq_accuracy" => 3, "co2_ppm" => 620.0, "voc_ppm" => 0.6}
+
+      assert {:ok, %{reading: reading}} =
+               Devices.record_reading(
+                 ctx.scope,
+                 ctx.family_id,
+                 "dev",
+                 Map.merge(@sample, air)
+               )
+
+      assert %{iaq: 48.5, iaq_accuracy: 3, co2_ppm: 620.0, voc_ppm: 0.6} = reading
+    end
+
+    test "rejects an air quality index outside BSEC's scale", ctx do
+      assert {:error, cs} =
+               Devices.record_reading(ctx.scope, ctx.family_id, "dev", %{
+                 "iaq" => 501,
+                 "iaq_accuracy" => 4
+               })
+
+      assert %{iaq: [_], iaq_accuracy: [_]} = errors_on(cs)
+    end
+
     test "viewers can't report", ctx do
       {:ok, token} = ApiTokens.create_token(ctx.scope, ctx.family_id, %{name: "t", role: :viewer})
       {:ok, viewer_scope} = ApiTokens.authenticate(token.secret)
@@ -253,6 +277,27 @@ defmodule Trygg.DevicesTest do
       assert points == Enum.sort_by(points, & &1.at, DateTime)
       assert %{temperature_c: 18.0} = List.last(points)
       assert Enum.all?(points, &(&1.humidity_pct == 45.2))
+    end
+
+    test "leaves out air quality BSEC hasn't begun to trust", ctx do
+      for {minutes, iaq, accuracy} <- [{3, 25.0, 0}, {2, 60.0, 1}, {1, 80.0, 2}] do
+        at = DateTime.utc_now() |> DateTime.add(-minutes * 60) |> DateTime.to_iso8601()
+
+        {:ok, _} =
+          Devices.record_reading(ctx.scope, ctx.family_id, "dev", %{
+            "iaq" => iaq,
+            "iaq_accuracy" => accuracy,
+            "co2_ppm" => iaq * 10,
+            "measured_at" => at
+          })
+      end
+
+      [device] = Devices.list_devices(ctx.scope, ctx.family_id)
+      %{points: points} = Devices.history(ctx.scope, device, 3600)
+
+      # Oldest first; the accuracy 0 placeholder has no value to plot.
+      assert Enum.map(points, & &1.iaq) == [nil, 60.0, 80.0]
+      assert Enum.map(points, & &1.co2_ppm) == [nil, 600.0, 800.0]
     end
 
     test "viewers can look, other families' scopes can't", ctx do

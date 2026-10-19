@@ -5,7 +5,8 @@ defmodule TryggWeb.Api.DeviceController do
 
     * `GET  /api/v1/devices` — the family's devices, each with its latest reading
     * `POST /api/v1/devices/:hardware_id/readings` — `temperature_c`,
-      `humidity_pct`, `pressure_hpa`, `gas_ohms` (any of them), an optional
+      `humidity_pct`, `pressure_hpa`, `gas_ohms`, `iaq`, `iaq_accuracy`,
+      `co2_ppm`, `voc_ppm` (any of them), an optional
       `measured_at` (ISO 8601, defaults to now) and `model`. A `hardware_id` the
       family hasn't seen registers a new, unnamed device; a caregiver names it in
       the app. Viewers of the app see the reading live.
@@ -16,7 +17,8 @@ defmodule TryggWeb.Api.DeviceController do
 
   action_fallback TryggWeb.Api.FallbackController
 
-  @writable ~w(temperature_c humidity_pct pressure_hpa gas_ohms measured_at model)
+  @writable ~w(temperature_c humidity_pct pressure_hpa gas_ohms iaq iaq_accuracy co2_ppm voc_ppm
+                 measured_at model)
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope

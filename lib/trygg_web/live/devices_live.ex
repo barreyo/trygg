@@ -8,6 +8,8 @@ defmodule TryggWeb.DevicesLive do
   """
   use TryggWeb, :live_view
 
+  import TryggWeb.DeviceComponents, only: [format_air: 1, format_air_detail: 1]
+
   alias Phoenix.LiveView.JS
   alias Trygg.Devices
   alias Trygg.Devices.Device
@@ -105,7 +107,13 @@ defmodule TryggWeb.DevicesLive do
             />
             <.metric id={"#{dom_id}-humidity"} label="Humidity" value={humidity(device.latest)} />
             <.metric id={"#{dom_id}-pressure"} label="Pressure" value={pressure(device.latest)} />
-            <.metric id={"#{dom_id}-gas"} label="Air (VOC resistance)" value={gas(device.latest)} />
+            <.metric
+              id={"#{dom_id}-air"}
+              label="Air quality"
+              value={format_air(device.latest)}
+              title={format_air_detail(device.latest)}
+            />
+            <.metric id={"#{dom_id}-gas"} label="Gas resistance" value={gas(device.latest)} />
           </dl>
           <p :if={!device.latest} class="mt-3 text-sm opacity-70">No readings yet.</p>
           <.link
@@ -172,10 +180,11 @@ defmodule TryggWeb.DevicesLive do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :value, :string, required: true
+  attr :title, :string, default: nil
 
   defp metric(assigns) do
     ~H"""
-    <div id={@id}>
+    <div id={@id} title={@title}>
       <dt class="text-xs opacity-70">{@label}</dt>
       <dd class="text-xl font-semibold tabular-nums">{@value}</dd>
     </div>
