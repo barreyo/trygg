@@ -279,6 +279,27 @@ defmodule Trygg.DevicesTest do
       assert Enum.all?(points, &(&1.humidity_pct == 45.2))
     end
 
+    test "leaves out air quality BSEC hasn't begun to trust", ctx do
+      for {minutes, iaq, accuracy} <- [{3, 25.0, 0}, {2, 60.0, 1}, {1, 80.0, 2}] do
+        at = DateTime.utc_now() |> DateTime.add(-minutes * 60) |> DateTime.to_iso8601()
+
+        {:ok, _} =
+          Devices.record_reading(ctx.scope, ctx.family_id, "dev", %{
+            "iaq" => iaq,
+            "iaq_accuracy" => accuracy,
+            "co2_ppm" => iaq * 10,
+            "measured_at" => at
+          })
+      end
+
+      [device] = Devices.list_devices(ctx.scope, ctx.family_id)
+      %{points: points} = Devices.history(ctx.scope, device, 3600)
+
+      # Oldest first; the accuracy 0 placeholder has no value to plot.
+      assert Enum.map(points, & &1.iaq) == [nil, 60.0, 80.0]
+      assert Enum.map(points, & &1.co2_ppm) == [nil, 600.0, 800.0]
+    end
+
     test "viewers can look, other families' scopes can't", ctx do
       device = report_at(ctx, 1, 20.0)
       assert %{points: [_]} = Devices.history(ctx.scope, device, 3600)

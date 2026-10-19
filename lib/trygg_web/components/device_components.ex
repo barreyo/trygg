@@ -240,7 +240,8 @@ defmodule TryggWeb.DeviceComponents do
     """
   end
 
-  defp air_alert_detail(%{usual_ohms: usual, current_ohms: current}),
+  @doc "What the \"air is below usual\" alert compares, in a sentence."
+  def air_alert_detail(%{usual_ohms: usual, current_ohms: current}),
     do:
       "Gas resistance #{round(current / 1000)} kΩ now against a usual #{round(usual / 1000)} kΩ " <>
         "(median of the last 7 days). A sustained drop means more airborne compounds than normal; " <>
