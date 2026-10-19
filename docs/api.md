@@ -37,6 +37,8 @@ enough access is `403`. Errors are `{"errors": {...}}`.
 | `POST`   | `/api/v1/children/:id/entries`               | Log an entry (below). `201`                             |
 | `POST`   | `/api/v1/children/:id/entries/:entry_id/stop`| Stop a running sleep. Optional `ended_at`, `data`, `note`. `409` if not running |
 | `DELETE` | `/api/v1/children/:id/entries/:entry_id`     | `204`                                                   |
+| `GET`    | `/api/v1/devices`                            | The family's sensor devices with their latest reading   |
+| `POST`   | `/api/v1/devices/:hardware_id/readings`      | Report a sensor sample (below). `201`                   |
 
 ### Firmware
 
@@ -47,6 +49,28 @@ which accept any valid token:
 | ------ | --------------------------------- | ----------------------------------------------------------- |
 | `GET`  | `/api/v1/firmware/button`         | `{"version", "size", "md5"}` of the current release; `404` if none |
 | `GET`  | `/api/v1/firmware/button/image`   | The image, with its MD5 in `x-md5`                          |
+
+### Sensor devices
+
+An M5Stack with an ENV Pro unit reports room readings. The device identifies itself by `hardware_id`
+(its WiFi MAC address); the first reading from an unknown id **registers** a device in the token's
+family with no name, and a caregiver names it in the app (menu → Devices) so the family knows which
+room it is in. Needs a **Read and log** token.
+
+```sh
+curl -X POST "https://<host>/api/v1/devices/AA:BB:CC:DD:EE:FF/readings" \
+  -H "Authorization: Bearer trygg_…" -H "Content-Type: application/json" \
+  -d '{"model": "env_pro", "temperature_c": 21.4, "humidity_pct": 46, "pressure_hpa": 1012, "gas_ohms": 91000}'
+```
+
+- Any of `temperature_c` (-40…85), `humidity_pct` (0…100), `pressure_hpa` (300…1100) and `gas_ohms`
+  (raw gas resistance); at least one is required, out-of-range values are `422`. `measured_at`
+  (ISO 8601) defaults to now; `model` is stored on the device.
+- Every reading is broadcast to open screens of the family, which update live. Readings older than
+  30 days are deleted. Forgetting a device in the app deletes its readings; if it keeps reporting it
+  registers again, unnamed.
+- `GET /api/v1/devices` returns `{id, hardware_id, name, model, last_seen_at, latest}` per device
+  (`name` is `null` until named).
 
 ### Logging an entry
 

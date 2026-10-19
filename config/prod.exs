@@ -38,7 +38,8 @@ config :trygg, Oban,
        {"0 */6 * * *", Trygg.Growth.WeightReminderWorker},
        {"*/30 * * * *", Trygg.Reports.PredictionWorker},
        {"*/15 * * * *", Trygg.Log.VitaminDReminderWorker},
-       {"*/5 * * * *", Trygg.Sleep.NudgeWorker}
+       {"*/5 * * * *", Trygg.Sleep.NudgeWorker},
+       {"17 3 * * *", Trygg.Devices.PruneWorker}
      ]}
   ]
 

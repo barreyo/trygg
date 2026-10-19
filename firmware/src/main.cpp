@@ -4,11 +4,15 @@
 //
 // Shows the child's name on top and the emoji above each button.
 //
-// Built for battery life: WiFi is off except while a sync runs. A press is
-// acknowledged on the spot (green screen + chime) and put on a queue. A background
-// task then joins WiFi, POSTs the queued diaper entries to the Trygg REST API (see
-// docs/api.md) with the family API token from config.h, and switches WiFi off again.
-// The UI never waits on the network, so presses made mid-sync are queued as well.
+// Meant to run from mains power: WiFi stays connected. A press is acknowledged on the
+// spot (green screen + chime) and put on a queue. A background task POSTs the queued
+// diaper entries to the Trygg REST API (see docs/api.md) with the family API token from
+// config.h, rejoining WiFi first if the link dropped. The UI never waits on the network,
+// so presses made mid-sync are queued as well.
+//
+// An ENV Pro unit (BME688) on Port A is optional: when it answers, the button reports
+// temperature, humidity, pressure and gas resistance to the same API every 30 s, tagged
+// with the board's MAC address so the app can list the device and let the family name it.
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -20,6 +24,7 @@
 
 #include <vector>
 
+#include "bme68x/bme68x.h"
 #include "config.h"
 
 // A release image (`make fw-release`) is published on the server, so it must not carry the
@@ -74,20 +79,29 @@ const int TILE_W = 84;
 const int TILE_Y = 112;
 const int TILE_H = 120;
 
-const unsigned long CHILD_REFRESH_MS = 60UL * 60UL * 1000UL;  // names refresh whenever WiFi is up and they're older
+const unsigned long CHILD_REFRESH_MS = 60UL * 60UL * 1000UL;  // names are re-fetched when they're older
 const unsigned long BANNER_MS = 4000;
 const unsigned long LOGGED_SCREEN_MS = 4000;
 const int HTTP_TIMEOUT_MS = 8000;
 const int MAX_ATTEMPTS = 3;  // per entry, per sync, before backing off
 const size_t QUEUE_MAX = 20;
-const unsigned long WIFI_FAST_JOIN_MS = 6000;  // rejoining the last-used access point
-const unsigned long WIFI_JOIN_MS = 15000;      // full scan
+const unsigned long WIFI_RECONNECT_MS = 5000;  // a dropped link gets this long to come back by itself
+const unsigned long WIFI_JOIN_MS = 15000;      // then a fresh join
 const unsigned long CLOCK_WAIT_MS = 10000;     // first NTP sync after boot
-const unsigned long RETRY_BASE_MS = 15000;     // after a failed sync, doubling...
-const unsigned long RETRY_MAX_MS = 5UL * 60UL * 1000UL;  // ...up to this
+const unsigned long RETRY_BASE_MS = 5000;      // after a failed sync, doubling...
+const unsigned long RETRY_MAX_MS = 60UL * 1000UL;  // ...up to this
 const unsigned long HOLD_MS = 800;           // long press: left/right switch child, middle lists them
 const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after this much quiet
 const int LIST_ROWS = 5;
+
+// ENV Pro (BME688) on Port A, read through M5Unified's I2C (shared with the board's own bus).
+const uint8_t SENSOR_ADDR = BME68X_I2C_ADDR_HIGH;  // 0x77
+const uint32_t SENSOR_I2C_HZ = 400000;
+const unsigned long SENSOR_PERIOD_MS = 30UL * 1000UL;  // one sample this often
+const unsigned long SENSOR_RETRY_MS = 60UL * 1000UL;   // looking for a sensor that isn't there (yet)
+const int SENSOR_MAX_FAILS = 3;                        // bad reads in a row before searching again
+const uint16_t HEATER_TEMP_C = 320;
+const uint16_t HEATER_MS = 150;
 
 // Over-the-air updates: look for a newer release this often, but only once the device has
 // been left alone for a while (an update takes a few seconds and ignores the buttons).
@@ -142,6 +156,17 @@ volatile bool have_children = false;
 volatile unsigned long child_loaded_at = 0;
 volatile unsigned long last_fail_at = 0;
 volatile unsigned long retry_delay = 0;  // 0: due right away
+
+// The latest sensor sample, waiting to be sent. Written by the UI task (guarded by `mu`), taken by the
+// sync task. A newer sample replaces an unsent one: only the current state is worth reporting.
+struct Sample {
+  float temperature_c, humidity_pct, pressure_hpa, gas_ohms;
+  bool has_gas;
+  time_t at;  // 0 if the clock hadn't synced; the server then stamps it on arrival
+};
+Sample sample;
+volatile bool sample_ready = false;
+String device_id;  // this board's WiFi MAC address, how the app tells devices apart
 
 // Over-the-air updates. The sync task checks for a release and installs it; the UI shows
 // the progress and does the restart, once nothing is waiting in the (RAM-only) queue.
@@ -386,13 +411,12 @@ bool waitJoined(unsigned long ms) {
   return WiFi.status() == WL_CONNECTED;
 }
 
-// Joins the network and makes sure the clock is set (entries are stamped with it, and
-// TLS needs it). Rejoining the access point we used last time skips the channel scan,
-// which keeps the radio on for a second or two less.
+// Makes sure WiFi is joined and the clock is set (entries are stamped with it, and TLS
+// needs it). The radio is never switched off: normally this returns at once. If the link
+// dropped, the stack's auto-reconnect gets a moment to restore it before a fresh join.
 bool wifiUp() {
-  static bool have_ap = false;
-  static uint8_t ap_bssid[6];
-  static int32_t ap_channel = 0;
+  static bool begun = false;
+  static bool sntp_started = false;
 
   if (!net.ssid.length()) {
     static bool reported = false;
@@ -400,35 +424,25 @@ bool wifiUp() {
     reported = true;
     return false;
   }
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(false);
-  bool joined = false;
-  if (have_ap) {
-    WiFi.begin(net.ssid.c_str(), net.password.c_str(), ap_channel, ap_bssid);
-    joined = waitJoined(WIFI_FAST_JOIN_MS);
-    if (!joined) WiFi.disconnect();
-  }
+  bool joined = WiFi.status() == WL_CONNECTED || (begun && waitJoined(WIFI_RECONNECT_MS));
   if (!joined) {
+    WiFi.disconnect();
     WiFi.begin(net.ssid.c_str(), net.password.c_str());
+    WiFi.setAutoReconnect(true);
+    begun = true;
     joined = waitJoined(WIFI_JOIN_MS);
   }
   if (!joined) return false;
-  have_ap = true;
-  ap_channel = WiFi.channel();
-  memcpy(ap_bssid, WiFi.BSSID(), sizeof ap_bssid);
 
-  // Re-syncing on every join keeps the drift of the (WiFi-less) clock in check. Only
-  // the very first sync after boot is worth waiting for.
-  // configTime() would reset TZ to UTC, so the timezone goes in with the servers.
-  configTzTime(TIMEZONE, "pool.ntp.org", "time.google.com");
+  // The SNTP client keeps the clock in step by itself from here on; it only needs starting
+  // once. configTime() would reset TZ to UTC, so the timezone goes in with the servers.
+  if (!sntp_started) {
+    configTzTime(TIMEZONE, "pool.ntp.org", "time.google.com");
+    sntp_started = true;
+  }
   unsigned long start = millis();
   while (!clockSynced() && millis() - start < CLOCK_WAIT_MS) vTaskDelay(pdMS_TO_TICKS(100));
   return clockSynced();
-}
-
-void wifiOff() {
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
 }
 
 void postError(const char* msg) {
@@ -623,6 +637,120 @@ void closeList(bool apply) {
   }
 }
 
+// ---- sensor (runs on the UI task) ----------------------------------------------
+
+struct {
+  bme68x_dev dev;
+  bme68x_conf conf;
+  bme68x_heatr_conf heatr;
+  bool present = false;
+  bool measuring = false;
+  int fails = 0;
+  unsigned long next_at = 0;   // when to look for the sensor / take the next sample (0: now)
+  unsigned long ready_at = 0;  // when the running measurement is done
+} env;
+
+int8_t sensorRead(uint8_t reg, uint8_t* data, uint32_t len, void*) {
+  return M5.Ex_I2C.readRegister(SENSOR_ADDR, reg, data, len, SENSOR_I2C_HZ) ? BME68X_INTF_RET_SUCCESS : -1;
+}
+
+int8_t sensorWrite(uint8_t reg, const uint8_t* data, uint32_t len, void*) {
+  return M5.Ex_I2C.writeRegister(SENSOR_ADDR, reg, data, len, SENSOR_I2C_HZ) ? BME68X_INTF_RET_SUCCESS : -1;
+}
+
+void sensorDelay(uint32_t us, void*) {
+  if (us >= 1000) delay(us / 1000);
+  else delayMicroseconds(us);
+}
+
+bool sensorBegin() {
+  M5.Ex_I2C.begin();
+  env.dev = {};
+  env.dev.intf = BME68X_I2C_INTF;
+  env.dev.read = sensorRead;
+  env.dev.write = sensorWrite;
+  env.dev.delay_us = sensorDelay;
+  env.dev.amb_temp = 25;
+  if (bme68x_init(&env.dev) != BME68X_OK) return false;
+
+  env.conf = {};
+  env.conf.os_hum = BME68X_OS_2X;
+  env.conf.os_temp = BME68X_OS_8X;
+  env.conf.os_pres = BME68X_OS_4X;
+  env.conf.filter = BME68X_FILTER_OFF;
+  env.conf.odr = BME68X_ODR_NONE;
+  env.heatr = {};
+  env.heatr.enable = BME68X_ENABLE;
+  env.heatr.heatr_temp = HEATER_TEMP_C;
+  env.heatr.heatr_dur = HEATER_MS;
+  return bme68x_set_conf(&env.conf, &env.dev) == BME68X_OK &&
+         bme68x_set_heatr_conf(BME68X_FORCED_MODE, &env.heatr, &env.dev) == BME68X_OK;
+}
+
+// Starts one forced-mode measurement; the result is collected once it is done, so the buttons
+// are never held up by the sensor (the gas heater alone takes 150 ms).
+bool sensorStart() {
+  if (bme68x_set_op_mode(BME68X_FORCED_MODE, &env.dev) != BME68X_OK) return false;
+  uint32_t us = bme68x_get_meas_dur(BME68X_FORCED_MODE, &env.conf, &env.dev) + (uint32_t)HEATER_MS * 1000;
+  env.ready_at = millis() + us / 1000 + 5;
+  env.measuring = true;
+  return true;
+}
+
+bool sensorCollect() {
+  bme68x_data data;
+  uint8_t n = 0;
+  if (bme68x_get_data(BME68X_FORCED_MODE, &data, &n, &env.dev) != BME68X_OK || n == 0) return false;
+  if (!(data.status & BME68X_NEW_DATA_MSK)) return false;
+
+  Sample s;
+  s.temperature_c = data.temperature;
+  s.humidity_pct = data.humidity;
+  s.pressure_hpa = data.pressure / 100.0f;  // the driver reports Pa
+  s.has_gas = (data.status & BME68X_GASM_VALID_MSK) && (data.status & BME68X_HEAT_STAB_MSK);
+  s.gas_ohms = data.gas_resistance;
+  s.at = clockSynced() ? time(nullptr) : 0;
+  Lock lock;
+  sample = s;
+  sample_ready = true;
+  return true;
+}
+
+// Called every pass of loop(): finds the sensor (so it can be plugged in after boot), starts a
+// measurement every SENSOR_PERIOD_MS and hands the result to the sync task.
+void sensorTick() {
+  unsigned long now = millis();
+  if (env.measuring) {
+    if (now < env.ready_at) return;
+    env.measuring = false;
+    if (sensorCollect()) {
+      env.fails = 0;
+    } else if (++env.fails >= SENSOR_MAX_FAILS) {
+      Serial.println("ENV Pro stopped answering");
+      env.present = false;
+      env.fails = 0;
+      env.next_at = (now + SENSOR_RETRY_MS) | 1;
+    }
+    return;
+  }
+  if (env.next_at && now < env.next_at) return;
+
+  if (!env.present) {
+    env.present = sensorBegin();
+    if (!env.present) {
+      env.next_at = (now + SENSOR_RETRY_MS) | 1;
+      return;
+    }
+    Serial.println("ENV Pro found");
+  }
+  env.next_at = (now + SENSOR_PERIOD_MS) | 1;
+  if (!sensorStart() && ++env.fails >= SENSOR_MAX_FAILS) {
+    env.present = false;
+    env.fails = 0;
+    env.next_at = (now + SENSOR_RETRY_MS) | 1;
+  }
+}
+
 // ---- syncing (runs on the sync task) -----------------------------------------
 
 void updateProgress(int done, int total) { update_pct = total > 0 ? (int)((int64_t)done * 100 / total) : 0; }
@@ -692,6 +820,40 @@ int postEntry(const Pending& p) {
   return request("POST", "/api/v1/children/" + String(p.child_id) + "/entries", body, response);
 }
 
+// Posts the latest sensor sample to the app, which registers this board as a device the first
+// time. A sample the network or server couldn't take goes back for the next try unless a newer
+// one has arrived; one the server refuses outright is dropped and the user told, like an entry.
+bool deliverSample() {
+  Sample s;
+  {
+    Lock lock;
+    if (!sample_ready) return true;
+    s = sample;
+    sample_ready = false;
+  }
+  JsonDocument doc;
+  doc["model"] = "env_pro";
+  doc["temperature_c"] = s.temperature_c;
+  doc["humidity_pct"] = s.humidity_pct;
+  doc["pressure_hpa"] = s.pressure_hpa;
+  if (s.has_gas) doc["gas_ohms"] = s.gas_ohms;
+  if (s.at) doc["measured_at"] = isoAt(s.at);
+  String body, response;
+  serializeJson(doc, body);
+  int status = request("POST", "/api/v1/devices/" + device_id + "/readings", body, response);
+  if (status == 200 || status == 201) return true;
+  if (permanent(status)) {
+    postError(describeFailure(status).c_str());
+    return true;
+  }
+  Lock lock;
+  if (!sample_ready) {
+    sample = s;
+    sample_ready = true;
+  }
+  return false;
+}
+
 // Sends the queue oldest first, picking up entries added meanwhile. Returns false
 // when the network or server let us down (the entry stays queued). An entry the
 // server rejects outright is dropped and the user told, since retrying can't help.
@@ -718,11 +880,15 @@ bool deliverQueue() {
   }
 }
 
-bool needsSync() { return pending_count > 0 || (!have_children && !fetched_ready) || updateDue(); }
+bool childrenStale() { return have_children && millis() - child_loaded_at > CHILD_REFRESH_MS; }
 
-// One sync: WiFi up, deliver everything queued (and anything queued meanwhile),
-// refresh the children if we have none or they're stale, look for new firmware if it's
-// time, WiFi down.
+bool needsSync() {
+  return pending_count > 0 || sample_ready || (!have_children && !fetched_ready) || childrenStale() || updateDue();
+}
+
+// One sync: make sure WiFi is up, deliver everything queued (and anything queued
+// meanwhile), refresh the children if we have none or they're stale, look for new
+// firmware if it's time.
 void runSync() {
   if (!needsSync()) {
     syncing = false;
@@ -735,9 +901,11 @@ void runSync() {
   while (ok) {
     if (!deliverQueue()) {
       ok = false;
-    } else if (!refreshed && (!have_children || millis() - child_loaded_at > CHILD_REFRESH_MS)) {
+    } else if (!refreshed && (!have_children || childrenStale())) {
       refreshed = true;
       ok = fetchChildren();
+    } else if (sample_ready) {
+      ok = deliverSample();
     } else if (!update_checked && updateDue()) {
       update_checked = true;
       checkForUpdate();  // its own back-off; a failed check doesn't fail the sync
@@ -745,11 +913,10 @@ void runSync() {
       break;
     }
   }
-  wifiOff();
   if (ok) {
     retry_delay = 0;
   } else {
-    // Back off, so being out of range doesn't flatten the battery. A new press resets this.
+    // Back off while the network or server is down. A new press resets this.
     retry_delay = retry_delay ? min(retry_delay * 2, RETRY_MAX_MS) : RETRY_BASE_MS;
     last_fail_at = millis();
   }
@@ -850,7 +1017,10 @@ void setup() {
   loadNetSettings();
   mu = xSemaphoreCreateMutex();
   WiFi.persistent(false);  // don't write the credentials to flash on every join
-  WiFi.mode(WIFI_OFF);     // the radio stays off until there is something to send
+  WiFi.mode(WIFI_STA);     // powered from the wall: the radio stays on, no modem sleep
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  device_id = WiFi.macAddress();
   xTaskCreatePinnedToCore(syncTask, "sync", 24576, nullptr, 1, &sync_task, 0);  // TLS + the updater need room
   drawAll();
   kickSync(true);  // the first children fetch
@@ -867,6 +1037,8 @@ void loop() {
     last_brightness_check = millis() | 1;  // never 0, which means "not checked yet"
     updateBrightness();
   }
+
+  sensorTick();
 
   // Retry a failed sync once its back-off is over. Presses and boot kick it directly.
   bool retry_due = retry_delay == 0 || millis() - last_fail_at >= retry_delay;
