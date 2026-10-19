@@ -76,6 +76,30 @@ defmodule Trygg.DevicesTest do
       assert Devices.list_devices(ctx.scope, ctx.family_id) == []
     end
 
+    test "stores BSEC's air quality alongside the raw readings", ctx do
+      air = %{"iaq" => 48.5, "iaq_accuracy" => 3, "co2_ppm" => 620.0, "voc_ppm" => 0.6}
+
+      assert {:ok, %{reading: reading}} =
+               Devices.record_reading(
+                 ctx.scope,
+                 ctx.family_id,
+                 "dev",
+                 Map.merge(@sample, air)
+               )
+
+      assert %{iaq: 48.5, iaq_accuracy: 3, co2_ppm: 620.0, voc_ppm: 0.6} = reading
+    end
+
+    test "rejects an air quality index outside BSEC's scale", ctx do
+      assert {:error, cs} =
+               Devices.record_reading(ctx.scope, ctx.family_id, "dev", %{
+                 "iaq" => 501,
+                 "iaq_accuracy" => 4
+               })
+
+      assert %{iaq: [_], iaq_accuracy: [_]} = errors_on(cs)
+    end
+
     test "viewers can't report", ctx do
       {:ok, token} = ApiTokens.create_token(ctx.scope, ctx.family_id, %{name: "t", role: :viewer})
       {:ok, viewer_scope} = ApiTokens.authenticate(token.secret)

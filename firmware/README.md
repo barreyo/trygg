@@ -44,7 +44,8 @@ the diaper entries:
 
 ```
 POST /api/v1/devices/<this board's WiFi MAC>/readings
-{"model": "env_pro", "temperature_c": 21.4, "humidity_pct": 46, "pressure_hpa": 1012, "gas_ohms": 91000}
+{"model": "env_pro", "temperature_c": 21.4, "humidity_pct": 46, "pressure_hpa": 1012, "gas_ohms": 91000,
+ "iaq": 48, "iaq_accuracy": 3, "co2_ppm": 620, "voc_ppm": 0.6}
 ```
 
 The first reading **registers the board as a device** in the family, unnamed. Open the app's menu →
@@ -56,10 +57,33 @@ top right corner of its screen (it is remembered across restarts), so you can te
 Samples are kept for 30 days. Only the
 latest sample is retried when the network is down; there is no backlog.
 
-`gas_ohms` is the sensor's raw gas resistance (it drops when VOCs rise), shown as a trend, not an air
-quality index: the IAQ score needs Bosch's BSEC library, whose licence forbids shipping a compiled
-binary, and this firmware is published over the air. The temperature reads a little high if the ENV Pro
-sits right against the button; give it some cable.
+### Air quality (Bosch BSEC2)
+
+The sensor is driven by Bosch's [BSEC2](https://github.com/boschsensortec/Bosch-BSEC2-Library) library
+(closed-source, linked in as a precompiled `libalgobsec.a`; PlatformIO fetches it). BSEC picks the heater
+profile and tells the firmware when to measure (every 3 s, low-power mode), and turns the raw readings into:
+
+- `temperature_c` / `humidity_pct`: corrected for the sensor's own heat, with `SENSOR_TEMP_OFFSET_C` for
+  the board's. It is Bosch's low-power default; compare against a thermometer and adjust it in `src/main.cpp`.
+- `iaq` (*static* IAQ, the variant for a sensor that stays in one room; 0 clean, 500 bad) with
+  `iaq_accuracy`, plus `co2_ppm` and `voc_ppm` equivalents. These are estimates from the gas sensor, not
+  measurements of CO2.
+- `gas_ohms` stays the raw gas resistance.
+
+BSEC learns the room's own baseline, so a fresh unit says `iaq_accuracy: 0` ("Learning…" in the app) for the
+first minutes, then 1–2 while it calibrates, and reaches 3 after a few hours to days, once it has seen both
+clean air (open a window) and polluted air (cooking, breath). What it has learned is saved to flash
+every six hours once calibrated and restored on boot, so a reboot or an OTA update doesn't start over.
+The sensor still posts a sample every 30 s: it's the newest of BSEC's 3 s outputs. The temperature still
+reads a little high if the ENV Pro sits right against the button; give it some cable.
+
+**Alert.** Independently of BSEC, the Today card of a pinned device shows "Air is N % below usual" when the
+raw gas resistance (median of the last 10 minutes) has fallen at least 35 % below that room's 7-day median.
+It needs a day of history and is otherwise hidden (`Trygg.Devices.AirBaseline`).
+
+**Licence.** BSEC is distributed under Bosch's own [licence terms](https://www.bosch-sensortec.com/media/boschsensortec/downloads/software/bme688_development_software/2023_04/license_terms_bme688_bme680_bsec.pdf),
+not an open-source one, and the OTA image committed in `priv/firmware` now contains it. I haven't checked
+what the terms allow for a public repo; read them before relying on that.
 
 ## Night mode
 

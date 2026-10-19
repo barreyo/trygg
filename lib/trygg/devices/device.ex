@@ -5,7 +5,8 @@ defmodule Trygg.Devices.Device do
   Devices register themselves: the first reading from an unknown `hardware_id`
   creates the row, unnamed, and a caregiver names it afterwards ("Nursery") so
   the family knows which room it is in. `:latest` is not stored; the context
-  fills it with the newest `Trygg.Devices.Reading`.
+  fills it with the newest `Trygg.Devices.Reading`, and `:air_alert` when the room's
+  air has turned clearly worse than usual.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -23,6 +24,9 @@ defmodule Trygg.Devices.Device do
     field :on_today, :boolean, default: false
 
     field :latest, :any, virtual: true
+
+    # Set for a device on Today whose air is clearly worse than its own usual; see `Trygg.Devices.AirBaseline`.
+    field :air_alert, :any, virtual: true
 
     belongs_to :family, Trygg.Families.Family
 

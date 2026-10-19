@@ -11,7 +11,8 @@
 // so presses made mid-sync are queued as well.
 //
 // An ENV Pro unit (BME688) on Port A is optional: when it answers, the button reports
-// temperature, humidity, pressure and gas resistance to the same API every 30 s, tagged
+// temperature, humidity, pressure, gas resistance and Bosch BSEC's air quality (IAQ, CO2 and VOC
+// equivalents) to the same API every 30 s, tagged
 // with the board's MAC address so the app can list the device and let the family name it.
 // The app answers with a five-digit device id, which is kept and printed small in the top right
 // corner of the screen, so the family can tell which physical unit is which in the app.
@@ -22,11 +23,13 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_timer.h>
 #include <time.h>
 
 #include <vector>
 
 #include "bme68x/bme68x.h"
+#include "bsec_interface_multi.h"
 #include "config.h"
 
 // A release image (`make fw-release`) is published on the server, so it must not carry the
@@ -97,13 +100,17 @@ const unsigned long LIST_TIMEOUT_MS = 10000;  // the picker closes itself after 
 const int LIST_ROWS = 5;
 
 // ENV Pro (BME688) on Port A, read through M5Unified's I2C (shared with the board's own bus).
+// Bosch's BSEC library runs the sensor: it asks for a measurement every 3 s (low-power mode) and turns
+// the raw readings into compensated temperature/humidity and an air quality index. A sample is posted
+// to the app every SENSOR_PERIOD_MS, from whatever BSEC has worked out by then.
 const uint8_t SENSOR_ADDR = BME68X_I2C_ADDR_HIGH;  // 0x77
 const uint32_t SENSOR_I2C_HZ = 400000;
-const unsigned long SENSOR_PERIOD_MS = 30UL * 1000UL;  // one sample this often
+const unsigned long SENSOR_PERIOD_MS = 30UL * 1000UL;  // one sample posted this often
 const unsigned long SENSOR_RETRY_MS = 60UL * 1000UL;   // looking for a sensor that isn't there (yet)
 const int SENSOR_MAX_FAILS = 3;                        // bad reads in a row before searching again
-const uint16_t HEATER_TEMP_C = 320;
-const uint16_t HEATER_MS = 150;
+const float SENSOR_TEMP_OFFSET_C = 1.3255f;            // the board's own heat in the reading; Bosch's
+                                                       // low-power value, tune against a thermometer
+const unsigned long BSEC_SAVE_MS = 6UL * 60UL * 60UL * 1000UL;  // keep what BSEC has learned this fresh
 
 // Over-the-air updates: look for a newer release this often, but only once the device has
 // been left alone for a while (an update takes a few seconds and ignores the buttons).
@@ -163,7 +170,9 @@ volatile unsigned long retry_delay = 0;  // 0: due right away
 // sync task. A newer sample replaces an unsent one: only the current state is worth reporting.
 struct Sample {
   float temperature_c, humidity_pct, pressure_hpa, gas_ohms;
-  bool has_gas;
+  float iaq, co2_ppm, voc_ppm;  // BSEC's static IAQ (0 clean .. 500 bad), CO2 and breath-VOC equivalents
+  uint8_t iaq_accuracy;         // 0 still learning .. 3 calibrated
+  bool has_gas, has_iaq;
   time_t at;  // 0 if the clock hadn't synced; the server then stamps it on arrival
 };
 Sample sample;
@@ -673,16 +682,29 @@ void closeList(bool apply) {
 
 // ---- sensor (runs on the UI task) ----------------------------------------------
 
+#ifndef BME68X_USE_FPU
+#error "the BME68x driver must report floating point values"
+#endif
+
 struct {
   bme68x_dev dev;
   bme68x_conf conf;
   bme68x_heatr_conf heatr;
+  bsec_bme_settings_t settings;  // what BSEC last asked for
+  Sample latest;                 // the newest outputs, merged as BSEC delivers them
+  bool have_temperature = false;
   bool present = false;
   bool measuring = false;
   int fails = 0;
-  unsigned long next_at = 0;   // when to look for the sensor / take the next sample (0: now)
-  unsigned long ready_at = 0;  // when the running measurement is done
+  int64_t control_ns = 0;       // when BSEC asked for the running measurement
+  unsigned long next_at = 0;    // when to look for the sensor again (0: now)
+  unsigned long ready_at = 0;   // when the running measurement is done
+  unsigned long posted_at = 0;  // when a sample was last handed to the sync task (0: never)
+  unsigned long saved_at = 0;   // when BSEC's state was last stored (0: not since boot)
 } env;
+
+uint8_t* bsec_inst = nullptr;
+uint8_t bsec_work[BSEC_MAX_WORKBUFFER_SIZE];
 
 int8_t sensorRead(uint8_t reg, uint8_t* data, uint32_t len, void*) {
   return M5.Ex_I2C.readRegister(SENSOR_ADDR, reg, data, len, SENSOR_I2C_HZ) ? BME68X_INTF_RET_SUCCESS : -1;
@@ -697,6 +719,63 @@ void sensorDelay(uint32_t us, void*) {
   else delayMicroseconds(us);
 }
 
+// BSEC's clock: nanoseconds since boot, which never wraps in practice.
+int64_t bsecNowNs() { return esp_timer_get_time() * 1000LL; }
+
+// What BSEC has learned about this room (its baseline) survives a reboot in flash. A state saved
+// by another BSEC version is refused by the library, and then it simply starts over.
+void bsecSaveState() {
+  uint8_t state[BSEC_MAX_STATE_BLOB_SIZE];
+  uint32_t n = 0;
+  if (bsec_get_state_m(bsec_inst, 0, state, sizeof(state), bsec_work, sizeof(bsec_work), &n) != BSEC_OK || !n) return;
+  Preferences prefs;
+  prefs.begin("trygg", false);
+  prefs.putBytes("bsec", state, n);
+  prefs.end();
+  env.saved_at = millis() | 1;
+}
+
+bool bsecBegin() {
+  if (!bsec_inst) bsec_inst = (uint8_t*)malloc(bsec_get_instance_size_m());
+  if (!bsec_inst || bsec_init_m(bsec_inst) != BSEC_OK) return false;
+
+  uint8_t state[BSEC_MAX_STATE_BLOB_SIZE];
+  Preferences prefs;
+  prefs.begin("trygg", true);
+  size_t n = prefs.getBytesLength("bsec");
+  if (n > 0 && n <= sizeof(state)) prefs.getBytes("bsec", state, n);
+  else n = 0;
+  prefs.end();
+  if (n && bsec_set_state_m(bsec_inst, state, n, bsec_work, sizeof(bsec_work)) != BSEC_OK) {
+    Serial.println("BSEC: saved state refused, starting over");
+    if (bsec_init_m(bsec_inst) != BSEC_OK) return false;
+  }
+
+  // Static IAQ is the variant for a sensor that stays in one room. Compensated temperature and humidity
+  // take out the sensor's own heat; the raw pressure and gas resistance ride along.
+  const uint8_t wanted[] = {BSEC_OUTPUT_STATIC_IAQ,
+                            BSEC_OUTPUT_CO2_EQUIVALENT,
+                            BSEC_OUTPUT_BREATH_VOC_EQUIVALENT,
+                            BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE,
+                            BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY,
+                            BSEC_OUTPUT_RAW_PRESSURE,
+                            BSEC_OUTPUT_RAW_GAS};
+  bsec_sensor_configuration_t subscribe[sizeof(wanted)];
+  for (size_t i = 0; i < sizeof(wanted); i++) {
+    subscribe[i].sensor_id = wanted[i];
+    subscribe[i].sample_rate = BSEC_SAMPLE_RATE_LP;
+  }
+  bsec_sensor_configuration_t needed[BSEC_MAX_PHYSICAL_SENSOR];
+  uint8_t n_needed = BSEC_MAX_PHYSICAL_SENSOR;
+  if (bsec_update_subscription_m(bsec_inst, subscribe, sizeof(wanted), needed, &n_needed) != BSEC_OK) return false;
+
+  memset(&env.settings, 0, sizeof(env.settings));  // next_call 0: ask BSEC what to do right away
+  memset(&env.latest, 0, sizeof(env.latest));
+  env.have_temperature = false;
+  env.saved_at = 0;
+  return true;
+}
+
 bool sensorBegin() {
   M5.Ex_I2C.begin();
   env.dev = {};
@@ -706,29 +785,95 @@ bool sensorBegin() {
   env.dev.delay_us = sensorDelay;
   env.dev.amb_temp = 25;
   if (bme68x_init(&env.dev) != BME68X_OK) return false;
-
   env.conf = {};
-  env.conf.os_hum = BME68X_OS_2X;
-  env.conf.os_temp = BME68X_OS_8X;
-  env.conf.os_pres = BME68X_OS_4X;
   env.conf.filter = BME68X_FILTER_OFF;
   env.conf.odr = BME68X_ODR_NONE;
   env.heatr = {};
-  env.heatr.enable = BME68X_ENABLE;
-  env.heatr.heatr_temp = HEATER_TEMP_C;
-  env.heatr.heatr_dur = HEATER_MS;
-  return bme68x_set_conf(&env.conf, &env.dev) == BME68X_OK &&
-         bme68x_set_heatr_conf(BME68X_FORCED_MODE, &env.heatr, &env.dev) == BME68X_OK;
+  return bsecBegin();
 }
 
-// Starts one forced-mode measurement; the result is collected once it is done, so the buttons
-// are never held up by the sensor (the gas heater alone takes 150 ms).
+// Starts the forced-mode measurement BSEC asked for; the result is collected once it is done, so
+// the buttons are never held up by the sensor (the gas heater alone takes 150 ms).
 bool sensorStart() {
+  const bsec_bme_settings_t& s = env.settings;
+  // BSEC's oversampling codes (0-5) are the driver's BME68X_OS_* values.
+  env.conf.os_hum = s.humidity_oversampling;
+  env.conf.os_temp = s.temperature_oversampling;
+  env.conf.os_pres = s.pressure_oversampling;
+  env.heatr.enable = s.run_gas ? BME68X_ENABLE : BME68X_DISABLE;
+  env.heatr.heatr_temp = s.heater_temperature;
+  env.heatr.heatr_dur = s.heater_duration;
+  if (bme68x_set_conf(&env.conf, &env.dev) != BME68X_OK) return false;
+  if (bme68x_set_heatr_conf(BME68X_FORCED_MODE, &env.heatr, &env.dev) != BME68X_OK) return false;
   if (bme68x_set_op_mode(BME68X_FORCED_MODE, &env.dev) != BME68X_OK) return false;
-  uint32_t us = bme68x_get_meas_dur(BME68X_FORCED_MODE, &env.conf, &env.dev) + (uint32_t)HEATER_MS * 1000;
+  uint32_t us = bme68x_get_meas_dur(BME68X_FORCED_MODE, &env.conf, &env.dev) + (uint32_t)s.heater_duration * 1000;
   env.ready_at = millis() + us / 1000 + 5;
   env.measuring = true;
   return true;
+}
+
+// Hands one finished measurement to BSEC and keeps the outputs that come back.
+bool bsecProcess(const bme68x_data& d) {
+  const uint32_t want = env.settings.process_data;
+  auto wants = [want](int input) { return (want & (1u << (input - 1))) != 0; };
+  bsec_input_t in[BSEC_MAX_PHYSICAL_SENSOR];
+  uint8_t n_in = 0;
+  auto add = [&](uint8_t id, float value) {
+    in[n_in].sensor_id = id;
+    in[n_in].signal = value;
+    in[n_in].signal_dimensions = 1;
+    in[n_in].time_stamp = env.control_ns;
+    n_in++;
+  };
+  if (wants(BSEC_INPUT_HEATSOURCE)) add(BSEC_INPUT_HEATSOURCE, SENSOR_TEMP_OFFSET_C);
+  if (wants(BSEC_INPUT_TEMPERATURE)) add(BSEC_INPUT_TEMPERATURE, d.temperature);
+  if (wants(BSEC_INPUT_HUMIDITY)) add(BSEC_INPUT_HUMIDITY, d.humidity);
+  if (wants(BSEC_INPUT_PRESSURE)) add(BSEC_INPUT_PRESSURE, d.pressure / 100.0f);  // the driver reports Pa
+  if (wants(BSEC_INPUT_GASRESISTOR)) add(BSEC_INPUT_GASRESISTOR, d.gas_resistance);
+  if (!n_in) return true;
+
+  bsec_output_t out[BSEC_NUMBER_OUTPUTS];
+  uint8_t n_out = BSEC_NUMBER_OUTPUTS;
+  if (bsec_do_steps_m(bsec_inst, in, n_in, out, &n_out) < BSEC_OK) return false;
+
+  Sample& l = env.latest;
+  for (uint8_t i = 0; i < n_out; i++) {
+    switch (out[i].sensor_id) {
+      case BSEC_OUTPUT_STATIC_IAQ:
+        l.iaq = out[i].signal;
+        l.iaq_accuracy = out[i].accuracy;
+        l.has_iaq = true;
+        break;
+      case BSEC_OUTPUT_CO2_EQUIVALENT: l.co2_ppm = out[i].signal; break;
+      case BSEC_OUTPUT_BREATH_VOC_EQUIVALENT: l.voc_ppm = out[i].signal; break;
+      case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE:
+        l.temperature_c = out[i].signal;
+        env.have_temperature = true;
+        break;
+      case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY: l.humidity_pct = out[i].signal; break;
+      case BSEC_OUTPUT_RAW_PRESSURE: l.pressure_hpa = out[i].signal; break;
+      case BSEC_OUTPUT_RAW_GAS:
+        l.gas_ohms = out[i].signal;
+        l.has_gas = true;
+        break;
+    }
+  }
+  return true;
+}
+
+// Posts the newest outputs every SENSOR_PERIOD_MS, and files BSEC's state away once it is calibrated.
+void sensorPublish() {
+  unsigned long now = millis();
+  if (!env.have_temperature) return;
+  if (env.latest.has_iaq && env.latest.iaq_accuracy >= 3 && (!env.saved_at || now - env.saved_at > BSEC_SAVE_MS))
+    bsecSaveState();
+  if (env.posted_at && now - env.posted_at < SENSOR_PERIOD_MS) return;
+  env.posted_at = now | 1;
+  Sample s = env.latest;
+  s.at = clockSynced() ? time(nullptr) : 0;
+  Lock lock;
+  sample = s;
+  sample_ready = true;
 }
 
 bool sensorCollect() {
@@ -736,35 +881,29 @@ bool sensorCollect() {
   uint8_t n = 0;
   if (bme68x_get_data(BME68X_FORCED_MODE, &data, &n, &env.dev) != BME68X_OK || n == 0) return false;
   if (!(data.status & BME68X_NEW_DATA_MSK)) return false;
-
-  Sample s;
-  s.temperature_c = data.temperature;
-  s.humidity_pct = data.humidity;
-  s.pressure_hpa = data.pressure / 100.0f;  // the driver reports Pa
-  s.has_gas = (data.status & BME68X_GASM_VALID_MSK) && (data.status & BME68X_HEAT_STAB_MSK);
-  s.gas_ohms = data.gas_resistance;
-  s.at = clockSynced() ? time(nullptr) : 0;
-  Lock lock;
-  sample = s;
-  sample_ready = true;
+  if (!(data.status & BME68X_GASM_VALID_MSK)) return true;  // BSEC wants gas readings that took
+  if (!bsecProcess(data)) return false;
+  sensorPublish();
   return true;
 }
 
-// Called every pass of loop(): finds the sensor (so it can be plugged in after boot), starts a
-// measurement every SENSOR_PERIOD_MS and hands the result to the sync task.
+void sensorLost(unsigned long now) {
+  if (++env.fails < SENSOR_MAX_FAILS) return;
+  Serial.println("ENV Pro stopped answering");
+  env.present = false;
+  env.fails = 0;
+  env.next_at = (now + SENSOR_RETRY_MS) | 1;
+}
+
+// Called every pass of loop(): finds the sensor (so it can be plugged in after boot), does what BSEC
+// asks for when it asks, and hands the outputs to the sync task.
 void sensorTick() {
   unsigned long now = millis();
   if (env.measuring) {
     if (now < env.ready_at) return;
     env.measuring = false;
-    if (sensorCollect()) {
-      env.fails = 0;
-    } else if (++env.fails >= SENSOR_MAX_FAILS) {
-      Serial.println("ENV Pro stopped answering");
-      env.present = false;
-      env.fails = 0;
-      env.next_at = (now + SENSOR_RETRY_MS) | 1;
-    }
+    if (sensorCollect()) env.fails = 0;
+    else sensorLost(now);
     return;
   }
   if (env.next_at && now < env.next_at) return;
@@ -775,14 +914,19 @@ void sensorTick() {
       env.next_at = (now + SENSOR_RETRY_MS) | 1;
       return;
     }
+    env.next_at = 0;
     Serial.println("ENV Pro found");
   }
-  env.next_at = (now + SENSOR_PERIOD_MS) | 1;
-  if (!sensorStart() && ++env.fails >= SENSOR_MAX_FAILS) {
-    env.present = false;
-    env.fails = 0;
-    env.next_at = (now + SENSOR_RETRY_MS) | 1;
+
+  int64_t ns = bsecNowNs();
+  if (ns < env.settings.next_call) return;
+  if (bsec_sensor_control_m(bsec_inst, ns, &env.settings) < BSEC_OK) {
+    sensorLost(now);
+    return;
   }
+  if (!env.settings.trigger_measurement || env.settings.op_mode != BME68X_FORCED_MODE) return;
+  env.control_ns = ns;
+  if (!sensorStart()) sensorLost(now);
 }
 
 // ---- syncing (runs on the sync task) -----------------------------------------
@@ -871,6 +1015,12 @@ bool deliverSample() {
   doc["humidity_pct"] = s.humidity_pct;
   doc["pressure_hpa"] = s.pressure_hpa;
   if (s.has_gas) doc["gas_ohms"] = s.gas_ohms;
+  if (s.has_iaq) {
+    doc["iaq"] = s.iaq;
+    doc["iaq_accuracy"] = s.iaq_accuracy;
+    doc["co2_ppm"] = s.co2_ppm;
+    doc["voc_ppm"] = s.voc_ppm;
+  }
   if (s.at) doc["measured_at"] = isoAt(s.at);
   String body, response;
   serializeJson(doc, body);

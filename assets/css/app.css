@@ -595,6 +595,7 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 /* The card keeps its own colour whatever the room feels like; only the call-out pill follows the mood */
 .glance-device[data-mood="warning"] .glance-pill { --tint: var(--color-warning); }
 .glance-device[data-mood="success"] .glance-pill { --tint: var(--color-success); }
+.glance-device .glance-pill-warning { --tint: var(--color-warning); }
 .glance-card[data-tone="warning"] { --tint: var(--color-warning); }
 .glance-card[data-tone="success"] { --tint: var(--color-success); }
 

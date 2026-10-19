@@ -1657,6 +1657,72 @@ defmodule TryggWeb.DashboardLiveTest do
       assert has_element?(lv, "#today-device-#{device.id}-status", "Quite warm")
     end
 
+    test "the Air tile reads BSEC's index once it is learning, and says so before", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#today-device-#{device.id}-gas", "—")
+
+      {:ok, _} =
+        Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+          "temperature_c" => 18.5,
+          "iaq" => 25.0,
+          "iaq_accuracy" => 0
+        })
+
+      assert has_element?(lv, "#today-device-#{device.id}-gas", "Learning")
+
+      {:ok, _} =
+        Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+          "temperature_c" => 18.5,
+          "iaq" => 72.0,
+          "iaq_accuracy" => 3
+        })
+
+      assert has_element?(lv, "#today-device-#{device.id}-gas", "Good")
+    end
+
+    test "the widget warns only when the air is clearly worse than the room's usual", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      now = DateTime.utc_now()
+
+      rows =
+        for i <- 1..1_200 do
+          at = DateTime.add(now, -(20 + i * 4) * 60, :second)
+
+          %{
+            device_id: device.id,
+            measured_at: at,
+            gas_ohms: 100_000.0,
+            inserted_at: DateTime.truncate(at, :second)
+          }
+        end
+
+      rows
+      |> Enum.chunk_every(500)
+      |> Enum.each(&Trygg.Repo.insert_all(Trygg.Devices.Reading, &1))
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#today-device-#{device.id}-air-alert")
+
+      for _ <- 1..3 do
+        {:ok, _} =
+          Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+            "temperature_c" => 18.5,
+            "gas_ohms" => 50_000.0
+          })
+      end
+
+      assert has_element?(lv, "#today-device-#{device.id}-air-alert", "50 % below")
+    end
+
     test "devices that aren't pinned stay off Today", %{
       conn: conn,
       scope: scope,

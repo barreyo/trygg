@@ -19,7 +19,7 @@ defmodule Trygg.Devices do
   import Ecto.Query, warn: false
 
   alias Trygg.Accounts.Scope
-  alias Trygg.Devices.{Device, Reading}
+  alias Trygg.Devices.{AirBaseline, Device, Reading}
   alias Trygg.Families
   alias Trygg.Repo
 
@@ -59,7 +59,7 @@ defmodule Trygg.Devices do
 
     devices = Repo.all(from d in Device, where: d.family_id == ^family_id, order_by: d.id)
     latest = latest_readings(Enum.map(devices, & &1.id))
-    Enum.map(devices, &%{&1 | latest: latest[&1.id]})
+    Enum.map(devices, &with_air_alert(%{&1 | latest: latest[&1.id]}))
   end
 
   defp latest_readings([]), do: %{}
@@ -78,7 +78,7 @@ defmodule Trygg.Devices do
   def get_device!(%Scope{} = scope, family_id, id) do
     Families.authorize_family!(scope, family_id, :viewer)
     device = Repo.get_by!(Device, id: id, family_id: family_id)
-    %{device | latest: latest_readings([device.id])[device.id]}
+    with_air_alert(%{device | latest: latest_readings([device.id])[device.id]})
   end
 
   @doc "The graphable windows as `{param, label, seconds}`, shortest first."
@@ -159,7 +159,7 @@ defmodule Trygg.Devices do
       {1, _} =
         Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: wanted])
 
-      updated = %{device | on_today: wanted, latest: latest[device.id]}
+      updated = with_air_alert(%{device | on_today: wanted, latest: latest[device.id]})
       broadcast(family_id, {:device_changed, updated})
       updated
     end
@@ -172,7 +172,7 @@ defmodule Trygg.Devices do
     {1, _} =
       Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: on_today])
 
-    updated = %{device | on_today: on_today}
+    updated = with_air_alert(%{device | on_today: on_today})
     broadcast(updated.family_id, {:device_changed, updated})
     {:ok, updated}
   end
@@ -195,7 +195,8 @@ defmodule Trygg.Devices do
   @doc """
   Records a reading from the device `hardware_id` in the family, registering the
   device if it is new. `attrs` takes `"temperature_c"`, `"humidity_pct"`,
-  `"pressure_hpa"`, `"gas_ohms"`, an optional `"measured_at"` (defaults to now)
+  `"pressure_hpa"`, `"gas_ohms"`, `"iaq"`, `"iaq_accuracy"`, `"co2_ppm"`,
+  `"voc_ppm"`, an optional `"measured_at"` (defaults to now)
   and an optional `"model"` for the device.
 
   Returns `{:ok, %{device: device, reading: reading}}` (`device.latest` is the
@@ -253,8 +254,14 @@ defmodule Trygg.Devices do
       [last_seen_at: seen] ++ if(is_binary(model) and model != "", do: [model: model], else: [])
 
     Repo.update_all(from(d in Device, where: d.id == ^device.id), set: changes)
-    struct(device, Keyword.put(changes, :latest, reading))
+    device |> struct(Keyword.put(changes, :latest, reading)) |> with_air_alert()
   end
+
+  # Only a device on Today shows the alert, so only then is the history worth a query.
+  defp with_air_alert(%Device{on_today: true} = device),
+    do: %{device | air_alert: AirBaseline.alert(device.id)}
+
+  defp with_air_alert(%Device{} = device), do: %{device | air_alert: nil}
 
   @doc "Deletes readings older than the retention period. Returns how many went."
   def prune_readings(days \\ @retention_days) do
