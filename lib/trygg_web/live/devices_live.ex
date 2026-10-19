@@ -54,7 +54,15 @@ defmodule TryggWeb.DevicesLive do
         >
           <div class="flex items-start gap-2">
             <div class="min-w-0 flex-1">
-              <h3 class="truncate font-semibold">{Device.label(device)}</h3>
+              <h3 class="truncate font-semibold">
+                <.link
+                  id={"#{dom_id}-open"}
+                  navigate={~p"/c/#{@current_child}/devices/#{device.id}"}
+                  class="hover:underline"
+                >
+                  {Device.label(device)}
+                </.link>
+              </h3>
               <p class="text-xs opacity-70">
                 <span
                   id={"#{dom_id}-short-id"}
@@ -100,6 +108,12 @@ defmodule TryggWeb.DevicesLive do
             <.metric id={"#{dom_id}-gas"} label="Air (VOC resistance)" value={gas(device.latest)} />
           </dl>
           <p :if={!device.latest} class="mt-3 text-sm opacity-70">No readings yet.</p>
+          <.link
+            navigate={~p"/c/#{@current_child}/devices/#{device.id}"}
+            class="mt-2 inline-flex items-center gap-0.5 text-sm text-primary underline underline-offset-2"
+          >
+            Graphs and history <.icon name="hero-arrow-right" class="size-3" />
+          </.link>
 
           <label
             :if={@can_edit?}
