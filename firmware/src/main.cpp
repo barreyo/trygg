@@ -13,6 +13,8 @@
 // An ENV Pro unit (BME688) on Port A is optional: when it answers, the button reports
 // temperature, humidity, pressure and gas resistance to the same API every 30 s, tagged
 // with the board's MAC address so the app can list the device and let the family name it.
+// The app answers with a five-digit device id, which is kept and printed small in the top right
+// corner of the screen, so the family can tell which physical unit is which in the app.
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -167,6 +169,10 @@ struct Sample {
 Sample sample;
 volatile bool sample_ready = false;
 String device_id;  // this board's WiFi MAC address, how the app tells devices apart
+// The five-digit id the app gave this device when it registered (0: not registered yet). Remembered
+// across restarts; the sync task sets it, the UI redraws when `short_id_dirty`.
+volatile long short_id = 0;
+volatile bool short_id_dirty = false;
 
 // Over-the-air updates. The sync task checks for a release and installs it; the UI shows
 // the progress and does the restart, once nothing is waiting in the (RAM-only) queue.
@@ -195,6 +201,18 @@ m5::Button_Class& btn(int i) { return i == 0 ? M5.BtnA : (i == 1 ? M5.BtnB : M5.
 
 // ---- drawing ---------------------------------------------------------------
 
+// The device id, tiny, in the top right corner. Nothing until the app has handed one out.
+void drawShortId() {
+  if (!short_id) return;
+  auto& d = M5.Display;
+  char buf[8];
+  snprintf(buf, sizeof buf, "%05ld", (long)short_id);
+  d.setFont(&fonts::Font0);  // 6x8 px
+  d.setTextColor(COLOR_DIM, COLOR_BG);
+  d.setTextDatum(top_right);
+  d.drawString(buf, d.width() - 3, 3);
+}
+
 void drawName() {
   auto& d = M5.Display;
   d.fillRect(0, 0, d.width(), 56, COLOR_BG);
@@ -207,6 +225,7 @@ void drawName() {
     if (d.textWidth(text) <= d.width() - 16) break;
   }
   d.drawString(text, d.width() / 2, 28);
+  drawShortId();
 }
 
 // One line under the name: what just happened, or the connection state.
@@ -392,7 +411,22 @@ void loadNetSettings() {
   net.password = prefs.getString("pass", "");
   net.url = prefs.getString("url", "");
   net.token = prefs.getString("token", "");
+  short_id = prefs.getLong("sid", 0);
   prefs.end();
+}
+
+// The app's answer to a reading names the device; remember it if it is new.
+void adoptShortId(const String& body) {
+  JsonDocument doc;
+  if (deserializeJson(doc, body)) return;
+  long id = doc["data"]["short_id"].as<long>();
+  if (id < 10000 || id > 99999 || id == short_id) return;
+  Preferences prefs;
+  prefs.begin("trygg", false);
+  prefs.putLong("sid", id);
+  prefs.end();
+  short_id = id;
+  short_id_dirty = true;
 }
 
 // From here to `syncTask` the code runs on the sync task and must not touch the
@@ -841,7 +875,10 @@ bool deliverSample() {
   String body, response;
   serializeJson(doc, body);
   int status = request("POST", "/api/v1/devices/" + device_id + "/readings", body, response);
-  if (status == 200 || status == 201) return true;
+  if (status == 200 || status == 201) {
+    adoptShortId(response);
+    return true;
+  }
   if (permanent(status)) {
     postError(describeFailure(status).c_str());
     return true;
@@ -1101,6 +1138,10 @@ void loop() {
   // A press above may have put the green screen up, which these would draw over.
   if (!logged_until && !list_open) {
     if (banner_until && millis() > banner_until) banner_until = 0;
+    if (short_id_dirty) {
+      short_id_dirty = false;
+      drawName();
+    }
     showSyncResults();
     updateIdleBanner();
   }

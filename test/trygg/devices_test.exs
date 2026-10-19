@@ -130,6 +130,97 @@ defmodule Trygg.DevicesTest do
     end
   end
 
+  describe "short ids" do
+    test "a registered device gets a five-digit id that stays put", ctx do
+      {:ok, %{device: device}} =
+        Devices.record_reading(ctx.scope, ctx.family_id, "dev", @sample)
+
+      assert device.short_id in 10_000..99_999
+
+      {:ok, %{device: again}} =
+        Devices.record_reading(ctx.scope, ctx.family_id, "dev", @sample)
+
+      assert again.short_id == device.short_id
+      assert Device.label(device) == "New device #{device.short_id}"
+    end
+
+    test "are unique within a family", ctx do
+      ids =
+        for n <- 1..30 do
+          {:ok, %{device: device}} =
+            Devices.record_reading(ctx.scope, ctx.family_id, "dev-#{n}", @sample)
+
+          device.short_id
+        end
+
+      assert length(Enum.uniq(ids)) == 30
+    end
+
+    test "registration draws another id when one is taken" do
+      taken = 12_345
+
+      # Only one id is ever free in this stubbed range, so the retry has to find it.
+      scope = user_scope_fixture()
+      child = child_fixture(scope)
+
+      Trygg.Repo.insert!(%Device{
+        family_id: child.family_id,
+        hardware_id: "first",
+        short_id: taken
+      })
+
+      for n <- 1..5 do
+        {:ok, %{device: device}} =
+          Devices.record_reading(scope, child.family_id, "other-#{n}", @sample)
+
+        assert device.short_id != taken
+      end
+    end
+  end
+
+  describe "set_on_today/3 and set_today_devices/3" do
+    setup ctx do
+      {:ok, %{device: a}} = Devices.record_reading(ctx.scope, ctx.family_id, "a", @sample)
+      {:ok, %{device: b}} = Devices.record_reading(ctx.scope, ctx.family_id, "b", @sample)
+      %{a: a, b: b}
+    end
+
+    test "devices start off the Today screen", ctx do
+      refute ctx.a.on_today
+    end
+
+    test "pins one device and broadcasts it", ctx do
+      Devices.subscribe(ctx.family_id)
+
+      assert {:ok, %Device{on_today: true}} = Devices.set_on_today(ctx.scope, ctx.a, true)
+      assert_receive {:device_changed, %Device{id: id, on_today: true}}
+      assert id == ctx.a.id
+      assert Devices.get_device!(ctx.scope, ctx.family_id, ctx.a.id).on_today
+    end
+
+    test "pins exactly the given devices and reports what changed", ctx do
+      assert [%Device{id: id}] = Devices.set_today_devices(ctx.scope, ctx.family_id, [ctx.b.id])
+      assert id == ctx.b.id
+
+      assert [] = Devices.set_today_devices(ctx.scope, ctx.family_id, [to_string(ctx.b.id)])
+
+      assert [%Device{id: a_id, on_today: true}, %Device{id: b_id, on_today: false}] =
+               Devices.set_today_devices(ctx.scope, ctx.family_id, [ctx.a.id])
+
+      assert {a_id, b_id} == {ctx.a.id, ctx.b.id}
+    end
+
+    test "viewers can't pin", ctx do
+      viewer = user_fixture()
+      membership_fixture(ctx.child, viewer, :viewer)
+      viewer_scope = user_scope_fixture(viewer)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Devices.set_on_today(viewer_scope, ctx.a, true)
+      end
+    end
+  end
+
   test "prune_readings/1 drops only old readings", ctx do
     {:ok, %{device: device}} = Devices.record_reading(ctx.scope, ctx.family_id, "dev", @sample)
     old = DateTime.add(DateTime.utc_now(), -40, :day) |> DateTime.to_iso8601()

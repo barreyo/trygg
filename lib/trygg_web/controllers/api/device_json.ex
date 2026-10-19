@@ -10,6 +10,8 @@ defmodule TryggWeb.Api.DeviceJSON do
     %{
       id: device.id,
       hardware_id: device.hardware_id,
+      # Five digits the device shows on its screen so the family can tell units apart.
+      short_id: device.short_id,
       # nil until a caregiver names the device in the app.
       name: device.name,
       model: device.model,

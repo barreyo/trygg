@@ -87,6 +87,7 @@ defmodule TryggWeb do
       import Phoenix.HTML
       # Core UI components
       import TryggWeb.CoreComponents
+      import TryggWeb.DeviceComponents, only: [device_widget: 1]
       import TryggWeb.LogComponents
       import TryggWeb.ReportComponents
       import TryggWeb.RhythmComponents

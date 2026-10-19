@@ -1,7 +1,7 @@
 defmodule TryggWeb.DashboardLive do
   use TryggWeb, :live_view
 
-  alias Trygg.{Families, Growth, Log, Notices, Push, Reports}
+  alias Trygg.{Devices, Families, Growth, Log, Notices, Push, Reports}
   alias Trygg.Accounts.Scope
   alias Trygg.Families.Child
   alias Trygg.Log.Entry
@@ -29,6 +29,7 @@ defmodule TryggWeb.DashboardLive do
     if connected?(socket) do
       Process.send_after(self(), :tick, @tick_ms)
       Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
+      Devices.subscribe(socket.assigns.current_child.family_id)
     end
 
     scope = socket.assigns.current_scope
@@ -49,6 +50,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:dismissed_notices, MapSet.new())
       |> assign(summary: nil, outlook: nil, weight_reminder: nil, rhythm_center: nil)
       |> assign(:entries_empty?, false)
+      |> assign(:devices, [])
       |> stream(:entries, [])
       |> allow_upload(:photo,
         accept: Log.photo_accept(),
@@ -125,6 +127,20 @@ defmodule TryggWeb.DashboardLive do
   def handle_info({:members_changed, _child_id}, socket) do
     {:noreply, resync_membership(socket)}
   end
+
+  # Room sensors: the family's few devices live in one list. A reading flashes
+  # the pinned device's card, so a change on screen is easy to spot.
+  def handle_info({:device_reading, device, _reading}, socket) do
+    {:noreply,
+     socket
+     |> put_device(device)
+     |> RemoteUpdate.flash_device(device)}
+  end
+
+  def handle_info({:device_changed, device}, socket), do: {:noreply, put_device(socket, device)}
+
+  def handle_info({:device_deleted, id}, socket),
+    do: {:noreply, update(socket, :devices, &Enum.reject(&1, fn d -> d.id == id end))}
 
   def handle_info({:user_updated, user}, socket) do
     scope = %{socket.assigns.current_scope | user: user}
@@ -300,9 +316,13 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("open_sheet", %{"kind" => "layout"}, socket) do
     types = Enum.map(socket.assigns.current_child.tracked_types, &to_string/1)
+    devices = socket.assigns.devices |> today_devices() |> Enum.map(&to_string(&1.id))
 
     {:noreply,
-     assign(socket, sheet: :layout, sheet_form: layout_form(layout_order(types), types))}
+     assign(socket,
+       sheet: :layout,
+       sheet_form: layout_form(layout_order(types), types, devices)
+     )}
   end
 
   def handle_event("open_sheet", %{"kind" => "bottle"}, socket) do
@@ -387,6 +407,7 @@ defmodule TryggWeb.DashboardLive do
   def handle_event("save_layout", %{"layout" => params}, socket) do
     order = layout_order(List.wrap(params["order"]))
     checked = checked_types(params)
+    devices = checked_devices(params)
 
     # The submitted order is the new Home order; unticked trackers drop out of it
     wanted =
@@ -402,6 +423,10 @@ defmodule TryggWeb.DashboardLive do
            wanted
          ) do
       {:ok, child} ->
+        # The devices are the family's, not the child's: pinning one changes Today for
+        # everyone, and the {:device_changed, _} broadcasts update every open screen.
+        Devices.set_today_devices(socket.assigns.current_scope, child.family_id, devices)
+
         {:noreply,
          socket
          |> assign(:current_child, child)
@@ -412,7 +437,12 @@ defmodule TryggWeb.DashboardLive do
         {:noreply,
          assign(socket,
            sheet_form:
-             layout_form(order, checked, tracked_types: {"pick at least one thing to track", []})
+             layout_form(
+               order,
+               checked,
+               devices,
+               tracked_types: {"pick at least one thing to track", []}
+             )
          )}
     end
   end
@@ -750,15 +780,31 @@ defmodule TryggWeb.DashboardLive do
   defp fetch_home(scope, child) do
     %{
       status: fetch_status(scope, child),
-      entries: recent_tracked(scope, child, @recent_limit)
+      entries: recent_tracked(scope, child, @recent_limit),
+      devices: Devices.list_devices(scope, child.family_id)
     }
   end
 
-  defp apply_home(socket, %{status: status, entries: entries}) do
+  defp apply_home(socket, %{status: status, entries: entries, devices: devices}) do
     socket
     |> apply_status(status)
     |> apply_entries(entries)
+    |> assign(:devices, devices)
   end
+
+  # Replaces the device in the list (devices are ordered by id) or adds it. A
+  # message that only carries the sample or the rename keeps the other half of
+  # what the list already knows.
+  defp put_device(socket, device) do
+    update(socket, :devices, fn devices ->
+      devices
+      |> Enum.reject(&(&1.id == device.id))
+      |> Kernel.++([device])
+      |> Enum.sort_by(& &1.id)
+    end)
+  end
+
+  defp today_devices(devices), do: Enum.filter(devices, & &1.on_today)
 
   # The at-a-glance numbers (counts, "slept today", "Xm ago") plus the outlook
   # (next nap / next feed / alerts). Recomputed on every minute tick so
@@ -930,14 +976,20 @@ defmodule TryggWeb.DashboardLive do
   defp resync_layout_sheet(%{assigns: %{sheet: :layout}} = socket, previous, current)
        when previous != current do
     types = Enum.map(current, &to_string/1)
-    assign(socket, :sheet_form, layout_form(layout_order(types), types))
+    devices = List.wrap(socket.assigns.sheet_form.params["devices"])
+    assign(socket, :sheet_form, layout_form(layout_order(types), types, devices))
   end
 
   defp resync_layout_sheet(socket, _previous, _current), do: socket
 
   # `order` is every tracker in display order, `checked` the ones switched on.
-  defp layout_form(order, checked, errors \\ []),
-    do: to_form(%{"order" => order, "tracked_types" => checked}, as: :layout, errors: errors)
+  # `devices` are the ids of the room sensors pinned to Today.
+  defp layout_form(order, checked, devices, errors \\ []),
+    do:
+      to_form(%{"order" => order, "tracked_types" => checked, "devices" => devices},
+        as: :layout,
+        errors: errors
+      )
 
   # Valid, unique tracker names in the given order, with any missing ones
   # appended so every tracker always has a row.
@@ -948,6 +1000,9 @@ defmodule TryggWeb.DashboardLive do
 
   defp checked_types(params),
     do: params["tracked_types"] |> List.wrap() |> Enum.reject(&(&1 == ""))
+
+  defp checked_devices(params),
+    do: params["devices"] |> List.wrap() |> Enum.reject(&(&1 == ""))
 
   defp tracker_label(name),
     do:
@@ -1169,6 +1224,22 @@ defmodule TryggWeb.DashboardLive do
               />
             </section>
 
+            <%!-- Room sensors pinned to Today (Customize, or Devices in the menu).
+               They update as readings arrive. --%>
+            <section
+              :if={today_devices(@devices) != []}
+              id="today-devices"
+              class="mt-3 space-y-3"
+            >
+              <.device_widget
+                :for={{device, i} <- Enum.with_index(today_devices(@devices))}
+                device={device}
+                unit_system={@unit_system}
+                index={length(@current_child.tracked_types) + i}
+                now={@now_tick}
+              />
+            </section>
+
             <%!-- The odd ones out — rare enough to stay small --%>
             <div :if={@can_write} class="mt-3 flex items-center justify-center gap-1">
               <.button
@@ -1284,6 +1355,7 @@ defmodule TryggWeb.DashboardLive do
         photo_upload={@uploads.photo}
         vitamin_d_prompt?={vitamin_d_prompt?(@current_child, @summary)}
         tracked_types={@current_child.tracked_types}
+        devices={@devices}
         timezone={@current_child.timezone}
       />
 
@@ -1527,6 +1599,7 @@ defmodule TryggWeb.DashboardLive do
   attr :photo_upload, :any, required: true
   attr :vitamin_d_prompt?, :boolean, default: false
   attr :tracked_types, :list, default: [:feeding, :diaper, :sleep]
+  attr :devices, :list, default: [], doc: "the family's room sensors, for the Customize sheet"
   attr :timezone, :string, required: true
 
   defp sheet(assigns) do
@@ -1600,7 +1673,8 @@ defmodule TryggWeb.DashboardLive do
           <h3 class="font-semibold text-lg mb-1">Customize Today</h3>
           <p class="text-sm opacity-70 mb-4">
             Choose what to track and put it in the order you like. Everyone caring for this child
-            sees the same Today screen. Hidden entries stay in the full log and reports.
+            sees the same Today screen. Hidden entries stay in the full log and reports. Room
+            sensors you tick show up below the cards.
           </p>
           <.form
             for={@form}
@@ -1662,6 +1736,25 @@ defmodule TryggWeb.DashboardLive do
               >
                 <.icon name="hero-chevron-down" class="size-5" />
               </.button>
+            </div>
+            <div :if={@devices != []} id="layout-devices" class="pt-2">
+              <input type="hidden" name="layout[devices][]" value="" />
+              <h4 class="mb-1 text-sm font-semibold">Room sensors</h4>
+              <label
+                :for={device <- @devices}
+                id={"layout-device-row-#{device.id}"}
+                class="flex min-h-12 items-center gap-3 rounded-box bg-base-200/60 px-3 py-3"
+              >
+                <input
+                  type="checkbox"
+                  id={"layout-device-#{device.id}"}
+                  name="layout[devices][]"
+                  value={device.id}
+                  checked={to_string(device.id) in List.wrap(@form.params["devices"])}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="font-medium">{Trygg.Devices.Device.label(device)}</span>
+              </label>
             </div>
             <p
               :for={{msg, _opts} <- @form[:tracked_types].errors}
