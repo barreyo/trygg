@@ -63,8 +63,21 @@ sits right against the button; give it some cable.
 
 ## Motion sensor and screen brightness (Unit PIR)
 
-Plug a [Unit PIR](https://docs.m5stack.com/en/unit/pir) (U004) into **Port B** (the black HY2.0
-connector; the unit's signal is on G36). The screen is lit only while something is near, and for 30 s
+A plain M5Stack Basic has no Port B (that comes with the M5GO bottom), so the
+[Unit PIR](https://docs.m5stack.com/en/unit/pir) (U004) is wired to the 30-pin
+[M-Bus](https://docs.m5stack.com/en/learn/interface/mbus) socket (pins numbered from 1 at the GND pin in
+the top left corner; the left column is the odd pins):
+
+| PIR wire | M-Bus pin |
+|---|---|
+| black (GND) | 3 (GND; 1 and 5 also work) |
+| red (5V) | 28 (5V) |
+| yellow (signal) | 4 (G36, input only) |
+| white | not used |
+
+With an M5GO bottom the unit can instead go in Port B with a plain Grove cable (same G36).
+
+The screen is lit only while something is near, and for 30 s
 after the last motion or button press:
 
 | | nobody near | someone near / just pressed |
