@@ -3,15 +3,17 @@ defmodule Trygg.Devices do
   Sensor devices that report to a family, and the readings they send.
 
   A device registers itself: the first reading from a `hardware_id` the family
-  hasn't seen creates the device, unnamed. A caregiver then names it so the
-  family knows which room it is in. Devices belong to the family, not to a
+  hasn't seen creates the device, unnamed, with a random five-digit `short_id`
+  that the device shows on its own screen. A caregiver then names it so the
+  family knows which room it is in, and can pin it to the Today screen. Devices belong to the family, not to a
   child, and reach this module through a family API token (`Trygg.ApiTokens`),
   whose role must be `:caregiver` to report.
 
   Every reading is broadcast on the family's topic (`subscribe/1`) as
   `{:device_reading, device, reading}` so open screens update live; naming or
   forgetting a device sends `{:device_changed, device}` and
-  `{:device_deleted, device_id}`.
+  `{:device_deleted, device_id}`. Pinning a device to Today (`set_on_today/3`) is
+  a `{:device_changed, device}` too.
   """
 
   import Ecto.Query, warn: false
@@ -83,6 +85,41 @@ defmodule Trygg.Devices do
   end
 
   @doc """
+  Pins the family's devices in `ids` to the Today screen and unpins the rest.
+  Caregivers and owners can. Returns the devices that changed.
+  """
+  def set_today_devices(%Scope{} = scope, family_id, ids) do
+    Families.authorize_family!(scope, family_id, :caregiver)
+    ids = MapSet.new(ids, &to_string/1)
+
+    devices = Repo.all(from d in Device, where: d.family_id == ^family_id, order_by: d.id)
+    latest = latest_readings(Enum.map(devices, & &1.id))
+
+    for device <- devices,
+        wanted <- [MapSet.member?(ids, to_string(device.id))],
+        wanted != device.on_today do
+      {1, _} =
+        Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: wanted])
+
+      updated = %{device | on_today: wanted, latest: latest[device.id]}
+      broadcast(family_id, {:device_changed, updated})
+      updated
+    end
+  end
+
+  @doc "Pins one device to the Today screen, or unpins it. Caregivers and owners can."
+  def set_on_today(%Scope{} = scope, %Device{} = device, on_today) when is_boolean(on_today) do
+    Families.authorize_family!(scope, device.family_id, :caregiver)
+
+    {1, _} =
+      Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: on_today])
+
+    updated = %{device | on_today: on_today}
+    broadcast(updated.family_id, {:device_changed, updated})
+    {:ok, updated}
+  end
+
+  @doc """
   Forgets a device and its readings. If it is still running it registers again,
   unnamed, with its next reading.
   """
@@ -126,17 +163,27 @@ defmodule Trygg.Devices do
 
   # Finds the family's device or creates it unnamed. The unique index settles a race
   # between two first readings.
-  defp register(family_id, hardware_id, model) do
+  defp register(family_id, hardware_id, model, attempts \\ 5) do
     case Repo.get_by(Device, family_id: family_id, hardware_id: to_string(hardware_id)) do
       %Device{} = device ->
         {:ok, device}
 
       nil ->
-        with {:ok, _} <-
-               %Device{family_id: family_id}
-               |> Device.registration_changeset(%{"hardware_id" => hardware_id, "model" => model})
-               |> Repo.insert(on_conflict: :nothing, conflict_target: [:family_id, :hardware_id]) do
-          {:ok, Repo.get_by!(Device, family_id: family_id, hardware_id: hardware_id)}
+        result =
+          %Device{family_id: family_id}
+          |> Device.registration_changeset(%{"hardware_id" => hardware_id, "model" => model})
+          |> Repo.insert(on_conflict: :nothing, conflict_target: [:family_id, :hardware_id])
+
+        case result do
+          {:ok, _} ->
+            {:ok, Repo.get_by!(Device, family_id: family_id, hardware_id: hardware_id)}
+
+          # The random short id is already taken in this family: draw another.
+          {:error, %Ecto.Changeset{errors: [{:short_id, _} | _]}} when attempts > 1 ->
+            register(family_id, hardware_id, model, attempts - 1)
+
+          error ->
+            error
         end
     end
   end

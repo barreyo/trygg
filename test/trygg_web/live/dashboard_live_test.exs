@@ -1617,6 +1617,112 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "room sensors" do
+    setup :register_and_log_in_user
+
+    setup %{scope: scope} do
+      child = child_fixture(scope)
+
+      {:ok, %{device: device}} =
+        Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+          "temperature_c" => 18.5,
+          "humidity_pct" => 45.0,
+          "pressure_hpa" => 1012.0
+        })
+
+      {:ok, device} = Trygg.Devices.set_on_today(scope, device, true)
+      %{child: child, device: device}
+    end
+
+    test "a pinned device shows as a widget that updates when a reading arrives", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#today-device-#{device.id}-temperature", "18.5 °C")
+      assert has_element?(lv, "#today-device-#{device.id}-humidity", "45 %")
+      assert has_element?(lv, "#today-device-#{device.id}-status", "Just right")
+
+      {:ok, _} =
+        Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+          "temperature_c" => 26.0,
+          "humidity_pct" => 50.0
+        })
+
+      assert has_element?(lv, "#today-device-#{device.id}-temperature", "26.0 °C")
+      assert has_element?(lv, "#today-device-#{device.id}-humidity", "50 %")
+      assert has_element?(lv, "#today-device-#{device.id}-status", "Quite warm")
+    end
+
+    test "devices that aren't pinned stay off Today", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      {:ok, _} = Trygg.Devices.set_on_today(scope, device, false)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#today-devices")
+    end
+
+    test "pinning and unpinning shows up live, and renaming too", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      {:ok, _} = Trygg.Devices.set_on_today(scope, device, false)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#today-device-#{device.id}")
+
+      {:ok, device} = Trygg.Devices.set_on_today(scope, device, true)
+      assert has_element?(lv, "#today-device-#{device.id}")
+
+      {:ok, _} = Trygg.Devices.name_device(scope, device, %{"name" => "Nursery"})
+      assert has_element?(lv, "#today-device-#{device.id}", "Nursery")
+
+      {:ok, _} = Trygg.Devices.set_on_today(scope, device, false)
+      refute has_element?(lv, "#today-device-#{device.id}")
+    end
+
+    test "a forgotten device leaves Today", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#today-device-#{device.id}")
+
+      {:ok, _} = Trygg.Devices.delete_device(scope, device)
+      refute has_element?(lv, "#today-device-#{device.id}")
+    end
+
+    test "Customize Today pins a device", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      {:ok, _} = Trygg.Devices.set_on_today(scope, device, false)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      lv |> element("#customize-home") |> render_click()
+      assert has_element?(lv, "#layout-device-#{device.id}")
+      refute has_element?(lv, "#layout-device-#{device.id}[checked]")
+
+      lv
+      |> form("#layout-form", layout: %{devices: ["", to_string(device.id)]})
+      |> render_submit()
+
+      assert Trygg.Devices.get_device!(scope, child.family_id, device.id).on_today
+      assert has_element?(lv, "#today-device-#{device.id}")
+    end
+  end
+
   describe "photos" do
     setup %{conn: conn} do
       %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})

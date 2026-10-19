@@ -54,8 +54,11 @@ which accept any valid token:
 
 An M5Stack with an ENV Pro unit reports room readings. The device identifies itself by `hardware_id`
 (its WiFi MAC address); the first reading from an unknown id **registers** a device in the token's
-family with no name, and a caregiver names it in the app (menu → Devices) so the family knows which
-room it is in. Needs a **Read and log** token.
+family with no name and a random five-digit `short_id`, and a caregiver names it in the app (menu →
+Devices) so the family knows which room it is in. The response to a reading carries the device, so
+the unit can print its `short_id` on its screen (the button does, small, in the top right corner).
+A caregiver can also pin a device to the Today screen as a live widget. Needs a **Read and log**
+token.
 
 ```sh
 curl -X POST "https://<host>/api/v1/devices/AA:BB:CC:DD:EE:FF/readings" \
@@ -69,7 +72,7 @@ curl -X POST "https://<host>/api/v1/devices/AA:BB:CC:DD:EE:FF/readings" \
 - Every reading is broadcast to open screens of the family, which update live. Readings older than
   30 days are deleted. Forgetting a device in the app deletes its readings; if it keeps reporting it
   registers again, unnamed.
-- `GET /api/v1/devices` returns `{id, hardware_id, name, model, last_seen_at, latest}` per device
+- `GET /api/v1/devices` returns `{id, hardware_id, short_id, name, model, last_seen_at, latest}` per device
   (`name` is `null` until named).
 
 ### Logging an entry

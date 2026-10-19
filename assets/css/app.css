@@ -135,6 +135,8 @@
   --color-diaper-poo-content: oklch(96% 0.01 90);
   --color-diaper-mixed: oklch(56% 0.19 35);
   --color-diaper-mixed-content: oklch(98% 0.02 60);
+  /* Room sensors: a fresh pink, apart from sleep (indigo), feeding (blue) and diapers (yellow) */
+  --color-device: oklch(70% 0.19 350);
 }
 
 /*
@@ -589,6 +591,10 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 .glance-feed { --tint: var(--color-info); }
 .glance-diaper { --tint: var(--color-diaper-pee); }
 .glance-sleep { --tint: var(--color-primary); }
+.glance-device { --tint: var(--color-device); }
+/* The card keeps its own colour whatever the room feels like; only the call-out pill follows the mood */
+.glance-device[data-mood="warning"] .glance-pill { --tint: var(--color-warning); }
+.glance-device[data-mood="success"] .glance-pill { --tint: var(--color-success); }
 .glance-card[data-tone="warning"] { --tint: var(--color-warning); }
 .glance-card[data-tone="success"] { --tint: var(--color-success); }
 
@@ -635,6 +641,36 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   color: color-mix(in oklab, var(--tint) 55%, var(--color-base-content));
 }
 
+/* Room sensors on Today: little reading tiles and a heartbeat dot while the device is live */
+.device-tile {
+  min-width: 0;
+  border-radius: var(--radius-field);
+  padding: 0.4rem 0.6rem;
+  background: color-mix(in oklab, var(--tint) 14%, var(--color-base-100));
+  border: 1.5px solid color-mix(in oklab, var(--tint) 28%, transparent);
+}
+.device-dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-warning) 80%, transparent);
+}
+.device-dot-live { background: var(--color-success); }
+.device-dot-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-success);
+  animation: device-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes device-ping {
+  from { transform: scale(1); opacity: 0.7; }
+  to   { transform: scale(2.8); opacity: 0; }
+}
+
 @keyframes glance-bob {
   from { transform: translateY(0) rotate(-3deg); }
   to   { transform: translateY(-3px) rotate(3deg); }
@@ -655,7 +691,7 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .glance-pop, .glance-bubble { animation: none; }
+  .glance-pop, .glance-bubble, .device-dot-live::after { animation: none; }
 }
 
 /*

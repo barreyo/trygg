@@ -49,7 +49,11 @@ POST /api/v1/devices/<this board's WiFi MAC>/readings
 
 The first reading **registers the board as a device** in the family, unnamed. Open the app's menu →
 **Devices** (`/c/:id/devices`), where it appears live; give it a name ("Nursery") and every later sample
-shows up on that card the moment it arrives (PubSub, no refresh). Samples are kept for 30 days. Only the
+shows up on that card the moment it arrives (PubSub, no refresh). Registering also hands the board a
+random five-digit device id, which the app lists next to the device and the button prints small in the
+top right corner of its screen (it is remembered across restarts), so you can tell units apart. Tick
+**Show on Today** on the device (or in Today → Customize) to get a live room card on the Today screen.
+Samples are kept for 30 days. Only the
 latest sample is retried when the network is down; there is no backlog.
 
 `gas_ohms` is the sensor's raw gas resistance (it drops when VOCs rise), shown as a trend, not an air

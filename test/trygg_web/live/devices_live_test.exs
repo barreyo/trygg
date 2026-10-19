@@ -41,6 +41,23 @@ defmodule TryggWeb.DevicesLiveTest do
     assert Devices.get_device!(scope, child.family_id, device.id).name == "Nursery"
   end
 
+  test "shows the device's five-digit id and lets a caregiver pin it to Today", %{
+    conn: conn,
+    scope: scope,
+    child: child
+  } do
+    {:ok, %{device: device}} = Devices.record_reading(scope, child.family_id, "AA:BB", @sample)
+    {:ok, lv, _html} = live(conn, ~p"/c/#{child}/devices")
+
+    assert has_element?(lv, "#devices-#{device.id}-short-id", to_string(device.short_id))
+    refute has_element?(lv, "#devices-#{device.id}-today-toggle[checked]")
+
+    lv |> element("#devices-#{device.id}-today-toggle") |> render_click()
+
+    assert Devices.get_device!(scope, child.family_id, device.id).on_today
+    assert has_element?(lv, "#devices-#{device.id}-today-toggle[checked]")
+  end
+
   test "a newer sample replaces the value on screen", %{conn: conn, scope: scope, child: child} do
     {:ok, %{device: device}} = Devices.record_reading(scope, child.family_id, "AA:BB", @sample)
     {:ok, lv, _html} = live(conn, ~p"/c/#{child}/devices")

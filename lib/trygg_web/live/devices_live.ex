@@ -2,7 +2,9 @@ defmodule TryggWeb.DevicesLive do
   @moduledoc """
   The family's sensor devices (ENV Pro units on M5Stack buttons): their latest
   temperature, humidity, pressure and air reading, live as samples arrive, and
-  the place to name a freshly connected device ("Nursery") or forget one.
+  the place to name a freshly connected device ("Nursery"), pin it to the Today
+  screen or forget it. Each device shows its five-digit id, the same one it
+  prints in the corner of its own screen.
   """
   use TryggWeb, :live_view
 
@@ -55,6 +57,14 @@ defmodule TryggWeb.DevicesLive do
               <h3 class="truncate font-semibold">{Device.label(device)}</h3>
               <p class="text-xs opacity-70">
                 <span
+                  id={"#{dom_id}-short-id"}
+                  class="font-mono font-medium"
+                  title="This number is also shown in the corner of the device's screen"
+                >
+                  #{device.short_id}
+                </span>
+                ·
+                <span
                   id={"#{dom_id}-status"}
                   class={[
                     "font-medium",
@@ -90,6 +100,21 @@ defmodule TryggWeb.DevicesLive do
             <.metric id={"#{dom_id}-gas"} label="Air (VOC resistance)" value={gas(device.latest)} />
           </dl>
           <p :if={!device.latest} class="mt-3 text-sm opacity-70">No readings yet.</p>
+
+          <label
+            :if={@can_edit?}
+            id={"#{dom_id}-today"}
+            class="mt-3 flex cursor-pointer items-center gap-3 text-sm"
+          >
+            <input
+              type="checkbox"
+              id={"#{dom_id}-today-toggle"}
+              class="checkbox checkbox-sm"
+              checked={device.on_today}
+              phx-click="toggle_today"
+              phx-value-id={device.id}
+            /> Show on Today
+          </label>
 
           <.form
             :if={@can_edit?}
@@ -197,6 +222,16 @@ defmodule TryggWeb.DevicesLive do
 
       {:error, :not_found} ->
         {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_today", %{"id" => id}, socket) do
+    with {:ok, device} <- fetch_device(socket, id),
+         {:ok, _device} <-
+           Devices.set_on_today(socket.assigns.current_scope, device, !device.on_today) do
+      {:noreply, socket}
+    else
+      _ -> {:noreply, socket}
     end
   end
 

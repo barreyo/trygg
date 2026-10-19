@@ -30,11 +30,19 @@ defmodule TryggWeb.Api.DeviceControllerTest do
   } do
     conn = bearer(conn, scope, child, :caregiver)
 
-    assert %{"data" => %{"hardware_id" => "AA:BB:CC:DD:EE:FF", "name" => nil, "latest" => latest}} =
+    assert %{
+             "data" => %{
+               "hardware_id" => "AA:BB:CC:DD:EE:FF",
+               "short_id" => short_id,
+               "name" => nil,
+               "latest" => latest
+             }
+           } =
              conn
              |> reading("AA:BB:CC:DD:EE:FF", Map.put(@sample, :model, "env_pro"))
              |> json_response(201)
 
+    assert short_id in 10_000..99_999
     assert latest["temperature_c"] == 21.5
 
     assert [%{model: "env_pro", name: nil}] = Devices.list_devices(scope, child.family_id)

@@ -28,6 +28,10 @@ defmodule TryggWeb.RemoteUpdate do
       else: socket
   end
 
+  @doc "Today: pulses a pinned room sensor's card when it reports a new reading."
+  def flash_device(socket, %Trygg.Devices.Device{id: id}),
+    do: flash(socket, ["#today-device-#{id} .glance-card"])
+
   @doc "Timeline: pulses the entry's row, when the change came from elsewhere."
   def flash_timeline(socket, %Entry{} = entry, action) do
     if Entry.remote?(entry), do: flash(socket, entry_row(entry, action)), else: socket
