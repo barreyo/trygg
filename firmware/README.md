@@ -73,8 +73,12 @@ after the last motion or button press:
 | Night (8 PM to 8 AM) | backlight **off** | low |
 
 At night the buttons still work with the screen off, and a press also wakes the screen. Local time
-follows `TIMEZONE`; until the clock has synced after boot it counts as daytime. Without a PIR plugged in
-the pin floats low, so the screen just idles dim by day (and off at night, apart from presses). The
+follows `TIMEZONE`; until the clock has synced after boot it counts as daytime.
+
+**Without a PIR the screen behaves as before**: bright by day, low at night, always on. A PIR can't
+announce that it is plugged in, so the firmware treats it as connected once its pin has stayed high for
+half a second, i.e. after the first motion it sees following a boot. Until then (and always, with no PIR)
+the old behaviour applies; a PIR that is unplugged later is not noticed until the next reboot. The
 levels, hours and wake time are constants at the top of `src/main.cpp`.
 
 A PIR senses motion, not distance: "near" is set with the sensitivity trimmer on the back of the unit

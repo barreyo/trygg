@@ -111,7 +111,8 @@ const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
 const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
 const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
 
-// Screen brightness (0-255). A Unit PIR (U004) on Port B wakes the screen: by day it idles dim and
+// Screen brightness (0-255). Without a PIR the screen is simply bright by day and low at night. Once a
+// Unit PIR (U004) on Port B has been seen working it wakes the screen instead: by day it idles dim and
 // brightens while something is near, at night it is off until something is near (or a button is pressed).
 const int DAY_BRIGHTNESS = 90;       // awake, daytime
 const int DAY_IDLE_BRIGHTNESS = 15;  // nobody near, daytime
@@ -123,6 +124,9 @@ const unsigned long WAKE_MS = 30000; // stay lit this long after the last motion
 // Port B's first pin (G36, input only). The PIR drives it high while it sees motion; how close
 // "near" is comes from the sensitivity trimmer on the unit's back.
 const m5::pin_name_t PIR_PIN = m5::pin_name_t::port_b_in;
+// A PIR has no way to say it is plugged in, and the pin has no pull-down, so it counts as connected
+// once the pin has stayed high this long. Noise on an empty port doesn't do that.
+const unsigned long PIR_DETECT_MS = 500;
 
 struct Child {
   long id;
@@ -1084,8 +1088,17 @@ void loop() {
     if (btn(i).wasPressed()) last_activity = last_wake = millis();
   }
 
-  if (digitalRead(M5.getPin(PIR_PIN)) == HIGH) last_wake = millis();
-  updateBrightness(millis() - last_wake < WAKE_MS);
+  static bool pir_present = false;  // seen working since boot
+  static unsigned long pir_high_since = 0;
+  if (digitalRead(M5.getPin(PIR_PIN)) == HIGH) {
+    last_wake = millis();
+    if (!pir_high_since) pir_high_since = millis() | 1;  // never 0, which means "low"
+    if (!pir_present && millis() - pir_high_since >= PIR_DETECT_MS) pir_present = true;
+  } else {
+    pir_high_since = 0;
+  }
+  // No PIR (yet): always "awake", which is the plain day/night brightness.
+  updateBrightness(!pir_present || millis() - last_wake < WAKE_MS);
 
   sensorTick();
 
