@@ -144,6 +144,9 @@ defmodule TryggWeb.DeviceChartComponents do
         })
       end)
 
+    # The buckets are equally wide, so their mean is the window's mean.
+    average = Enum.sum_by(values, & &1.v) / length(values)
+
     runs = split_runs(placed, history.bucket * @gap_buckets)
     {lone, lines} = Enum.split_with(runs, &match?([_], &1))
 
@@ -173,7 +176,9 @@ defmodule TryggWeb.DeviceChartComponents do
           [p.x, p.y, when_label(p.at, tz, long_range?), format(p.v, spec)]
         end),
       low: format(Enum.min_by(values, & &1.v).v, spec),
-      high: format(Enum.max_by(values, & &1.v).v, spec)
+      high: format(Enum.max_by(values, & &1.v).v, spec),
+      avg: format(average, spec),
+      avg_y: round1(@bottom - (average - lo) / (hi - lo) * (@bottom - @top))
     }
   end
 
@@ -308,7 +313,7 @@ defmodule TryggWeb.DeviceChartComponents do
           viewBox={"0 0 #{@width} #{@height}"}
           class="h-44 w-full touch-pan-y select-none"
           role="img"
-          aria-label={"#{@spec.label} over time in #{@spec.unit}, from #{@chart.low} to #{@chart.high}"}
+          aria-label={"#{@spec.label} over time in #{@spec.unit}, from #{@chart.low} to #{@chart.high}, average #{@chart.avg}"}
         >
           <line
             :for={tick <- @chart.y_ticks}
@@ -349,6 +354,17 @@ defmodule TryggWeb.DeviceChartComponents do
             {tick.label}
           </text>
 
+          <line
+            id={"#{@id}-avg-line"}
+            x1={@left}
+            y1={@chart.avg_y}
+            x2={@right}
+            y2={@chart.avg_y}
+            stroke="currentColor"
+            stroke-opacity="0.55"
+            stroke-width="1"
+            stroke-dasharray="4 3"
+          />
           <polygon
             :for={segment <- @chart.segments}
             points={segment.area}
@@ -390,10 +406,10 @@ defmodule TryggWeb.DeviceChartComponents do
         :if={!@chart.empty?}
         id={"#{@id}-readout"}
         data-readout
-        data-default={"Low #{@chart.low} · High #{@chart.high}"}
+        data-default={"Low #{@chart.low} · Avg #{@chart.avg} · High #{@chart.high}"}
         class="min-h-5 text-center text-sm font-semibold tabular-nums"
       >
-        Low {@chart.low} · High {@chart.high}
+        Low {@chart.low} · Avg {@chart.avg} · High {@chart.high}
       </p>
       <p :if={@hint} class="mt-1 text-center text-xs text-base-content/70">{@hint}</p>
     </section>
