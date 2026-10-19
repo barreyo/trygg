@@ -26,6 +26,17 @@ defmodule Trygg.Devices do
   # Readings older than this are dropped by `Trygg.Devices.PruneWorker`.
   @retention_days 30
 
+  # The windows the detail page can graph, as `{param, label, seconds}`, and how many
+  # points a graph is thinned to: a day of 30 s samples is 2,880 of them, far more than
+  # a phone screen can show.
+  @history_ranges [
+    {"6h", "6 hours", 6 * 3600},
+    {"24h", "24 hours", 24 * 3600},
+    {"7d", "7 days", 7 * 86_400},
+    {"30d", "30 days", 30 * 86_400}
+  ]
+  @history_points 120
+
   ## PubSub -------------------------------------------------------------------
 
   @doc "Topic string for realtime messages about a family's devices."
@@ -68,6 +79,53 @@ defmodule Trygg.Devices do
     Families.authorize_family!(scope, family_id, :viewer)
     device = Repo.get_by!(Device, id: id, family_id: family_id)
     %{device | latest: latest_readings([device.id])[device.id]}
+  end
+
+  @doc "The graphable windows as `{param, label, seconds}`, shortest first."
+  def history_ranges, do: @history_ranges
+
+  @doc """
+  The device's readings over the last `seconds`, thinned to about #{@history_points}
+  points by averaging each time bucket. Returns `%{points: [point], bucket: seconds,
+  from: DateTime, to: DateTime}`, oldest point first; a point is `%{at: DateTime,
+  temperature_c:, humidity_pct:, pressure_hpa:, gas_ohms:}` (a field is `nil` when
+  nothing in the bucket reported it). Any member can look.
+  """
+  def history(%Scope{} = scope, %Device{} = device, seconds) when seconds > 0 do
+    Families.authorize_family!(scope, device.family_id, :viewer)
+
+    to = DateTime.utc_now()
+    from = DateTime.add(to, -seconds, :second)
+    bucket = max(div(seconds, @history_points), 30)
+
+    points =
+      from(r in Reading,
+        where: r.device_id == ^device.id and r.measured_at >= ^from,
+        group_by: selected_as(:bucket),
+        order_by: selected_as(:bucket),
+        select: %{
+          bucket:
+            selected_as(
+              fragment(
+                "floor(extract(epoch from ?) / ?::integer)::bigint * ?::integer",
+                r.measured_at,
+                ^bucket,
+                ^bucket
+              ),
+              :bucket
+            ),
+          temperature_c: type(avg(r.temperature_c), :float),
+          humidity_pct: type(avg(r.humidity_pct), :float),
+          pressure_hpa: type(avg(r.pressure_hpa), :float),
+          gas_ohms: type(avg(r.gas_ohms), :float)
+        }
+      )
+      |> Repo.all()
+      |> Enum.map(fn %{bucket: unix} = point ->
+        point |> Map.delete(:bucket) |> Map.put(:at, DateTime.from_unix!(unix))
+      end)
+
+    %{points: points, bucket: bucket, from: from, to: to}
   end
 
   @doc "A changeset for the rename form."

@@ -221,6 +221,52 @@ defmodule Trygg.DevicesTest do
     end
   end
 
+  describe "history/3" do
+    defp report_at(ctx, minutes_ago, temperature) do
+      at = DateTime.utc_now() |> DateTime.add(-minutes_ago * 60) |> DateTime.to_iso8601()
+
+      {:ok, %{device: device}} =
+        Devices.record_reading(
+          ctx.scope,
+          ctx.family_id,
+          "dev",
+          Map.merge(@sample, %{"temperature_c" => temperature, "measured_at" => at})
+        )
+
+      device
+    end
+
+    test "averages readings into time buckets, oldest first, and skips older ones", ctx do
+      report_at(ctx, 300, 10.0)
+      report_at(ctx, 120, 20.0)
+      device = report_at(ctx, 119, 22.0)
+      report_at(ctx, 5, 18.0)
+
+      %{points: points, bucket: bucket, from: from, to: to} =
+        Devices.history(ctx.scope, device, 3 * 3600)
+
+      assert bucket == 90
+      assert DateTime.diff(to, from) == 3 * 3600
+      # The 5 h old one is outside the window; the two close ones share a bucket
+      # or sit in neighbouring ones, but never come back out of order.
+      assert length(points) in 2..3
+      assert points == Enum.sort_by(points, & &1.at, DateTime)
+      assert %{temperature_c: 18.0} = List.last(points)
+      assert Enum.all?(points, &(&1.humidity_pct == 45.2))
+    end
+
+    test "viewers can look, other families' scopes can't", ctx do
+      device = report_at(ctx, 1, 20.0)
+      assert %{points: [_]} = Devices.history(ctx.scope, device, 3600)
+
+      stranger = user_scope_fixture()
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Devices.history(stranger, device, 3600)
+      end
+    end
+  end
+
   test "prune_readings/1 drops only old readings", ctx do
     {:ok, %{device: device}} = Devices.record_reading(ctx.scope, ctx.family_id, "dev", @sample)
     old = DateTime.add(DateTime.utc_now(), -40, :day) |> DateTime.to_iso8601()

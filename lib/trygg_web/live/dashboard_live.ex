@@ -1235,6 +1235,7 @@ defmodule TryggWeb.DashboardLive do
                 :for={{device, i} <- Enum.with_index(today_devices(@devices))}
                 device={device}
                 unit_system={@unit_system}
+                navigate={~p"/c/#{@current_child}/devices/#{device.id}"}
                 index={length(@current_child.tracked_types) + i}
                 now={@now_tick}
               />

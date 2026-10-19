@@ -40,6 +40,7 @@ import PullToRefresh from "./hooks/pull_to_refresh"
 import ChildSwipe from "./hooks/child_swipe"
 import OfflineContext from "./hooks/offline_context"
 import ChartScrub from "./hooks/chart_scrub"
+import DeviceChart from "./hooks/device_chart"
 import LoginResume from "./hooks/login_resume"
 import LoginScene from "./hooks/login_scene"
 import {installOfflinePanel} from "./offline/panel_toggle"
@@ -84,6 +85,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     ChildSwipe,
     OfflineContext,
     ChartScrub,
+    DeviceChart,
     LoginResume,
     LoginScene,
   },

@@ -6,6 +6,7 @@ defmodule TryggWeb.DeviceComponents do
   """
   use Phoenix.Component
 
+  import TryggWeb.CoreComponents, only: [icon: 1]
   import TryggWeb.LogComponents, only: [relative_time: 1]
 
   alias Trygg.Devices.Device
@@ -82,6 +83,7 @@ defmodule TryggWeb.DeviceComponents do
   attr :unit_system, :atom, default: :metric
   attr :index, :integer, default: 0, doc: "position in the stack, for the staggered entrance"
   attr :now, :any, default: nil, doc: "changes every tick, so \"x ago\" and offline keep up"
+  attr :navigate, :string, default: nil, doc: "where tapping the card goes (the device's page)"
 
   def device_widget(assigns) do
     {emoji, status, tone} = mood(assigns.device)
@@ -93,10 +95,23 @@ defmodule TryggWeb.DeviceComponents do
     ~H"""
     <div id={"today-device-#{@device.id}"} data-short-id={@device.short_id}>
       <div
-        class="glance-card glance-pop glance-device"
+        class="glance-card glance-pop glance-device relative"
         data-mood={@tone}
         style={"--d: #{@index * 80}ms"}
       >
+        <.link
+          :if={@navigate}
+          id={"today-device-#{@device.id}-open"}
+          navigate={@navigate}
+          class="absolute inset-0 z-10 rounded-[inherit] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <span class="sr-only">Open {Device.label(@device)}</span>
+        </.link>
+        <.icon
+          :if={@navigate}
+          name="hero-chevron-right"
+          class="absolute right-3 top-3 size-5 opacity-50"
+        />
         <div class="flex items-center gap-3">
           <span
             class="glance-bubble"

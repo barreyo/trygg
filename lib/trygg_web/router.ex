@@ -159,6 +159,7 @@ defmodule TryggWeb.Router do
       live "/c/:id/reports", ReportsLive, :index
       live "/c/:id/caregivers", CaregiverLive, :index
       live "/c/:id/devices", DevicesLive, :index
+      live "/c/:id/devices/:device_id", DeviceLive, :show
 
       live "/invites/:token", InviteLive, :show
       live "/preferences", PreferencesLive, :edit
