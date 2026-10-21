@@ -237,6 +237,37 @@ defmodule TryggWeb.DashboardLiveTest do
       assert [%{type: :diaper}] = Log.list_entries(scope, child)
     end
 
+    test "the diaper card shows how long ago the last poo was", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      ago = fn hours -> DateTime.add(DateTime.utc_now(), -hours * 3600, :second) end
+
+      for {kind, hours} <- [{"poo", 5}, {"pee", 1}] do
+        Trygg.LogFixtures.entry_fixture(scope, child, %{
+          "started_at" => ago.(hours),
+          "data" => %{"kind" => kind}
+        })
+      end
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert lv |> element("#glance-diaper") |> render() =~ "💩 5h"
+    end
+
+    test "the diaper card says so when there has been no poo yet", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      Trygg.LogFixtures.entry_fixture(scope, child, %{"data" => %{"kind" => "pee"}})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert lv |> element("#glance-diaper") |> render() =~ "no poo yet"
+    end
+
     test "a past diaper can be logged through the sheet", %{
       conn: conn,
       scope: scope,
