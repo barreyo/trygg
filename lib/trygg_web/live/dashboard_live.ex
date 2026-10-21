@@ -1459,7 +1459,7 @@ defmodule TryggWeb.DashboardLive do
         category="diaper"
         tone={diaper_tone(@outlook)}
         value={relative_time(time_of(@summary.last_diaper))}
-        sub={diaper_sub(@summary.last_diaper)}
+        sub={diaper_sub(@summary.last_diaper, @summary.last_poo)}
         status={diaper_status(@outlook)}
         today={diaper_today(@summary.today)}
       >
@@ -2169,9 +2169,21 @@ defmodule TryggWeb.DashboardLive do
   defp plural(1, word), do: word
   defp plural(_n, word), do: word <> "s"
 
-  defp diaper_sub(nil), do: "none yet"
-  defp diaper_sub(%Entry{data: %{"kind" => k}}), do: String.capitalize(k)
-  defp diaper_sub(_), do: nil
+  # The value already says when the last diaper was, so the sub line adds what
+  # it was and, when that wasn't a poo, how long ago the last poo was.
+  defp diaper_sub(nil, _last_poo), do: "none yet"
+
+  defp diaper_sub(%Entry{data: %{"kind" => kind}}, _last_poo) when kind in ["poo", "mixed"],
+    do: String.capitalize(kind)
+
+  defp diaper_sub(%Entry{data: %{"kind" => kind}}, nil),
+    do: "#{String.capitalize(kind)} · no poo yet"
+
+  defp diaper_sub(%Entry{data: %{"kind" => kind}}, %Entry{} = last_poo),
+    do:
+      "#{String.capitalize(kind)} · #{diaper_emoji("poo")} #{relative_time(last_poo.started_at)}"
+
+  defp diaper_sub(_, _), do: nil
 
   defp diaper_today(%{diapers: 0}), do: "none today"
 

@@ -97,8 +97,8 @@ defmodule Trygg.Log do
   end
 
   @doc """
-  A snapshot for the dashboard: the latest entry of each tracked type, any
-  running timers, and today's counts (in the child's local day).
+  A snapshot for the dashboard: the latest entry of each tracked type (plus the
+  latest poo, since the latest diaper is often a pee), any running timers, and today's counts (in the child's local day).
   """
   def summary(%Scope{} = scope, %Child{} = child) do
     Families.authorize!(scope, child, :viewer)
@@ -111,6 +111,7 @@ defmodule Trygg.Log do
     %{
       last_feeding: last_of_type(child, :feeding),
       last_diaper: last_of_type(child, :diaper),
+      last_poo: last_poo(child),
       last_sleep: last_of_type(child, :sleep),
       last_breastfeeding: last_breastfeeding,
       running: running_timers(scope, child),
@@ -178,6 +179,16 @@ defmodule Trygg.Log do
     |> order_by(desc: :started_at, desc: :id)
     |> limit(1)
     |> preload(:logged_by)
+    |> Repo.one()
+  end
+
+  # The latest dirty diaper (a poo, or a mixed one), however many pees came since.
+  defp last_poo(child) do
+    Entry
+    |> where([e], e.child_id == ^child.id and e.type == :diaper)
+    |> where([e], fragment("?->>'kind'", e.data) in ["poo", "mixed"])
+    |> order_by(desc: :started_at, desc: :id)
+    |> limit(1)
     |> Repo.one()
   end
 
