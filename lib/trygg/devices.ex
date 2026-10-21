@@ -5,21 +5,24 @@ defmodule Trygg.Devices do
   A device registers itself: the first reading from a `hardware_id` the family
   hasn't seen creates the device, unnamed, with a random five-digit `short_id`
   that the device shows on its own screen. A caregiver then names it so the
-  family knows which room it is in, and can pin it to the Today screen. Devices belong to the family, not to a
+  family knows which room it is in. Devices belong to the family, not to a
   child, and reach this module through a family API token (`Trygg.ApiTokens`),
   whose role must be `:caregiver` to report.
 
   Every reading is broadcast on the family's topic (`subscribe/1`) as
   `{:device_reading, device, reading}` so open screens update live; naming or
   forgetting a device sends `{:device_changed, device}` and
-  `{:device_deleted, device_id}`. Pinning a device to Today (`set_on_today/3`) is
-  a `{:device_changed, device}` too.
+  `{:device_deleted, device_id}`.
+
+  Any member can pin a device to their own Today screen (`set_on_today/3`,
+  `set_today_devices/3`). The pin is personal: it is stored per user, so it is not
+  broadcast and the rest of the family's Today screens are unchanged.
   """
 
   import Ecto.Query, warn: false
 
   alias Trygg.Accounts.Scope
-  alias Trygg.Devices.{AirBaseline, Device, Reading}
+  alias Trygg.Devices.{AirBaseline, Device, Pin, Reading}
   alias Trygg.Families
   alias Trygg.Repo
 
@@ -52,14 +55,36 @@ defmodule Trygg.Devices do
 
   @doc """
   The family's devices, oldest first, each with `:latest` set to its newest
-  reading (or `nil`). Any member can look.
+  reading (or `nil`). Any member can look. Devices the user has pinned to Today
+  also carry their `:air_alert`.
   """
   def list_devices(%Scope{} = scope, family_id) do
     Families.authorize_family!(scope, family_id, :viewer)
 
     devices = Repo.all(from d in Device, where: d.family_id == ^family_id, order_by: d.id)
     latest = latest_readings(Enum.map(devices, & &1.id))
-    Enum.map(devices, &with_pinned_air_alert(%{&1 | latest: latest[&1.id]}))
+    pinned = pinned_ids(scope, family_id)
+
+    Enum.map(devices, fn device ->
+      device = %{device | latest: latest[device.id]}
+      if MapSet.member?(pinned, device.id), do: with_air_alert(device), else: device
+    end)
+  end
+
+  @doc """
+  The ids of the family's devices the user has pinned to their own Today screen.
+  Any member can look.
+  """
+  def pinned_ids(%Scope{user: user} = scope, family_id) do
+    Families.authorize_family!(scope, family_id, :viewer)
+
+    from(p in Pin,
+      join: d in assoc(p, :device),
+      where: p.user_id == ^user.id and d.family_id == ^family_id,
+      select: p.device_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
   end
 
   defp latest_readings([]), do: %{}
@@ -148,38 +173,47 @@ defmodule Trygg.Devices do
   end
 
   @doc """
-  Pins the family's devices in `ids` to the Today screen and unpins the rest.
-  Caregivers and owners can. Returns the devices that changed.
+  Pins the family's devices in `ids` to the user's own Today screen and unpins the
+  rest. Any member can: it changes only their Today. Returns the devices that changed.
   """
-  def set_today_devices(%Scope{} = scope, family_id, ids) do
-    Families.authorize_family!(scope, family_id, :caregiver)
+  def set_today_devices(%Scope{user: user} = scope, family_id, ids) do
+    Families.authorize_family!(scope, family_id, :viewer)
     ids = MapSet.new(ids, &to_string/1)
+    pinned = pinned_ids(scope, family_id)
 
     devices = Repo.all(from d in Device, where: d.family_id == ^family_id, order_by: d.id)
     latest = latest_readings(Enum.map(devices, & &1.id))
 
     for device <- devices,
         wanted <- [MapSet.member?(ids, to_string(device.id))],
-        wanted != device.on_today do
-      {1, _} =
-        Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: wanted])
-
-      updated = with_pinned_air_alert(%{device | on_today: wanted, latest: latest[device.id]})
-      broadcast(family_id, {:device_changed, updated})
-      updated
+        wanted != MapSet.member?(pinned, device.id) do
+      write_pin(user, device, wanted)
+      device = %{device | latest: latest[device.id]}
+      if wanted, do: with_air_alert(device), else: device
     end
   end
 
-  @doc "Pins one device to the Today screen, or unpins it. Caregivers and owners can."
-  def set_on_today(%Scope{} = scope, %Device{} = device, on_today) when is_boolean(on_today) do
-    Families.authorize_family!(scope, device.family_id, :caregiver)
+  @doc """
+  Pins one device to the user's own Today screen, or unpins it. Any member can; it
+  changes only their Today.
+  """
+  def set_on_today(%Scope{user: user} = scope, %Device{} = device, on_today)
+      when is_boolean(on_today) do
+    Families.authorize_family!(scope, device.family_id, :viewer)
 
-    {1, _} =
-      Repo.update_all(from(d in Device, where: d.id == ^device.id), set: [on_today: on_today])
+    write_pin(user, device, on_today)
+    {:ok, if(on_today, do: with_air_alert(device), else: %{device | air_alert: nil})}
+  end
 
-    updated = with_air_alert(%{device | on_today: on_today})
-    broadcast(updated.family_id, {:device_changed, updated})
-    {:ok, updated}
+  defp write_pin(user, device, true) do
+    Repo.insert!(%Pin{user_id: user.id, device_id: device.id},
+      on_conflict: :nothing,
+      conflict_target: [:user_id, :device_id]
+    )
+  end
+
+  defp write_pin(user, device, false) do
+    Repo.delete_all(from p in Pin, where: p.user_id == ^user.id and p.device_id == ^device.id)
   end
 
   @doc """
@@ -264,11 +298,6 @@ defmodule Trygg.Devices do
 
   defp with_air_alert(%Device{} = device),
     do: %{device | air_alert: AirBaseline.alert(device.id)}
-
-  # Lists are mostly read for the Today screen, where only pinned devices show the alert;
-  # the others aren't worth a history query each.
-  defp with_pinned_air_alert(%Device{on_today: true} = device), do: with_air_alert(device)
-  defp with_pinned_air_alert(%Device{} = device), do: %{device | air_alert: nil}
 
   @doc "Deletes readings older than the retention period. Returns how many went."
   def prune_readings(days \\ @retention_days) do

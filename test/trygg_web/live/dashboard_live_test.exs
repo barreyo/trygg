@@ -1784,24 +1784,50 @@ defmodule TryggWeb.DashboardLiveTest do
       refute has_element?(lv, "#today-devices")
     end
 
-    test "pinning and unpinning shows up live, and renaming too", %{
+    test "renaming a pinned device shows up live", %{
       conn: conn,
       scope: scope,
       child: child,
       device: device
     } do
-      {:ok, _} = Trygg.Devices.set_on_today(scope, device, false)
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
-      refute has_element?(lv, "#today-device-#{device.id}")
-
-      {:ok, device} = Trygg.Devices.set_on_today(scope, device, true)
-      assert has_element?(lv, "#today-device-#{device.id}")
 
       {:ok, _} = Trygg.Devices.name_device(scope, device, %{"name" => "Nursery"})
       assert has_element?(lv, "#today-device-#{device.id}", "Nursery")
+    end
 
-      {:ok, _} = Trygg.Devices.set_on_today(scope, device, false)
-      refute has_element?(lv, "#today-device-#{device.id}")
+    test "a pin is personal: a partner caring for the same child doesn't see the widget", %{
+      conn: conn,
+      child: child,
+      device: device
+    } do
+      partner = user_fixture()
+      membership_fixture(child, partner, :caregiver)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#today-device-#{device.id}")
+
+      {:ok, partner_lv, _html} =
+        live_loaded(log_in_user(build_conn(), partner), ~p"/c/#{child}")
+
+      refute has_element?(partner_lv, "#today-devices")
+    end
+
+    test "the partner pinning it doesn't change this Today, and unpinning only affects them", %{
+      conn: conn,
+      scope: scope,
+      child: child,
+      device: device
+    } do
+      partner = user_fixture()
+      membership_fixture(child, partner, :caregiver)
+      partner_scope = user_scope_fixture(partner)
+      {:ok, _} = Trygg.Devices.set_on_today(partner_scope, device, true)
+      {:ok, _} = Trygg.Devices.set_on_today(partner_scope, device, false)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "#today-device-#{device.id}")
+      assert MapSet.member?(Trygg.Devices.pinned_ids(scope, child.family_id), device.id)
     end
 
     test "a forgotten device leaves Today", %{
@@ -1834,7 +1860,7 @@ defmodule TryggWeb.DashboardLiveTest do
       |> form("#layout-form", layout: %{devices: ["", to_string(device.id)]})
       |> render_submit()
 
-      assert Trygg.Devices.get_device!(scope, child.family_id, device.id).on_today
+      assert MapSet.member?(Trygg.Devices.pinned_ids(scope, child.family_id), device.id)
       assert has_element?(lv, "#today-device-#{device.id}")
     end
   end

@@ -20,12 +20,10 @@ defmodule Trygg.Devices.Device do
     field :name, :string
     field :model, :string
     field :last_seen_at, :utc_datetime
-    # Shown as a widget on the Today screen.
-    field :on_today, :boolean, default: false
-
     field :latest, :any, virtual: true
 
-    # Set for a device on Today whose air is clearly worse than its own usual; see `Trygg.Devices.AirBaseline`.
+    # Set for a device pinned to the viewer's Today whose air is clearly worse than its own
+    # usual; see `Trygg.Devices.AirBaseline`.
     field :air_alert, :any, virtual: true
 
     belongs_to :family, Trygg.Families.Family

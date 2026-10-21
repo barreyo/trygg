@@ -41,7 +41,7 @@ defmodule TryggWeb.DevicesLiveTest do
     assert Devices.get_device!(scope, child.family_id, device.id).name == "Nursery"
   end
 
-  test "shows the device's five-digit id and lets a caregiver pin it to Today", %{
+  test "shows the device's five-digit id and lets a member pin it to their own Today", %{
     conn: conn,
     scope: scope,
     child: child
@@ -54,7 +54,28 @@ defmodule TryggWeb.DevicesLiveTest do
 
     lv |> element("#devices-#{device.id}-today-toggle") |> render_click()
 
-    assert Devices.get_device!(scope, child.family_id, device.id).on_today
+    assert MapSet.member?(Devices.pinned_ids(scope, child.family_id), device.id)
+    assert has_element?(lv, "#devices-#{device.id}-today-toggle[checked]")
+
+    lv |> element("#devices-#{device.id}-today-toggle") |> render_click()
+
+    assert Devices.pinned_ids(scope, child.family_id) == MapSet.new()
+    refute has_element?(lv, "#devices-#{device.id}-today-toggle[checked]")
+  end
+
+  test "another member's pin doesn't tick the box, and a viewer can pin for themself", %{
+    scope: scope,
+    child: child
+  } do
+    {:ok, %{device: device}} = Devices.record_reading(scope, child.family_id, "AA:BB", @sample)
+    {:ok, _} = Devices.set_on_today(scope, device, true)
+
+    viewer = user_fixture()
+    membership_fixture(child, viewer, :viewer)
+    {:ok, lv, _html} = live(log_in_user(build_conn(), viewer), ~p"/c/#{child}/devices")
+
+    refute has_element?(lv, "#devices-#{device.id}-today-toggle[checked]")
+    lv |> element("#devices-#{device.id}-today-toggle") |> render_click()
     assert has_element?(lv, "#devices-#{device.id}-today-toggle[checked]")
   end
 

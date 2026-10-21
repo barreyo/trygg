@@ -2,8 +2,8 @@ defmodule TryggWeb.DevicesLive do
   @moduledoc """
   The family's sensor devices (ENV Pro units on M5Stack buttons): their latest
   temperature, humidity, pressure and air reading, live as samples arrive, and
-  the place to name a freshly connected device ("Nursery"), pin it to the Today
-  screen or forget it. Each device shows its five-digit id, the same one it
+  the place to name a freshly connected device ("Nursery"), pin it to your own
+  Today screen (each member chooses for themselves) or forget it. Each device shows its five-digit id, the same one it
   prints in the corner of its own screen.
   """
   use TryggWeb, :live_view
@@ -124,7 +124,6 @@ defmodule TryggWeb.DevicesLive do
           </.link>
 
           <label
-            :if={@can_edit?}
             id={"#{dom_id}-today"}
             class="mt-3 flex cursor-pointer items-center gap-3 text-sm"
           >
@@ -132,10 +131,10 @@ defmodule TryggWeb.DevicesLive do
               type="checkbox"
               id={"#{dom_id}-today-toggle"}
               class="checkbox checkbox-sm"
-              checked={device.on_today}
+              checked={device.id in @pinned}
               phx-click="toggle_today"
               phx-value-id={device.id}
-            /> Show on Today
+            /> Show on my Today
           </label>
 
           <.form
@@ -203,6 +202,7 @@ defmodule TryggWeb.DevicesLive do
     {:ok,
      socket
      |> assign(:unit_system, socket.assigns.current_scope.user.unit_system)
+     |> assign(:pinned, pinned_ids(socket))
      |> assign_role(socket.assigns.current_child.role)
      |> stream(:devices, list_devices(socket), reset: true)}
   end
@@ -250,9 +250,15 @@ defmodule TryggWeb.DevicesLive do
 
   def handle_event("toggle_today", %{"id" => id}, socket) do
     with {:ok, device} <- fetch_device(socket, id),
-         {:ok, _device} <-
-           Devices.set_on_today(socket.assigns.current_scope, device, !device.on_today) do
-      {:noreply, socket}
+         pinned = device.id in socket.assigns.pinned,
+         {:ok, device} <- Devices.set_on_today(socket.assigns.current_scope, device, !pinned) do
+      # Pinning is this user's own and not broadcast, so redraw the row with the new tick.
+      pinned_ids =
+        if pinned,
+          do: MapSet.delete(socket.assigns.pinned, device.id),
+          else: MapSet.put(socket.assigns.pinned, device.id)
+
+      {:noreply, socket |> assign(:pinned, pinned_ids) |> stream_insert(:devices, device)}
     else
       _ -> {:noreply, socket}
     end
@@ -277,6 +283,9 @@ defmodule TryggWeb.DevicesLive do
   rescue
     Ecto.NoResultsError -> {:error, :not_found}
   end
+
+  defp pinned_ids(socket),
+    do: Devices.pinned_ids(socket.assigns.current_scope, socket.assigns.current_child.family_id)
 
   defp list_devices(socket),
     do: Devices.list_devices(socket.assigns.current_scope, socket.assigns.current_child.family_id)
