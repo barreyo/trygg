@@ -650,6 +650,15 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   background: color-mix(in oklab, var(--tint) 14%, var(--color-base-100));
   border: 1.5px solid color-mix(in oklab, var(--tint) 28%, transparent);
 }
+/* A tile that passes judgement (the air) takes the colour of the verdict */
+.device-tile[data-tone="success"] { --tint: var(--color-success); }
+.device-tile[data-tone="warning"] { --tint: var(--color-warning); }
+.device-tile[data-tone="error"] { --tint: var(--color-error); }
+.device-tile[data-tone] {
+  background: color-mix(in oklab, var(--tint) 24%, var(--color-base-100));
+  border-color: color-mix(in oklab, var(--tint) 60%, transparent);
+}
+.device-tile[data-tone] dd { color: color-mix(in oklab, var(--tint) 65%, var(--color-base-content)); }
 .device-dot {
   position: relative;
   flex-shrink: 0;
