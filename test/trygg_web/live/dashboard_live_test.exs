@@ -253,7 +253,7 @@ defmodule TryggWeb.DashboardLiveTest do
 
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
-      assert lv |> element("#glance-diaper") |> render() =~ "💩 5h"
+      assert lv |> element("#glance-diaper") |> render() =~ "💩 5h ago"
     end
 
     test "the diaper card says so when there has been no poo yet", %{
