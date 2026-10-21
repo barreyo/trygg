@@ -63,6 +63,22 @@ defmodule TryggWeb.DeviceComponents do
   def format_air(%{iaq: iaq}) when is_number(iaq), do: "Learning…"
   def format_air(reading), do: format_gas(reading)
 
+  @doc """
+  Whether the air is fine, for the colour of the Air tile: `"success"`, `"warning"` or
+  `"error"` once BSEC's index is trusted, `nil` while it is learning or for a device
+  that only has the raw gas resistance (which can't say good or bad).
+  """
+  def air_tone(%{iaq: iaq, iaq_accuracy: acc})
+      when is_number(iaq) and is_integer(acc) and acc >= 1,
+      do: AirQuality.band(iaq).tone
+
+  def air_tone(_reading), do: nil
+
+  defp air_emoji("success"), do: "🍃"
+  defp air_emoji("warning"), do: "🌫️"
+  defp air_emoji("error"), do: "😷"
+  defp air_emoji(nil), do: "🍃"
+
   @doc "The numbers behind `format_air/1`, for a tooltip; `nil` when the reading has no index."
   def format_air_detail(%{iaq: iaq} = reading) when is_number(iaq) do
     [
@@ -202,8 +218,9 @@ defmodule TryggWeb.DeviceComponents do
           </.tile>
           <.tile
             id={"today-device-#{@device.id}-gas"}
-            emoji="🍃"
+            emoji={air_emoji(air_tone(@device.latest))}
             label="Air"
+            tone={air_tone(@device.latest)}
             title={format_air_detail(@device.latest)}
           >
             {format_air(@device.latest)}
@@ -218,11 +235,12 @@ defmodule TryggWeb.DeviceComponents do
   attr :emoji, :string, required: true
   attr :label, :string, required: true
   attr :title, :string, default: nil
+  attr :tone, :string, default: nil, doc: "success, warning or error: tints the tile"
   slot :inner_block, required: true
 
   defp tile(assigns) do
     ~H"""
-    <div id={@id} class="device-tile" title={@title}>
+    <div id={@id} class="device-tile" data-tone={@tone} title={@title}>
       <dt class="whitespace-nowrap text-xs font-semibold opacity-70">
         <span aria-hidden="true">{@emoji}</span> {@label}
       </dt>

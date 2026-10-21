@@ -1705,6 +1705,7 @@ defmodule TryggWeb.DashboardLiveTest do
         })
 
       assert has_element?(lv, "#today-device-#{device.id}-gas", "Learning")
+      refute has_element?(lv, "#today-device-#{device.id}-gas[data-tone]")
 
       {:ok, _} =
         Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
@@ -1713,7 +1714,25 @@ defmodule TryggWeb.DashboardLiveTest do
           "iaq_accuracy" => 3
         })
 
-      assert has_element?(lv, "#today-device-#{device.id}-gas", "Good")
+      assert has_element?(lv, "#today-device-#{device.id}-gas[data-tone=success]", "Good")
+
+      {:ok, _} =
+        Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+          "temperature_c" => 18.5,
+          "iaq" => 130.0,
+          "iaq_accuracy" => 3
+        })
+
+      assert has_element?(lv, "#today-device-#{device.id}-gas[data-tone=warning]", "Fair")
+
+      {:ok, _} =
+        Trygg.Devices.record_reading(scope, child.family_id, "AA:BB", %{
+          "temperature_c" => 18.5,
+          "iaq" => 230.0,
+          "iaq_accuracy" => 3
+        })
+
+      assert has_element?(lv, "#today-device-#{device.id}-gas[data-tone=error]", "Bad")
     end
 
     test "the widget warns only when the air is clearly worse than the room's usual", %{
