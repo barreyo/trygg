@@ -2180,10 +2180,21 @@ defmodule TryggWeb.DashboardLive do
     do: "#{String.capitalize(kind)} · no poo yet"
 
   defp diaper_sub(%Entry{data: %{"kind" => kind}}, %Entry{} = last_poo),
-    do:
-      "#{String.capitalize(kind)} · #{diaper_emoji("poo")} #{relative_time(last_poo.started_at)}"
+    do: "#{String.capitalize(kind)} · #{diaper_emoji("poo")} #{poo_ago(last_poo.started_at)}"
 
   defp diaper_sub(_, _), do: nil
+
+  # Whole hours, since "5h 12m" is more precision than "when was the last poo"
+  # needs; days once it's been a couple.
+  defp poo_ago(%DateTime{} = at) do
+    hours = div(DateTime.diff(DateTime.utc_now(), at, :second), 3600)
+
+    cond do
+      hours < 1 -> "<1h ago"
+      hours < 48 -> "#{hours}h ago"
+      true -> "#{div(hours, 24)}d ago"
+    end
+  end
 
   defp diaper_today(%{diapers: 0}), do: "none today"
 
