@@ -9,7 +9,7 @@ defmodule TryggWeb.DeviceComponents do
   import TryggWeb.CoreComponents, only: [icon: 1]
   import TryggWeb.LogComponents, only: [relative_time: 1]
 
-  alias Trygg.Devices.Device
+  alias Trygg.Devices.{AirQuality, Device}
 
   # A device reports about every 30 s; this long without one and it's shown as offline.
   @offline_after_seconds 180
@@ -58,7 +58,7 @@ defmodule TryggWeb.DeviceComponents do
   """
   def format_air(%{iaq: iaq, iaq_accuracy: acc})
       when is_number(iaq) and is_integer(acc) and acc >= 1,
-      do: iaq_label(iaq)
+      do: AirQuality.label(iaq)
 
   def format_air(%{iaq: iaq}) when is_number(iaq), do: "Learning…"
   def format_air(reading), do: format_gas(reading)
@@ -76,13 +76,6 @@ defmodule TryggWeb.DeviceComponents do
   end
 
   def format_air_detail(_reading), do: nil
-
-  defp iaq_label(iaq) when iaq <= 50, do: "Excellent"
-  defp iaq_label(iaq) when iaq <= 100, do: "Good"
-  defp iaq_label(iaq) when iaq <= 150, do: "Fair"
-  defp iaq_label(iaq) when iaq <= 200, do: "Poor"
-  defp iaq_label(iaq) when iaq <= 250, do: "Bad"
-  defp iaq_label(_iaq), do: "Very bad"
 
   defp equivalent(_name, nil), do: nil
   defp equivalent(name, ppm) when ppm >= 10, do: "#{name} ≈ #{round(ppm)} ppm"
