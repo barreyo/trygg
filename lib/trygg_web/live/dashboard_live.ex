@@ -51,6 +51,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(summary: nil, outlook: nil, weight_reminder: nil, rhythm_center: nil)
       |> assign(:entries_empty?, false)
       |> assign(:devices, [])
+      |> assign(:pinned, MapSet.new())
       |> stream(:entries, [])
       |> allow_upload(:photo,
         accept: Log.photo_accept(),
@@ -316,7 +317,7 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_event("open_sheet", %{"kind" => "layout"}, socket) do
     types = Enum.map(socket.assigns.current_child.tracked_types, &to_string/1)
-    devices = socket.assigns.devices |> today_devices() |> Enum.map(&to_string(&1.id))
+    devices = socket.assigns.pinned |> Enum.map(&to_string/1)
 
     {:noreply,
      assign(socket,
@@ -423,14 +424,15 @@ defmodule TryggWeb.DashboardLive do
            wanted
          ) do
       {:ok, child} ->
-        # The devices are the family's, not the child's: pinning one changes Today for
-        # everyone, and the {:device_changed, _} broadcasts update every open screen.
+        # The pinned devices are this user's own, not the child's: pinning one leaves
+        # everyone else's Today as it was.
         Devices.set_today_devices(socket.assigns.current_scope, child.family_id, devices)
 
         {:noreply,
          socket
          |> assign(:current_child, child)
          |> assign(sheet: nil, sheet_form: nil)
+         |> refresh_devices()
          |> refresh()}
 
       {:error, _changeset} ->
@@ -781,15 +783,27 @@ defmodule TryggWeb.DashboardLive do
     %{
       status: fetch_status(scope, child),
       entries: recent_tracked(scope, child, @recent_limit),
-      devices: Devices.list_devices(scope, child.family_id)
+      devices: Devices.list_devices(scope, child.family_id),
+      pinned: Devices.pinned_ids(scope, child.family_id)
     }
   end
 
-  defp apply_home(socket, %{status: status, entries: entries, devices: devices}) do
+  defp apply_home(socket, %{status: status, entries: entries, devices: devices, pinned: pinned}) do
     socket
     |> apply_status(status)
     |> apply_entries(entries)
-    |> assign(:devices, devices)
+    |> assign(devices: devices, pinned: pinned)
+  end
+
+  # After this user pinned or unpinned devices: their alerts only load for pinned ones.
+  defp refresh_devices(socket) do
+    scope = socket.assigns.current_scope
+    family_id = socket.assigns.current_child.family_id
+
+    assign(socket,
+      devices: Devices.list_devices(scope, family_id),
+      pinned: Devices.pinned_ids(scope, family_id)
+    )
   end
 
   # Replaces the device in the list (devices are ordered by id) or adds it. A
@@ -804,7 +818,7 @@ defmodule TryggWeb.DashboardLive do
     end)
   end
 
-  defp today_devices(devices), do: Enum.filter(devices, & &1.on_today)
+  defp today_devices(devices, pinned), do: Enum.filter(devices, &MapSet.member?(pinned, &1.id))
 
   # The at-a-glance numbers (counts, "slept today", "Xm ago") plus the outlook
   # (next nap / next feed / alerts). Recomputed on every minute tick so
@@ -1227,12 +1241,12 @@ defmodule TryggWeb.DashboardLive do
             <%!-- Room sensors pinned to Today (Customize, or Devices in the menu).
                They update as readings arrive. --%>
             <section
-              :if={today_devices(@devices) != []}
+              :if={today_devices(@devices, @pinned) != []}
               id="today-devices"
               class="mt-3 space-y-3"
             >
               <.device_widget
-                :for={{device, i} <- Enum.with_index(today_devices(@devices))}
+                :for={{device, i} <- Enum.with_index(today_devices(@devices, @pinned))}
                 device={device}
                 unit_system={@unit_system}
                 navigate={~p"/c/#{@current_child}/devices/#{device.id}"}
@@ -1674,8 +1688,8 @@ defmodule TryggWeb.DashboardLive do
           <h3 class="font-semibold text-lg mb-1">Customize Today</h3>
           <p class="text-sm opacity-70 mb-4">
             Choose what to track and put it in the order you like. Everyone caring for this child
-            sees the same Today screen. Hidden entries stay in the full log and reports. Room
-            sensors you tick show up below the cards.
+            sees the same cards. Hidden entries stay in the full log and reports. Room
+            sensors you tick show up below the cards, on your Today only.
           </p>
           <.form
             for={@form}

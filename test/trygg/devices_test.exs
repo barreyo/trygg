@@ -206,20 +206,37 @@ defmodule Trygg.DevicesTest do
     setup ctx do
       {:ok, %{device: a}} = Devices.record_reading(ctx.scope, ctx.family_id, "a", @sample)
       {:ok, %{device: b}} = Devices.record_reading(ctx.scope, ctx.family_id, "b", @sample)
-      %{a: a, b: b}
+
+      partner = user_fixture()
+      membership_fixture(ctx.child, partner, :caregiver)
+
+      %{a: a, b: b, partner_scope: user_scope_fixture(partner)}
     end
 
     test "devices start off the Today screen", ctx do
-      refute ctx.a.on_today
+      assert Devices.pinned_ids(ctx.scope, ctx.family_id) == MapSet.new()
     end
 
-    test "pins one device and broadcasts it", ctx do
+    test "pins and unpins one device for the user alone", ctx do
       Devices.subscribe(ctx.family_id)
 
-      assert {:ok, %Device{on_today: true}} = Devices.set_on_today(ctx.scope, ctx.a, true)
-      assert_receive {:device_changed, %Device{id: id, on_today: true}}
-      assert id == ctx.a.id
-      assert Devices.get_device!(ctx.scope, ctx.family_id, ctx.a.id).on_today
+      assert {:ok, %Device{}} = Devices.set_on_today(ctx.scope, ctx.a, true)
+      assert {:ok, %Device{}} = Devices.set_on_today(ctx.scope, ctx.a, true)
+      assert Devices.pinned_ids(ctx.scope, ctx.family_id) == MapSet.new([ctx.a.id])
+      assert Devices.pinned_ids(ctx.partner_scope, ctx.family_id) == MapSet.new()
+      refute_receive {:device_changed, _}
+
+      assert {:ok, %Device{}} = Devices.set_on_today(ctx.scope, ctx.a, false)
+      assert Devices.pinned_ids(ctx.scope, ctx.family_id) == MapSet.new()
+    end
+
+    test "only pinned devices load their air alert", ctx do
+      {:ok, _} = Devices.set_on_today(ctx.scope, ctx.a, true)
+
+      assert [%Device{id: a_id}, %Device{air_alert: nil}] =
+               Devices.list_devices(ctx.scope, ctx.family_id)
+
+      assert a_id == ctx.a.id
     end
 
     test "pins exactly the given devices and reports what changed", ctx do
@@ -228,20 +245,48 @@ defmodule Trygg.DevicesTest do
 
       assert [] = Devices.set_today_devices(ctx.scope, ctx.family_id, [to_string(ctx.b.id)])
 
-      assert [%Device{id: a_id, on_today: true}, %Device{id: b_id, on_today: false}] =
+      assert [%Device{id: a_id}, %Device{id: b_id}] =
                Devices.set_today_devices(ctx.scope, ctx.family_id, [ctx.a.id])
 
       assert {a_id, b_id} == {ctx.a.id, ctx.b.id}
+      assert Devices.pinned_ids(ctx.scope, ctx.family_id) == MapSet.new([ctx.a.id])
     end
 
-    test "viewers can't pin", ctx do
+    test "setting one member's pins leaves another's alone", ctx do
+      Devices.set_today_devices(ctx.partner_scope, ctx.family_id, [ctx.a.id, ctx.b.id])
+      Devices.set_today_devices(ctx.scope, ctx.family_id, [ctx.b.id])
+      Devices.set_today_devices(ctx.scope, ctx.family_id, [])
+
+      assert Devices.pinned_ids(ctx.partner_scope, ctx.family_id) ==
+               MapSet.new([ctx.a.id, ctx.b.id])
+    end
+
+    test "viewers can pin for themselves", ctx do
       viewer = user_fixture()
       membership_fixture(ctx.child, viewer, :viewer)
       viewer_scope = user_scope_fixture(viewer)
 
+      assert {:ok, _} = Devices.set_on_today(viewer_scope, ctx.a, true)
+      assert Devices.pinned_ids(viewer_scope, ctx.family_id) == MapSet.new([ctx.a.id])
+    end
+
+    test "non-members can't pin or look", ctx do
+      stranger_scope = user_scope_fixture()
+
       assert_raise Trygg.Families.NotAuthorizedError, fn ->
-        Devices.set_on_today(viewer_scope, ctx.a, true)
+        Devices.set_on_today(stranger_scope, ctx.a, true)
       end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Devices.pinned_ids(stranger_scope, ctx.family_id)
+      end
+    end
+
+    test "forgetting a device drops its pins", ctx do
+      {:ok, _} = Devices.set_on_today(ctx.scope, ctx.a, true)
+      {:ok, _} = Devices.delete_device(ctx.scope, ctx.a)
+
+      assert Devices.pinned_ids(ctx.scope, ctx.family_id) == MapSet.new()
     end
   end
 
