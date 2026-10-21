@@ -87,6 +87,12 @@ defmodule TryggWeb.DeviceLiveTest do
              )
 
       assert has_element?(lv, "#device-chart-co2-readout")
+
+      # Tinted regions behind the index, for the bands the data and the axis cover.
+      assert has_element?(lv, "#device-chart-iaq-plot [data-band='Excellent']")
+      assert has_element?(lv, "#device-chart-iaq-plot [data-band='Good']")
+      refute has_element?(lv, "#device-chart-iaq-plot [data-band='Poor']")
+      assert render(lv) =~ "62 IAQ · Good"
       assert has_element?(lv, "#device-air-calibrating")
 
       {:ok, _} =

@@ -10,6 +10,8 @@ defmodule TryggWeb.DeviceChartComponents do
   """
   use Phoenix.Component
 
+  alias Trygg.Devices.AirQuality
+
   @width 320
   @height 150
   @left 42
@@ -26,7 +28,9 @@ defmodule TryggWeb.DeviceChartComponents do
   color, unit, decimals, convert}`: `field` is the reading's key, `convert` maps its
   stored value to the number shown (°C → °F, Ω → kΩ), and `color` is a CSS color.
   A spec with a `needs` key (a reading field) is only graphed for a device that reports
-  it, see `shown?/2`.
+  it, see `shown?/2`. One with `bands` (`Trygg.Devices.AirQuality.bands/0`) is drawn over
+  tinted regions and names the band a value falls in; `include` lists values the axis
+  must always cover, so the regions around the data show even when it barely moves.
   """
   def specs(unit_system) do
     {temp_unit, temp_convert} =
@@ -81,10 +85,12 @@ defmodule TryggWeb.DeviceChartComponents do
         needs: :iaq,
         label: "Air quality index",
         emoji: "🌬️",
-        color: "var(--color-warning)",
+        color: "var(--color-base-content)",
         unit: "IAQ",
         decimals: 0,
-        convert: & &1
+        convert: & &1,
+        bands: AirQuality.bands(),
+        include: [0, 100]
       },
       %{
         field: :co2_ppm,
@@ -134,7 +140,7 @@ defmodule TryggWeb.DeviceChartComponents do
     x_min = DateTime.to_unix(history.from)
     x_max = DateTime.to_unix(history.to)
     span = x_max - x_min
-    {y_ticks, lo, hi} = nice_ticks(Enum.map(values, & &1.v))
+    {y_ticks, lo, hi} = nice_ticks(Enum.map(values, & &1.v) ++ Map.get(spec, :include, []))
 
     placed =
       Enum.map(values, fn p ->
@@ -161,6 +167,7 @@ defmodule TryggWeb.DeviceChartComponents do
             label: tick_label(t, y_ticks)
           }
         end),
+      bands: bands(spec, lo, hi),
       x_ticks: x_ticks(history, span, tz),
       segments:
         Enum.map(lines, fn run ->
@@ -173,7 +180,7 @@ defmodule TryggWeb.DeviceChartComponents do
       # What the hook scrubs through: [x, y, "when", "value"] per point.
       points:
         Enum.map(placed, fn p ->
-          [p.x, p.y, when_label(p.at, tz, long_range?), format(p.v, spec)]
+          [p.x, p.y, when_label(p.at, tz, long_range?), reading_text(p.v, spec)]
         end),
       low: format(Enum.min_by(values, & &1.v).v, spec),
       high: format(Enum.max_by(values, & &1.v).v, spec),
@@ -181,6 +188,35 @@ defmodule TryggWeb.DeviceChartComponents do
       avg_y: round1(@bottom - (average - lo) / (hi - lo) * (@bottom - @top))
     }
   end
+
+  # The tinted regions behind a graph with bands, clipped to the axis: the y and height
+  # in the plot, and where its label goes.
+  defp bands(%{bands: bands}, lo, hi) do
+    for band <- bands, band.to > lo, band.from < hi do
+      top = min(band.to, hi)
+      bottom = max(band.from, lo)
+      y = @bottom - (top - lo) / (hi - lo) * (@bottom - @top)
+      height = (top - bottom) / (hi - lo) * (@bottom - @top)
+
+      %{
+        y: round1(y),
+        height: round1(height),
+        label: band.label,
+        label_y: round1(y + min(height, 12) / 2 + 3),
+        style: "fill: var(--color-#{band.tone}); fill-opacity: #{band.opacity}"
+      }
+    end
+  end
+
+  defp bands(_spec, _lo, _hi), do: []
+
+  # A value as shown while scrubbing, with the band's word when the graph has bands.
+  defp reading_text(value, %{bands: _} = spec) do
+    band = Enum.find(spec.bands, List.last(spec.bands), &(value <= &1.to))
+    "#{format(value, spec)} · #{band.label}"
+  end
+
+  defp reading_text(value, spec), do: format(value, spec)
 
   # Consecutive points, broken wherever the readings stop for longer than `gap` seconds.
   defp split_runs(points, gap) do
@@ -315,6 +351,19 @@ defmodule TryggWeb.DeviceChartComponents do
           role="img"
           aria-label={"#{@spec.label} over time in #{@spec.unit}, from #{@chart.low} to #{@chart.high}, average #{@chart.avg}"}
         >
+          <g :for={band <- @chart.bands} data-band={band.label}>
+            <rect x={@left} y={band.y} width={@right - @left} height={band.height} style={band.style} />
+            <text
+              x={@right - 3}
+              y={band.label_y}
+              text-anchor="end"
+              class="fill-base-content/60"
+              font-size="8"
+              font-weight="600"
+            >
+              {band.label}
+            </text>
+          </g>
           <line
             :for={tick <- @chart.y_ticks}
             x1={@left}

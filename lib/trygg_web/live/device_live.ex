@@ -89,7 +89,7 @@ defmodule TryggWeb.DeviceLive do
   defp hint(%{id: "air"}), do: "Lower means more compounds in the air. Read it as a trend."
 
   defp hint(%{id: "iaq"}),
-    do: "0–50 excellent, up to 100 good, 150 fair, 200 poor, above that bad. Learned per room."
+    do: "Lower is cleaner. The shading marks the bands; the index is learned per room."
 
   defp hint(%{id: "co2"}),
     do: "An estimate from the gas sensor, not a CO₂ measurement. Use it as a ventilation cue."
