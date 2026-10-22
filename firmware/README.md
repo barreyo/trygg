@@ -85,12 +85,42 @@ It needs a day of history and is otherwise hidden (`Trygg.Devices.AirBaseline`).
 not an open-source one, and the OTA image committed in `priv/firmware` now contains it. I haven't checked
 what the terms allow for a public repo; read them before relying on that.
 
-## Night mode
+## Motion sensor and screen brightness (Unit PIR)
 
-From 8 PM to 8 AM (local time, per `TIMEZONE`) the screen is dimmed to a low backlight so it
-doesn't light up the room, including the green "logged" screen; it comes back at 8 AM. Until the
-clock has synced after boot the brightness is left at the daytime level. The hours and levels are
-constants at the top of `src/main.cpp`.
+A plain M5Stack Basic has no Port B (that comes with the M5GO bottom), so the
+[Unit PIR](https://docs.m5stack.com/en/unit/pir) (U004) is wired to the 30-pin
+[M-Bus](https://docs.m5stack.com/en/learn/interface/mbus) socket (pins numbered from 1 at the GND pin in
+the top left corner; the left column is the odd pins):
+
+| PIR wire | M-Bus pin |
+|---|---|
+| black (GND) | 3 (GND; 1 and 5 also work) |
+| red (5V) | 28 (5V) |
+| yellow (signal) | 4 (G36, input only) |
+| white | not used |
+
+With an M5GO bottom the unit can instead go in Port B with a plain Grove cable (same G36).
+
+The screen is lit only while something is near, and for 30 s
+after the last motion or button press:
+
+| | nobody near | someone near / just pressed |
+|---|---|---|
+| Day (8 AM to 8 PM) | dim | bright |
+| Night (8 PM to 8 AM) | backlight **off** | low |
+
+At night the buttons still work with the screen off, and a press also wakes the screen. Local time
+follows `TIMEZONE`; until the clock has synced after boot it counts as daytime.
+
+**Without a PIR the screen behaves as before**: bright by day, low at night, always on. A PIR can't
+announce that it is plugged in, so the firmware treats it as connected once its pin has stayed high for
+half a second, i.e. after the first motion it sees following a boot. Until then (and always, with no PIR)
+the old behaviour applies; a PIR that is unplugged later is not noticed until the next reboot. The
+levels, hours and wake time are constants at the top of `src/main.cpp`.
+
+A PIR senses motion, not distance: "near" is set with the sensitivity trimmer on the back of the unit
+(turn it down until only something within about 2 ft sets it off). The other trimmer is how long its
+output stays high after motion.
 
 ## Switching children
 

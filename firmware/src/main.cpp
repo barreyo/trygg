@@ -118,12 +118,22 @@ const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
 const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
 const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
 
-// Screen brightness (0-255): dim at night so it doesn't light up the nursery.
-const int DAY_BRIGHTNESS = 90;
-const int NIGHT_BRIGHTNESS = 10;
-const int NIGHT_START_HOUR = 20;  // 8 PM local time...
-const int NIGHT_END_HOUR = 8;     // ...until 8 AM
-const unsigned long BRIGHTNESS_CHECK_MS = 30000;
+// Screen brightness (0-255). Without a PIR the screen is simply bright by day and low at night. Once a
+// Unit PIR (U004) on Port B has been seen working it wakes the screen instead: by day it idles dim and
+// brightens while something is near, at night it is off until something is near (or a button is pressed).
+const int DAY_BRIGHTNESS = 90;       // awake, daytime
+const int DAY_IDLE_BRIGHTNESS = 15;  // nobody near, daytime
+const int NIGHT_BRIGHTNESS = 10;     // awake, night: low so it doesn't light up the nursery
+const int NIGHT_IDLE_BRIGHTNESS = 0; // nobody near, night: backlight off (the buttons still work)
+const int NIGHT_START_HOUR = 20;     // 8 PM local time...
+const int NIGHT_END_HOUR = 8;        // ...until 8 AM
+const unsigned long WAKE_MS = 30000; // stay lit this long after the last motion or press
+// Port B's first pin (G36, input only). The PIR drives it high while it sees motion; how close
+// "near" is comes from the sensitivity trimmer on the unit's back.
+const m5::pin_name_t PIR_PIN = m5::pin_name_t::port_b_in;
+// A PIR has no way to say it is plugged in, and the pin has no pull-down, so it counts as connected
+// once the pin has stayed high this long. Noise on an empty port doesn't do that.
+const unsigned long PIR_DETECT_MS = 500;
 
 struct Child {
   long id;
@@ -389,16 +399,23 @@ void successChime() {
   }
 }
 
-// Dims the screen from NIGHT_START_HOUR until NIGHT_END_HOUR (local time). Until
-// the clock has synced the hour is unknown, so the brightness is left as it is.
-void updateBrightness() {
-  if (!clockSynced()) return;
-  time_t now = time(nullptr);
-  struct tm tm;
-  localtime_r(&now, &tm);
-  bool night = tm.tm_hour >= NIGHT_START_HOUR || tm.tm_hour < NIGHT_END_HOUR;
+// Sets the backlight from the time of day and whether the screen is awake. Until the clock has
+// synced the hour is unknown, so it counts as daytime.
+void updateBrightness(bool awake) {
+  static unsigned long last_hour_check = 0;
+  static bool night = false;
+  if (!last_hour_check || millis() - last_hour_check > 1000) {
+    last_hour_check = millis() | 1;  // never 0, which means "not checked yet"
+    if (clockSynced()) {
+      time_t now = time(nullptr);
+      struct tm tm;
+      localtime_r(&now, &tm);
+      night = tm.tm_hour >= NIGHT_START_HOUR || tm.tm_hour < NIGHT_END_HOUR;
+    }
+  }
   static int applied = -1;
-  int target = night ? NIGHT_BRIGHTNESS : DAY_BRIGHTNESS;
+  int target = night ? (awake ? NIGHT_BRIGHTNESS : NIGHT_IDLE_BRIGHTNESS)
+                     : (awake ? DAY_BRIGHTNESS : DAY_IDLE_BRIGHTNESS);
   if (target != applied) {
     M5.Display.setBrightness(target);
     applied = target;
@@ -1196,6 +1213,7 @@ void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Display.setBrightness(DAY_BRIGHTNESS);
+  pinMode(M5.getPin(PIR_PIN), INPUT);
   M5.Speaker.setVolume(35);
   Serial.begin(115200);
   Serial.printf("Trygg button, firmware %d\n", (int)FW_VERSION);
@@ -1215,15 +1233,22 @@ void setup() {
 
 void loop() {
   M5.update();
+  static unsigned long last_wake = millis();  // last motion or press; awake from boot
   for (int i = 0; i < 3; i++) {
-    if (btn(i).wasPressed()) last_activity = millis();
+    if (btn(i).wasPressed()) last_activity = last_wake = millis();
   }
 
-  static unsigned long last_brightness_check = 0;
-  if (!last_brightness_check || millis() - last_brightness_check > BRIGHTNESS_CHECK_MS) {
-    last_brightness_check = millis() | 1;  // never 0, which means "not checked yet"
-    updateBrightness();
+  static bool pir_present = false;  // seen working since boot
+  static unsigned long pir_high_since = 0;
+  if (digitalRead(M5.getPin(PIR_PIN)) == HIGH) {
+    last_wake = millis();
+    if (!pir_high_since) pir_high_since = millis() | 1;  // never 0, which means "low"
+    if (!pir_present && millis() - pir_high_since >= PIR_DETECT_MS) pir_present = true;
+  } else {
+    pir_high_since = 0;
   }
+  // No PIR (yet): always "awake", which is the plain day/night brightness.
+  updateBrightness(!pir_present || millis() - last_wake < WAKE_MS);
 
   sensorTick();
 
