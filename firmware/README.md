@@ -104,6 +104,14 @@ every six hours once calibrated and restored on boot, so a reboot or an OTA upda
 The sensor still posts a sample every 30 s: it's the newest of BSEC's 3 s outputs. The temperature still
 reads a little high if the ENV Pro sits right against the button; give it some cable.
 
+**Climate bar.** While the sensor is answering, a strip along the top of the button's screen is coloured by
+how good the air is: green (IAQ up to 100), yellow (up to 150), orange (up to 200) or red, with the temperature
+in its left corner (the device id moves onto it, on the right). It stays grey while `iaq_accuracy` is 0 and the
+index is still being learned, and disappears if the sensor stops answering.
+The bar always runs along the edge of the screen farthest from the buttons, so it follows the
+board's orientation: across the top when upright or on its side, along the bottom when upside down.
+The name and status line give up that much room to it.
+
 **Alert.** Independently of BSEC, the Today card of a pinned device shows "Air is N % below usual" when the
 raw gas resistance (median of the last 10 minutes) has fallen at least 35 % below that room's 7-day median.
 It needs a day of history and is otherwise hidden (`Trygg.Devices.AirBaseline`).
