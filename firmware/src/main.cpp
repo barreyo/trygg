@@ -1,8 +1,10 @@
 // Trygg diaper button for the M5Stack Basic.
 //
-//   A = PEE   B = POO   C = MIXED
+//   A = PEE   B = POO   C = MIXED   (with the board upright)
 //
-// Shows the child's name on top and the emoji above each button.
+// Shows the child's name on top and the emoji above each button. The IMU tells which way up the
+// board is held and the whole UI turns with it, each emoji staying over its own button: upside down
+// the buttons are above the screen and the order flips, on its side they are a column down one edge.
 //
 // Meant to run from mains power: WiFi stays connected. A press is acknowledged on the
 // spot (green screen + chime) and put on a queue. A background task POSTs the queued
@@ -71,9 +73,11 @@ struct Action {
   const char* label;
   const uint16_t* icon;
   const uint16_t* icon_big;  // on the green "logged" screen
-  int center_x;  // above the matching physical button
+  int along;  // where its button is, measured along the row of buttons (the screen's long side)
 };
 
+// In reading order: left to right with the buttons below the screen (or above it, held upside down),
+// top to bottom with the board on its side. Which physical button that is depends on how it's held.
 const Action ACTIONS[3] = {
     {"pee", "PEE", ICON_PEE, ICON_PEE_BIG, 66},
     {"poo", "POO", ICON_POO, ICON_POO_BIG, 160},
@@ -81,8 +85,11 @@ const Action ACTIONS[3] = {
 };
 
 const int TILE_W = 84;
-const int TILE_Y = 112;
 const int TILE_H = 120;
+const int TILE_PORTRAIT_W = 130;  // on its side the tiles are wide and short, in a column on the buttons' side
+const int TILE_PORTRAIT_H = 84;
+const int TILE_MARGIN = 4;
+const int COLUMN_W = 96;  // what's left beside the tiles for the name and banner
 
 const unsigned long CHILD_REFRESH_MS = 60UL * 60UL * 1000UL;  // names are re-fetched when they're older
 const unsigned long BANNER_MS = 4000;
@@ -117,6 +124,19 @@ const unsigned long BSEC_SAVE_MS = 6UL * 60UL * 60UL * 1000UL;  // keep what BSE
 const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
 const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
 const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
+
+// Orientation: the IMU says which way up the board is held and the screen turns to match (M5GFX
+// rotation 0 = buttons below the screen, 1 = buttons on the right, 2 = above, 3 = on the left, as seen by
+// whoever is reading it). M5Unified reports the Basic's accelerometer with X to the right and Y up the
+// screen when it stands upright, and an accelerometer reads +1 g along the axis that points up. If a
+// board shows upside down when it stands upright, flip IMU_UP_Y (and IMU_UP_X for the two sideways
+// positions); the serial monitor prints the raw reading on every change.
+const float IMU_UP_X = 1.0f;
+const float IMU_UP_Y = 1.0f;
+const unsigned long ORIENT_CHECK_MS = 100;
+const unsigned long ORIENT_SETTLE_MS = 700;  // held steady this long before the screen turns
+const float ORIENT_MIN_G = 0.35f;            // less gravity than this across the screen: lying flat, keep as is
+const float ORIENT_MARGIN = 1.4f;            // how clearly one axis must win; stops flapping near 45 degrees
 
 // Screen brightness (0-255): dim at night so it doesn't light up the nursery.
 const int DAY_BRIGHTNESS = 90;
@@ -208,9 +228,113 @@ unsigned long list_until = 0;
 
 m5::Button_Class& btn(int i) { return i == 0 ? M5.BtnA : (i == 1 ? M5.BtnB : M5.BtnC); }
 
+// ---- layout ----------------------------------------------------------------
+
+struct Rect {
+  int x, y, w, h;
+};
+
+// Everything that depends on how the board is held. The buttons are always on the edge of the screen
+// that is nearest them, so the tiles hug that edge, each over its own button, and the name and banner
+// take the rest.
+struct Layout {
+  int rotation;
+  bool portrait;  // on its side: 240x320, the buttons in a column
+  bool flipped;   // reading order runs against the A, B, C order of the buttons
+  Rect name, banner;
+  Rect tile[3];                // by action
+  int id_x, id_y;              // the device id, in the corner farthest from the buttons
+  lgfx::textdatum_t id_datum;
+};
+
+Layout layoutFor(int rotation) {
+  Layout l;
+  l.rotation = rotation;
+  l.portrait = rotation & 1;
+  l.flipped = rotation == 1 || rotation == 2;
+  if (!l.portrait) {
+    const int w = 320, h = 240;
+    bool buttons_above = rotation == 2;
+    l.name = {0, buttons_above ? h - 56 : 0, w, 56};
+    l.banner = {0, buttons_above ? h - 104 : 60, w, 44};
+    l.id_x = w - 3;
+    l.id_y = buttons_above ? h - 3 : 3;
+    l.id_datum = buttons_above ? bottom_right : top_right;
+    for (int i = 0; i < 3; i++) l.tile[i] = {ACTIONS[i].along - TILE_W / 2, buttons_above ? 8 : h - 8 - TILE_H, TILE_W, TILE_H};
+  } else {
+    const int w = 240;
+    bool buttons_right = rotation == 1;
+    int tile_x = buttons_right ? w - TILE_MARGIN - TILE_PORTRAIT_W : TILE_MARGIN;
+    int col_x = buttons_right ? TILE_MARGIN : tile_x + TILE_PORTRAIT_W + 6;
+    l.name = {col_x, 14, COLUMN_W, 100};
+    l.banner = {col_x, 118, COLUMN_W, 150};
+    l.id_x = col_x + COLUMN_W;
+    l.id_y = 3;
+    l.id_datum = top_right;
+    for (int i = 0; i < 3; i++) l.tile[i] = {tile_x, ACTIONS[i].along - TILE_PORTRAIT_H / 2, TILE_PORTRAIT_W, TILE_PORTRAIT_H};
+  }
+  return l;
+}
+
+Layout lay = layoutFor(0);
+
+// The action under a physical button (0 = A .. 2 = C) with the board held as it is now, and back.
+// Held with the buttons on the right or above, A is the last one in reading order, so it mixes.
+int actionFor(int button) { return lay.flipped ? 2 - button : button; }
+
 // ---- drawing ---------------------------------------------------------------
 
-// The device id, tiny, in the top right corner. Nothing until the app has handed one out.
+// Word-wraps `text` into lines no wider than `width` in the current font. False if a single word is
+// wider than that on its own.
+bool wrapText(const String& text, int width, std::vector<String>& lines) {
+  lines.clear();
+  String line;
+  int pos = 0, n = text.length();
+  while (pos < n) {
+    int sp = text.indexOf(' ', pos);
+    String word = sp < 0 ? text.substring(pos) : text.substring(pos, sp);
+    pos = sp < 0 ? n : sp + 1;
+    if (!word.length()) continue;
+    String joined = line.length() ? line + " " + word : word;
+    if (line.length() && M5.Display.textWidth(joined) > width) {
+      lines.push_back(line);
+      line = word;
+    } else {
+      line = joined;
+    }
+  }
+  if (line.length() || lines.empty()) lines.push_back(line);
+  for (auto& l : lines) {
+    if (M5.Display.textWidth(l) > width) return false;
+  }
+  return true;
+}
+
+// Draws `text` centred in `r` (minus `pad` on each side), in the first of `fonts` that fits on at most
+// `max_lines` lines. If none does it's one line in the last font, clipped to `r`.
+void drawFitted(const String& text, const Rect& r, int pad, const lgfx::IFont* const* fonts, int n_fonts, int max_lines,
+                uint16_t color) {
+  auto& d = M5.Display;
+  std::vector<String> lines;
+  bool fits = false;
+  for (int f = 0; f < n_fonts && !fits; f++) {
+    d.setFont(fonts[f]);
+    fits = wrapText(text, r.w - 2 * pad, lines) && (int)lines.size() <= max_lines;
+  }
+  if (!fits) lines.assign(1, text);
+  int fh = d.fontHeight();
+  int y = r.y + (r.h - fh * (int)lines.size()) / 2 + fh / 2;
+  d.setClipRect(r.x, r.y, r.w, r.h);
+  d.setTextColor(color, COLOR_BG);
+  d.setTextDatum(middle_center);
+  for (auto& l : lines) {
+    d.drawString(l, r.x + r.w / 2, y);
+    y += fh;
+  }
+  d.clearClipRect();
+}
+
+// The device id, tiny, in the corner away from the buttons. Nothing until the app has handed one out.
 void drawShortId() {
   if (!short_id) return;
   auto& d = M5.Display;
@@ -218,49 +342,49 @@ void drawShortId() {
   snprintf(buf, sizeof buf, "%05ld", (long)short_id);
   d.setFont(&fonts::Font0);  // 6x8 px
   d.setTextColor(COLOR_DIM, COLOR_BG);
-  d.setTextDatum(top_right);
-  d.drawString(buf, d.width() - 3, 3);
+  d.setTextDatum(lay.id_datum);
+  d.drawString(buf, lay.id_x, lay.id_y);
 }
 
 void drawName() {
   auto& d = M5.Display;
-  d.fillRect(0, 0, d.width(), 56, COLOR_BG);
-  d.setTextColor(COLOR_TEXT, COLOR_BG);
-  d.setTextDatum(middle_center);
-  const lgfx::IFont* fonts[] = {&fonts::lgfxJapanGothic_32, &fonts::lgfxJapanGothic_24, &fonts::lgfxJapanGothic_16};
+  d.fillRect(lay.name.x, lay.name.y, lay.name.w, lay.name.h, COLOR_BG);
+  static const lgfx::IFont* const wide[] = {&fonts::lgfxJapanGothic_32, &fonts::lgfxJapanGothic_24, &fonts::lgfxJapanGothic_16};
+  static const lgfx::IFont* const narrow[] = {&fonts::lgfxJapanGothic_24, &fonts::lgfxJapanGothic_20, &fonts::lgfxJapanGothic_16};
   String text = child_name.length() ? child_name : String("Trygg");
-  for (auto font : fonts) {
-    d.setFont(font);
-    if (d.textWidth(text) <= d.width() - 16) break;
-  }
-  d.drawString(text, d.width() / 2, 28);
+  if (lay.portrait) drawFitted(text, lay.name, 0, narrow, 3, 2, COLOR_TEXT);
+  else drawFitted(text, lay.name, 8, wide, 3, 1, COLOR_TEXT);
   drawShortId();
 }
 
-// One line under the name: what just happened, or the connection state.
+// One line under the name: what just happened, or the connection state. A few short lines when the
+// board is on its side and there is little room.
 void drawBanner(const String& text, uint16_t color) {
   shown_banner = text;
   auto& d = M5.Display;
-  d.fillRect(0, 60, d.width(), 44, COLOR_BG);
-  d.setTextColor(color, COLOR_BG);
-  d.setTextDatum(middle_center);
-  d.setFont(&fonts::lgfxJapanGothic_20);
-  if (d.textWidth(text) > d.width() - 8) d.setFont(&fonts::lgfxJapanGothic_16);
-  d.drawString(text, d.width() / 2, 82);
+  d.fillRect(lay.banner.x, lay.banner.y, lay.banner.w, lay.banner.h, COLOR_BG);
+  static const lgfx::IFont* const sizes[] = {&fonts::lgfxJapanGothic_20, &fonts::lgfxJapanGothic_16};
+  drawFitted(text, lay.banner, lay.portrait ? 0 : 4, sizes, 2, lay.portrait ? 5 : 1, color);
 }
 
 void drawTile(int i, uint16_t border) {
   auto& d = M5.Display;
   const Action& a = ACTIONS[i];
-  int x = a.center_x - TILE_W / 2;
-  d.fillRoundRect(x, TILE_Y, TILE_W, TILE_H, 10, COLOR_BG);
-  d.drawRoundRect(x, TILE_Y, TILE_W, TILE_H, 10, border);
-  d.drawRoundRect(x + 1, TILE_Y + 1, TILE_W - 2, TILE_H - 2, 9, border);
-  d.pushImage(a.center_x - ICON_SIZE / 2, TILE_Y + 10, ICON_SIZE, ICON_SIZE, a.icon);
+  const Rect& t = lay.tile[i];
+  d.fillRoundRect(t.x, t.y, t.w, t.h, 10, COLOR_BG);
+  d.drawRoundRect(t.x, t.y, t.w, t.h, 10, border);
+  d.drawRoundRect(t.x + 1, t.y + 1, t.w - 2, t.h - 2, 9, border);
   d.setTextColor(COLOR_TEXT, COLOR_BG);
   d.setTextDatum(middle_center);
-  d.setFont(&fonts::lgfxJapanGothic_20);
-  d.drawString(a.label, a.center_x, TILE_Y + 96);
+  if (lay.portrait) {
+    d.pushImage(t.x + 8, t.y + (t.h - ICON_SIZE) / 2, ICON_SIZE, ICON_SIZE, a.icon);
+    d.setFont(&fonts::lgfxJapanGothic_16);
+    d.drawString(a.label, t.x + 8 + ICON_SIZE + (t.w - 8 - ICON_SIZE) / 2, t.y + t.h / 2);
+  } else {
+    d.pushImage(t.x + (t.w - ICON_SIZE) / 2, t.y + 10, ICON_SIZE, ICON_SIZE, a.icon);
+    d.setFont(&fonts::lgfxJapanGothic_20);
+    d.drawString(a.label, t.x + t.w / 2, t.y + 96);
+  }
 }
 
 void drawAll() {
@@ -291,15 +415,19 @@ String localTime() {
 // Takes over the whole screen, all green, once an entry is logged.
 void drawLogged(const Action& a, const String& time) {
   auto& d = M5.Display;
+  // Centred on the screen, so the same whichever way up it is held; on its side there's more height.
+  int icon_y = lay.portrait ? 36 : 14, label_y = lay.portrait ? 170 : 140, time_y = lay.portrait ? 250 : 196;
   d.fillScreen(COLOR_OK_BG);
-  d.pushImage(d.width() / 2 - ICON_BIG_SIZE / 2, 14, ICON_BIG_SIZE, ICON_BIG_SIZE, a.icon_big);
+  d.pushImage(d.width() / 2 - ICON_BIG_SIZE / 2, icon_y, ICON_BIG_SIZE, ICON_BIG_SIZE, a.icon_big);
   d.setTextColor(COLOR_TEXT, COLOR_OK_BG);
   d.setTextDatum(middle_center);
+  String label = String(a.label) + " logged";
   d.setFont(&fonts::lgfxJapanGothic_32);
-  d.drawString(String(a.label) + " logged", d.width() / 2, 140);
+  if (d.textWidth(label) > d.width() - 8) d.setFont(&fonts::lgfxJapanGothic_24);
+  d.drawString(label, d.width() / 2, label_y);
   if (time.length()) {
     d.setFont(&fonts::Font7);  // big 7-segment digits
-    d.drawString(time, d.width() / 2, 196);
+    d.drawString(time, d.width() / 2, time_y);
   }
 }
 
@@ -312,15 +440,20 @@ void fitFont(const String& text, int width) {
   }
 }
 
-// The child picker: ▲ / OK / ▼ above the three buttons.
+// The child picker: ▲ / OK / ▼ beside the three buttons, each over its own button.
 void drawList() {
   auto& d = M5.Display;
   int n = children.size();
+  // Rows fill the screen minus the strip the arrows sit in, which is on the buttons' side.
+  int row_x = lay.portrait ? (lay.rotation == 1 ? 10 : 56) : 12;
+  int row_w = lay.portrait ? d.width() - 66 : d.width() - 24;
+  int arrow_c = lay.portrait ? (lay.rotation == 1 ? d.width() - 28 : 28) : (lay.rotation == 2 ? 18 : 222);
+  int title_y = lay.rotation == 2 ? 224 : 16;
   d.fillScreen(COLOR_BG);
   d.setTextColor(COLOR_DIM, COLOR_BG);
   d.setTextDatum(middle_center);
   d.setFont(&fonts::lgfxJapanGothic_20);
-  d.drawString("Choose child", d.width() / 2, 16);
+  d.drawString("Choose child", row_x + row_w / 2, title_y);
 
   int top = max(0, min(list_sel - LIST_ROWS / 2, n - LIST_ROWS));
   for (int r = 0; r < LIST_ROWS && top + r < n; r++) {
@@ -328,22 +461,28 @@ void drawList() {
     int y = 34 + r * 34;
     bool sel = idx == list_sel;
     if (sel) {
-      d.fillRoundRect(12, y, d.width() - 24, 32, 8, COLOR_IDLE);
-      d.drawRoundRect(12, y, d.width() - 24, 32, 8, COLOR_BUSY);
+      d.fillRoundRect(row_x, y, row_w, 32, 8, COLOR_IDLE);
+      d.drawRoundRect(row_x, y, row_w, 32, 8, COLOR_BUSY);
     }
     d.setTextColor(sel ? COLOR_TEXT : COLOR_DIM, sel ? COLOR_IDLE : COLOR_BG);
     d.setTextDatum(middle_left);
-    fitFont(children[idx].name, d.width() - 80);
-    d.drawString(children[idx].name, 28, y + 16);
-    if (idx == current) d.fillCircle(d.width() - 30, y + 16, 5, COLOR_OK);
+    fitFont(children[idx].name, row_w - 56);
+    d.drawString(children[idx].name, row_x + 16, y + 16);
+    if (idx == current) d.fillCircle(row_x + row_w - 18, y + 16, 5, COLOR_OK);
   }
 
-  d.fillTriangle(ACTIONS[0].center_x, 214, ACTIONS[0].center_x - 10, 230, ACTIONS[0].center_x + 10, 230, COLOR_TEXT);
-  d.fillTriangle(ACTIONS[2].center_x, 230, ACTIONS[2].center_x - 10, 214, ACTIONS[2].center_x + 10, 214, COLOR_TEXT);
+  // Reading order: the first action's button is ▲, the last one's ▼, the middle one's OK.
+  int ax[3], ay[3];
+  for (int i = 0; i < 3; i++) {
+    ax[i] = lay.portrait ? arrow_c : ACTIONS[i].along;
+    ay[i] = lay.portrait ? ACTIONS[i].along : arrow_c;
+  }
+  d.fillTriangle(ax[0], ay[0] - 8, ax[0] - 10, ay[0] + 8, ax[0] + 10, ay[0] + 8, COLOR_TEXT);
+  d.fillTriangle(ax[2], ay[2] + 8, ax[2] - 10, ay[2] - 8, ax[2] + 10, ay[2] - 8, COLOR_TEXT);
   d.setTextColor(COLOR_TEXT, COLOR_BG);
   d.setTextDatum(middle_center);
   d.setFont(&fonts::lgfxJapanGothic_20);
-  d.drawString("OK", ACTIONS[1].center_x, 222);
+  d.drawString("OK", ax[1], ay[1]);
 }
 
 void showBanner(const String& text, uint16_t color, unsigned long ms = 0) {
@@ -678,6 +817,63 @@ void closeList(bool apply) {
   } else {
     updateIdleBanner();
   }
+}
+
+// ---- orientation (runs on the UI task) ------------------------------------------
+
+// The rotation that has the screen the right way up for how the board is held, or `current` when it
+// can't tell: lying flat or face down, or too close to the diagonal to be sure. `ax`/`ay` are the
+// accelerometer's X and Y; with the board upright "up" is +Y.
+int rotationFor(float ax, float ay, int current) {
+  float up_x = IMU_UP_X * ax, up_y = IMU_UP_Y * ay;
+  float x = fabsf(up_x), y = fabsf(up_y);
+  if (max(x, y) < ORIENT_MIN_G) return current;
+  if (y >= ORIENT_MARGIN * x) return up_y > 0 ? 0 : 2;
+  if (x >= ORIENT_MARGIN * y) return up_x > 0 ? 1 : 3;
+  return current;
+}
+
+// Turns the screen and the buttons' meaning together, then redraws whatever was up.
+void turnTo(int r) {
+  M5.Display.setRotation(r);
+  lay = layoutFor(r);
+  drawAll();
+}
+
+// Called once at boot, so the first screen is already the right way up.
+void initOrientation() {
+  float ax, ay, az;
+  int r = M5.Imu.isEnabled() && M5.Imu.getAccel(&ax, &ay, &az) ? rotationFor(ax, ay, 0) : 0;
+  Serial.printf("IMU %s, starting at rotation %d\n", M5.Imu.isEnabled() ? "found" : "missing", r);
+  M5.Display.setRotation(r);
+  lay = layoutFor(r);
+}
+
+// Follows the board as it's turned. A new position has to hold for ORIENT_SETTLE_MS (a knock while
+// pressing a button, or picking it up, mustn't flip the screen), and nothing turns while a button is
+// down, the green "logged" screen is up or the child picker is open.
+void updateOrientation() {
+  static unsigned long last_check = 0, candidate_since = 0;
+  static int candidate = -1;
+  if (!M5.Imu.isEnabled() || millis() - last_check < ORIENT_CHECK_MS) return;
+  last_check = millis();
+  float ax, ay, az;
+  if (!M5.Imu.getAccel(&ax, &ay, &az)) return;
+  int want = rotationFor(ax, ay, lay.rotation);
+  if (want == lay.rotation) {
+    candidate = -1;
+    return;
+  }
+  if (want != candidate) {
+    candidate = want;
+    candidate_since = millis();
+    return;
+  }
+  bool busy = logged_until || list_open || M5.BtnA.isPressed() || M5.BtnB.isPressed() || M5.BtnC.isPressed();
+  if (busy || millis() - candidate_since < ORIENT_SETTLE_MS) return;
+  Serial.printf("Rotation %d -> %d (accel %.2f %.2f %.2f)\n", lay.rotation, want, ax, ay, az);
+  candidate = -1;
+  turnTo(want);
 }
 
 // ---- sensor (runs on the UI task) ----------------------------------------------
@@ -1209,6 +1405,7 @@ void setup() {
   WiFi.setAutoReconnect(true);
   device_id = WiFi.macAddress();
   xTaskCreatePinnedToCore(syncTask, "sync", 24576, nullptr, 1, &sync_task, 0);  // TLS + the updater need room
+  initOrientation();
   drawAll();
   kickSync(true);  // the first children fetch
 }
@@ -1225,6 +1422,7 @@ void loop() {
     updateBrightness();
   }
 
+  updateOrientation();
   sensorTick();
 
   // Retry a failed sync once its back-off is over. Presses and boot kick it directly.
@@ -1250,8 +1448,9 @@ void loop() {
       if (!btn(i).wasPressed()) continue;
       consumed[i] = true;  // none of these may log when let go
       list_until = millis() + LIST_TIMEOUT_MS;
-      if (i == 0) moved = -1;
-      else if (i == 2) moved = 1;
+      int a = actionFor(i);  // ▲ is the first in reading order, ▼ the last
+      if (a == 0) moved = -1;
+      else if (a == 2) moved = 1;
       else select = true;
     }
     int n = children.size();
@@ -1272,14 +1471,15 @@ void loop() {
   // HOLD_MS acts at once, and its release is swallowed.
   for (int i = 0; i < 3; i++) {
     auto& b = btn(i);
+    int a = actionFor(i);  // what this button is, as the screen shows it
     if (b.wasPressed()) consumed[i] = false;
     if (!consumed[i] && b.isPressed() && b.pressedFor(HOLD_MS)) {
       consumed[i] = true;
-      if (i == 1) openList();
-      else cycleChild(i == 0 ? -1 : 1);
+      if (a == 1) openList();
+      else cycleChild(a == 0 ? -1 : 1);
     }
     if (b.wasReleased()) {
-      if (!consumed[i]) press(i);
+      if (!consumed[i]) press(a);
       consumed[i] = false;
     }
     if (logged_until || list_open) break;
