@@ -18,6 +18,8 @@
 // with the board's MAC address so the app can list the device and let the family name it.
 // The app answers with a five-digit device id, which is kept and printed small in the top right
 // corner of the screen, so the family can tell which physical unit is which in the app.
+// While the sensor answers, a strip along the top of the screen is coloured by air quality
+// (green, yellow, orange, red) with the temperature in its corner.
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -89,6 +91,7 @@ const int TILE_H = 120;
 const int TILE_PORTRAIT_W = 130;  // on its side the tiles are wide and short, in a column on the buttons' side
 const int TILE_PORTRAIT_H = 84;
 const int TILE_MARGIN = 4;
+const int BAR_H = 18;   // the climate bar along the edge farthest from the buttons
 const int COLUMN_W = 96;  // what's left beside the tiles for the name and banner
 
 const unsigned long CHILD_REFRESH_MS = 60UL * 60UL * 1000UL;  // names are re-fetched when they're older
@@ -203,6 +206,15 @@ String device_id;  // this board's WiFi MAC address, how the app tells devices a
 volatile long short_id = 0;
 volatile bool short_id_dirty = false;
 
+// What the climate bar along the top of the screen shows (UI task only). `show` is true while the
+// sensor is online and has produced a temperature; `air` is 0 while BSEC is still calibrating (or has
+// no index), else 1 green .. 4 red by how good the air is.
+struct {
+  bool show = false;
+  float temperature_c = 0;
+  int air = 0;
+} climate;
+
 // Over-the-air updates. The sync task checks for a release and installs it; the UI shows
 // the progress and does the restart, once nothing is waiting in the (RAM-only) queue.
 volatile int update_pct = -1;                  // download progress, -1 when not downloading
@@ -242,6 +254,7 @@ struct Layout {
   bool portrait;  // on its side: 240x320, the buttons in a column
   bool flipped;   // reading order runs against the A, B, C order of the buttons
   Rect name, banner;
+  Rect bar;                    // the climate bar: the screen's edge farthest from the buttons
   Rect tile[3];                // by action
   int id_x, id_y;              // the device id, in the corner farthest from the buttons
   lgfx::textdatum_t id_datum;
@@ -257,6 +270,7 @@ Layout layoutFor(int rotation) {
     bool buttons_above = rotation == 2;
     l.name = {0, buttons_above ? h - 56 : 0, w, 56};
     l.banner = {0, buttons_above ? h - 104 : 60, w, 44};
+    l.bar = {0, buttons_above ? h - BAR_H : 0, w, BAR_H};
     l.id_x = w - 3;
     l.id_y = buttons_above ? h - 3 : 3;
     l.id_datum = buttons_above ? bottom_right : top_right;
@@ -268,6 +282,7 @@ Layout layoutFor(int rotation) {
     int col_x = buttons_right ? TILE_MARGIN : tile_x + TILE_PORTRAIT_W + 6;
     l.name = {col_x, 14, COLUMN_W, 100};
     l.banner = {col_x, 118, COLUMN_W, 150};
+    l.bar = {0, 0, w, BAR_H};  // across the top, clear of the tiles (which start at y = 24)
     l.id_x = col_x + COLUMN_W;
     l.id_y = 3;
     l.id_datum = top_right;
@@ -334,27 +349,100 @@ void drawFitted(const String& text, const Rect& r, int pad, const lgfx::IFont* c
   d.clearClipRect();
 }
 
-// The device id, tiny, in the corner away from the buttons. Nothing until the app has handed one out.
+// The bar's colours by air quality: fixed green/yellow/orange/red, a neutral grey while the index is
+// still being learned. {background, text}
+void climateColors(int air, uint16_t& bg, uint16_t& fg) {
+  switch (air) {
+    case 1: bg = rgb(60, 200, 110); fg = rgb(8, 40, 20); break;
+    case 2: bg = rgb(240, 214, 60); fg = rgb(50, 40, 0); break;
+    case 3: bg = rgb(240, 150, 50); fg = rgb(50, 24, 0); break;
+    case 4: bg = rgb(220, 60, 60); fg = rgb(255, 255, 255); break;
+    default: bg = COLOR_IDLE; fg = COLOR_TEXT; break;
+  }
+}
+
+// The name's area: `lay.name`, less the climate bar's share of it while the bar is up.
+Rect nameRect() {
+  Rect r = lay.name;
+  if (!climate.show) return r;
+  if (lay.bar.y == 0) {
+    int top = max(r.y, BAR_H);
+    r.h -= top - r.y;
+    r.y = top;
+  } else {
+    r.h = min(r.h, lay.bar.y - r.y);
+  }
+  return r;
+}
+
+// The device id, tiny, in the corner away from the buttons, or on the climate bar when that is up.
+// Nothing until the app has handed one out.
 void drawShortId() {
   if (!short_id) return;
   auto& d = M5.Display;
+  uint16_t bg = COLOR_BG, fg = COLOR_DIM;
   char buf[8];
   snprintf(buf, sizeof buf, "%05ld", (long)short_id);
   d.setFont(&fonts::Font0);  // 6x8 px
-  d.setTextColor(COLOR_DIM, COLOR_BG);
+  if (climate.show) {
+    climateColors(climate.air, bg, fg);
+    d.setTextColor(fg, bg);
+    d.setTextDatum(middle_right);
+    d.drawString(buf, lay.bar.x + lay.bar.w - 4, lay.bar.y + BAR_H / 2);
+    return;
+  }
+  d.setTextColor(fg, bg);
   d.setTextDatum(lay.id_datum);
   d.drawString(buf, lay.id_x, lay.id_y);
 }
 
+// The strip along the screen's far edge while a room sensor is online: coloured by air quality, the
+// temperature in its left corner. The sensor is on this board, so "online" is whether it is answering.
+void drawClimateBar() {
+  if (!climate.show) return;
+  auto& d = M5.Display;
+  uint16_t bg, fg;
+  climateColors(climate.air, bg, fg);
+  d.fillRect(lay.bar.x, lay.bar.y, lay.bar.w, lay.bar.h, bg);
+  char buf[12];
+  snprintf(buf, sizeof buf, "%.1f°C", climate.temperature_c);
+  d.setFont(&fonts::lgfxJapanGothic_16);
+  d.setTextColor(fg, bg);
+  d.setTextDatum(middle_left);
+  d.drawString(buf, lay.bar.x + 6, lay.bar.y + BAR_H / 2);
+  drawShortId();
+}
+
 void drawName() {
   auto& d = M5.Display;
+  d.fillRect(lay.bar.x, lay.bar.y, lay.bar.w, lay.bar.h, COLOR_BG);  // the bar, if it was up
   d.fillRect(lay.name.x, lay.name.y, lay.name.w, lay.name.h, COLOR_BG);
   static const lgfx::IFont* const wide[] = {&fonts::lgfxJapanGothic_32, &fonts::lgfxJapanGothic_24, &fonts::lgfxJapanGothic_16};
   static const lgfx::IFont* const narrow[] = {&fonts::lgfxJapanGothic_24, &fonts::lgfxJapanGothic_20, &fonts::lgfxJapanGothic_16};
   String text = child_name.length() ? child_name : String("Trygg");
-  if (lay.portrait) drawFitted(text, lay.name, 0, narrow, 3, 2, COLOR_TEXT);
-  else drawFitted(text, lay.name, 8, wide, 3, 1, COLOR_TEXT);
-  drawShortId();
+  Rect r = nameRect();
+  if (lay.portrait) drawFitted(text, r, 0, narrow, 3, 2, COLOR_TEXT);
+  else drawFitted(text, r, 8, wide, 3, 1, COLOR_TEXT);
+  if (climate.show) drawClimateBar();
+  else drawShortId();
+}
+
+// Brings the climate bar up to date: appears, disappears or recolours as the sensor's state changes.
+void updateClimateBar() {
+  static bool shown = false;
+  static int shown_air = -1;
+  static int shown_tenths = 0;
+  int tenths = (int)lroundf(climate.temperature_c * 10);
+  if (climate.show != shown) {
+    shown = climate.show;
+    shown_air = climate.air;
+    shown_tenths = tenths;
+    drawName();  // the name gives up room to the bar, so it is redrawn with it
+  } else if (shown && (climate.air != shown_air || tenths != shown_tenths)) {
+    shown_air = climate.air;
+    shown_tenths = tenths;
+    drawClimateBar();
+  }
 }
 
 // One line under the name: what just happened, or the connection state. A few short lines when the
@@ -1072,6 +1160,19 @@ void sensorPublish() {
   sample_ready = true;
 }
 
+// Hands the newest outputs to the climate bar on the screen.
+void sensorClimate() {
+  const Sample& l = env.latest;
+  climate.show = env.have_temperature;
+  climate.temperature_c = l.temperature_c;
+  // BSEC's index is only trusted once it has begun to calibrate (accuracy >= 1).
+  if (!l.has_iaq || l.iaq_accuracy < 1) climate.air = 0;
+  else if (l.iaq <= 100) climate.air = 1;
+  else if (l.iaq <= 150) climate.air = 2;
+  else if (l.iaq <= 200) climate.air = 3;
+  else climate.air = 4;
+}
+
 bool sensorCollect() {
   bme68x_data data;
   uint8_t n = 0;
@@ -1079,6 +1180,7 @@ bool sensorCollect() {
   if (!(data.status & BME68X_NEW_DATA_MSK)) return false;
   if (!(data.status & BME68X_GASM_VALID_MSK)) return true;  // BSEC wants gas readings that took
   if (!bsecProcess(data)) return false;
+  sensorClimate();
   sensorPublish();
   return true;
 }
@@ -1087,6 +1189,7 @@ void sensorLost(unsigned long now) {
   if (++env.fails < SENSOR_MAX_FAILS) return;
   Serial.println("ENV Pro stopped answering");
   env.present = false;
+  climate.show = false;
   env.fails = 0;
   env.next_at = (now + SENSOR_RETRY_MS) | 1;
 }
@@ -1492,6 +1595,7 @@ void loop() {
       short_id_dirty = false;
       drawName();
     }
+    updateClimateBar();
     showSyncResults();
     updateIdleBanner();
   }

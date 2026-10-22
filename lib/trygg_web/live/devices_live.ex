@@ -192,8 +192,10 @@ defmodule TryggWeb.DevicesLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    family_id = socket.assigns.current_child.family_id
+
     if connected?(socket) do
-      # The family's device messages arrive via `TryggWeb.ClimateBar`, which every child page mounts.
+      Devices.subscribe(family_id)
       Process.send_after(self(), :tick, @tick_ms)
     end
 
