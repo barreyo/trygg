@@ -141,8 +141,7 @@ defmodule TryggWeb.Router do
     live_session :require_authenticated_user,
       on_mount: [
         {TryggWeb.UserAuth, :require_authenticated},
-        {TryggWeb.ChildScope, :assign_child},
-        {TryggWeb.ClimateBar, :default}
+        {TryggWeb.ChildScope, :assign_child}
       ] do
       live "/", DashboardLive, :index
       live "/children", ChildLive.Index, :index

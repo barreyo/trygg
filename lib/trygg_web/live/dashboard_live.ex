@@ -29,8 +29,7 @@ defmodule TryggWeb.DashboardLive do
     if connected?(socket) do
       Process.send_after(self(), :tick, @tick_ms)
       Trygg.Accounts.subscribe_user(socket.assigns.current_scope.user.id)
-
-      # The family's device messages arrive via `TryggWeb.ClimateBar`, which every child page mounts.
+      Devices.subscribe(socket.assigns.current_child.family_id)
     end
 
     scope = socket.assigns.current_scope

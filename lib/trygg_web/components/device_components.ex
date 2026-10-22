@@ -74,16 +74,6 @@ defmodule TryggWeb.DeviceComponents do
 
   def air_tone(_reading), do: nil
 
-  @doc """
-  The status bar colour for a reading: `:green`, `:yellow`, `:orange` or `:red` once
-  BSEC's index is trusted, `nil` otherwise (see `air_tone/1`).
-  """
-  def air_level(%{iaq: iaq, iaq_accuracy: acc})
-      when is_number(iaq) and is_integer(acc) and acc >= 1,
-      do: AirQuality.level(iaq)
-
-  def air_level(_reading), do: nil
-
   defp air_emoji("success"), do: "🍃"
   defp air_emoji("warning"), do: "🌫️"
   defp air_emoji("error"), do: "😷"
