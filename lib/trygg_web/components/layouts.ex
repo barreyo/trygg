@@ -100,6 +100,14 @@ defmodule TryggWeb.Layouts do
         :if={!@immersive}
         class="material sticky top-0 z-30 border-b border-base-300 pt-[env(safe-area-inset-top)]"
       >
+        <%!-- The room sensor's strip: air quality colour, temperature in the corner. --%>
+        <.live_component
+          :if={@current_child && @current_scope && @current_scope.user}
+          module={TryggWeb.ClimateBar}
+          id="climate-bar"
+          current_scope={@current_scope}
+          current_child={@current_child}
+        />
         <div class={[@column_class, "flex items-center gap-2 px-4 min-h-14 py-1.5"]}>
           <%!-- On a tab page the back arrow only leads Home, which the sidebar
                already offers on desktop. --%>

@@ -659,6 +659,29 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
   border-color: color-mix(in oklab, var(--tint) 60%, transparent);
 }
 .device-tile[data-tone] dd { color: color-mix(in oklab, var(--tint) 65%, var(--color-base-content)); }
+/*
+ * The strip along the top of every screen while a room sensor is online: a fixed
+ * green/yellow/orange/red by air quality (like the diaper colours, literal rather than
+ * theme-relative), neutral while the sensor is still calibrating.
+ */
+.climate-bar {
+  --climate: var(--color-base-300);
+  --climate-ink: var(--color-base-content);
+  display: flex;
+  align-items: center;
+  height: 1.25rem;
+  padding-inline: 0.75rem;
+  background: var(--climate);
+  color: var(--climate-ink);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 0.6s;
+}
+.climate-bar[data-air="green"] { --climate: oklch(74% 0.18 148); --climate-ink: oklch(22% 0.06 148); }
+.climate-bar[data-air="yellow"] { --climate: oklch(88% 0.17 98); --climate-ink: oklch(30% 0.07 98); }
+.climate-bar[data-air="orange"] { --climate: oklch(75% 0.18 58); --climate-ink: oklch(26% 0.07 58); }
+.climate-bar[data-air="red"] { --climate: oklch(55% 0.22 27); --climate-ink: oklch(98% 0.01 27); }
 .device-dot {
   position: relative;
   flex-shrink: 0;

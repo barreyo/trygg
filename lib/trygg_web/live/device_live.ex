@@ -101,7 +101,7 @@ defmodule TryggWeb.DeviceLive do
     case fetch_device(socket, device_id) do
       {:ok, device} ->
         if connected?(socket) do
-          Devices.subscribe(device.family_id)
+          # The family's device messages arrive via `TryggWeb.ClimateBar`, which every child page mounts.
           Process.send_after(self(), :tick, @tick_ms)
         end
 

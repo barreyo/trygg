@@ -19,4 +19,24 @@ defmodule Trygg.Devices.AirQualityTest do
     assert List.last(bands).to == 500
     assert Enum.chunk_every(bands, 2, 1, :discard) |> Enum.all?(fn [a, b] -> a.to == b.from end)
   end
+
+  test "level collapses the bands into the four status bar colours" do
+    assert for(
+             iaq <- [0, 50, 51, 100, 101, 150, 151, 200, 201, 250, 400],
+             do: AirQuality.level(iaq)
+           ) ==
+             [
+               :green,
+               :green,
+               :green,
+               :green,
+               :yellow,
+               :yellow,
+               :orange,
+               :orange,
+               :red,
+               :red,
+               :red
+             ]
+  end
 end
