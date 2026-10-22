@@ -56,14 +56,17 @@ defmodule Trygg.Devices do
   @doc """
   The family's devices, oldest first, each with `:latest` set to its newest
   reading (or `nil`). Any member can look. Devices the user has pinned to Today
-  also carry their `:air_alert`.
+  also carry their `:air_alert`, unless `alerts: false` skips working it out (the
+  status bar only needs the readings).
   """
-  def list_devices(%Scope{} = scope, family_id) do
+  def list_devices(%Scope{} = scope, family_id, opts \\ []) do
     Families.authorize_family!(scope, family_id, :viewer)
 
     devices = Repo.all(from d in Device, where: d.family_id == ^family_id, order_by: d.id)
     latest = latest_readings(Enum.map(devices, & &1.id))
-    pinned = pinned_ids(scope, family_id)
+
+    pinned =
+      if Keyword.get(opts, :alerts, true), do: pinned_ids(scope, family_id), else: MapSet.new()
 
     Enum.map(devices, fn device ->
       device = %{device | latest: latest[device.id]}
