@@ -18,6 +18,7 @@ defmodule Trygg.Reports.Feeding do
 
   alias Trygg.Families.Child
   alias Trygg.Reports.Day
+  alias Trygg.Reports.FeedAmount
   alias Trygg.Reports.FeedTiming
   alias Trygg.Reports.Norms
   alias Trygg.Reports.Stats
@@ -71,7 +72,7 @@ defmodule Trygg.Reports.Feeding do
       duration: duration(durations, per_day),
       intervals: by_period,
       last_feed_at: last && last.at,
-      next_feed: next_feed(child, last, by_period, now),
+      next_feed: next_feed(child, episodes, intervals, by_period, now),
       cluster: cluster(feeds, now),
       intake: intake(child, today, per_day, Keyword.get(opts, :weight)),
       typical: typical(child, today)
@@ -124,7 +125,13 @@ defmodule Trygg.Reports.Feeding do
       seconds = DateTime.diff(b.at, a.at, :second)
 
       if seconds > 0 and seconds <= @max_interval do
-        [%{seconds: seconds, period: if(Child.daytime?(child, a.at), do: :day, else: :night)}]
+        [
+          %{
+            seconds: seconds,
+            ml: a.ml,
+            period: if(Child.daytime?(child, a.at), do: :day, else: :night)
+          }
+        ]
       else
         []
       end
@@ -203,9 +210,15 @@ defmodule Trygg.Reports.Feeding do
 
   ## Next feed --------------------------------------------------------------
 
-  defp next_feed(_child, nil, _by_period, _now), do: nil
+  # Intervals are measured from one episode's start to the next's, so the
+  # estimate is anchored on the last episode's start, not on a top-up bottle
+  # logged a few minutes later. When the last episode's volume has reliably
+  # predicted the gap that followed it (see `FeedAmount`), the median gap is
+  # nudged by it.
+  defp next_feed(_child, [], _intervals, _by_period, _now), do: nil
 
-  defp next_feed(child, last, by_period, now) do
+  defp next_feed(child, episodes, intervals, by_period, now) do
+    last = List.last(episodes)
     period = if Child.daytime?(child, last.at), do: :day, else: :night
 
     case pick_interval(by_period, period) do
@@ -213,7 +226,10 @@ defmodule Trygg.Reports.Feeding do
         nil
 
       {sample, used_period} ->
-        at = DateTime.add(last.at, round(sample.median), :second)
+        adjusted = FeedAmount.estimate(intervals, period, last.ml)
+        seconds = if adjusted, do: adjusted.seconds, else: sample.median
+        range = if adjusted, do: adjusted.range, else: sample.quartiles
+        at = DateTime.add(last.at, round(seconds), :second)
 
         %{
           at: at,
@@ -222,9 +238,18 @@ defmodule Trygg.Reports.Feeding do
           period: used_period,
           n: sample.n,
           typical_seconds: sample.median,
-          range: sample.quartiles && range_labels(child, last.at, sample.quartiles)
+          range: range && range_labels(child, last.at, range),
+          amount: adjusted && amount_note(last.ml, adjusted)
         }
     end
+  end
+
+  defp amount_note(ml, adjusted) do
+    %{
+      ml: ml,
+      typical_ml: adjusted.typical_ml,
+      shift_seconds: round(adjusted.seconds - adjusted.baseline)
+    }
   end
 
   defp pick_interval(by_period, period) do

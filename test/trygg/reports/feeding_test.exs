@@ -54,6 +54,69 @@ defmodule Trygg.Reports.FeedingTest do
     assert summary.next_feed.range.label =~ "16:00"
   end
 
+  test "anchors the estimate on the start of the last episode, not a top-up" do
+    now = at(@today, ~T[12:30:00])
+    topped_up = [feed(9_001, at(@today, ~T[12:15:00]))]
+
+    days =
+      build_days(
+        child(),
+        dates_ending(@today, 4),
+        Enum.flat_map(dates_ending(@today, 4), fn date ->
+          count = if date == @today, do: 2, else: 4
+          feed_day(date, first: ~T[08:00:00], every_hours: 4, count: count)
+        end) ++ topped_up,
+        now
+      )
+
+    assert %{label: "16:00"} = Feeding.summarize(child(), days, now).next_feed
+  end
+
+  describe "amount-aware next feed" do
+    # Hourly-ish bottles of 60/90/120 ml, each followed by a gap that grows
+    # with its size (45/60/75 min), `count` of them from yesterday 06:00. The
+    # last one is `last_ml` when given.
+    defp amount_days(count, gap_fun) do
+      start = at(Date.add(@today, -1), ~T[06:00:00])
+
+      {entries, _} =
+        Enum.map_reduce(0..(count - 1), start, fn i, t ->
+          ml = Enum.at([60, 90, 120], rem(i, 3))
+          {feed(i + 1, t, ml), DateTime.add(t, gap_fun.(ml), :second)}
+        end)
+
+      last = List.last(entries)
+      now = DateTime.add(last.started_at, 10 * 60, :second)
+      {build_days(child(), [Date.add(@today, -1), @today], entries, now), last, now}
+    end
+
+    test "a big last feed pushes the estimate past the usual gap" do
+      {days, last, now} = amount_days(21, fn ml -> 3600 + (ml - 90) * 30 end)
+      next = Feeding.summarize(child(), days, now).next_feed
+
+      assert last.data["amount_ml"] == 120
+      assert %{ml: 120, shift_seconds: shift} = next.amount
+      assert shift > 5 * 60
+
+      assert DateTime.diff(next.at, last.started_at, :second) ==
+               round(next.typical_seconds) + shift
+    end
+
+    test "falls back to the median when every feed is the same size" do
+      {days, last, now} = amount_days(21, fn _ml -> 3600 end)
+
+      days =
+        Enum.map(days, fn d ->
+          %{d | feeds: Enum.map(d.feeds, &put_in(&1.data["amount_ml"], 90))}
+        end)
+
+      next = Feeding.summarize(child(), days, now).next_feed
+
+      assert next.amount == nil
+      assert DateTime.diff(next.at, last.started_at, :second) == round(next.typical_seconds)
+    end
+  end
+
   test "reports volume per feeding episode" do
     now = at(@today, ~T[12:30:00])
     summary = Feeding.summarize(child(), regular_days(4, now: now, ml: 120), now)
