@@ -578,9 +578,17 @@ defmodule TryggWeb.ReportsLive do
       <span class="font-semibold tabular-nums">{@next_feed.label}</span>
       <span :if={@next_feed.range} class="opacity-70 tabular-nums">({@next_feed.range.label})</span>
       <span class="opacity-70">{"· " <> in_label(@next_feed.in_seconds)}</span>
+      <span :if={amount_note(@next_feed)} id="outlook-next-feed-amount" class="opacity-70">
+        {"· " <> amount_note(@next_feed)}
+      </span>
     </li>
     """
   end
+
+  # Only worth saying when the amount moved the estimate by 5 minutes or more.
+  defp amount_note(%{amount: %{shift_seconds: s}}) when s >= 300, do: "bigger feed than usual"
+  defp amount_note(%{amount: %{shift_seconds: s}}) when s <= -300, do: "smaller feed than usual"
+  defp amount_note(_next_feed), do: nil
 
   defp pressure_note(%{state: :past}), do: " · past their usual window"
   defp pressure_note(%{state: :approaching}), do: " · nap time is near"
