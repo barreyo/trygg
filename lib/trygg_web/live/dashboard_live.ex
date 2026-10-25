@@ -1251,7 +1251,7 @@ defmodule TryggWeb.DashboardLive do
             <span class="text-lg font-semibold tabular-nums">
               {Units.format(entry.data["amount_ml"], :volume, @unit_system)}
             </span>
-            <span class="text-sm opacity-70 tabular-nums whitespace-nowrap">
+            <span class="text-lg font-semibold tabular-nums whitespace-nowrap">
               {bottle_time(entry.started_at, @current_child.timezone)}
             </span>
           </div>

@@ -401,6 +401,10 @@ defmodule TryggWeb.SimpleModeLiveTest do
       refute render(lv) =~ "Pee diaper"
       refute has_element?(lv, "#entries [role=button]")
       refute has_element?(lv, "#entries img")
+
+      # The time reads as large as the amount: no small, faded type.
+      assert has_element?(lv, "#entries [id^=entries-] span.text-lg", ~r/\d:\d\d/)
+      refute has_element?(lv, "#entries .text-sm, #entries .opacity-70")
     end
 
     test "a change by another caregiver shows up live", %{conn: conn, owner: owner, child: child} do
