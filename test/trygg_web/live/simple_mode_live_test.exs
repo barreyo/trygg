@@ -217,7 +217,7 @@ defmodule TryggWeb.SimpleModeLiveTest do
       lv |> element("#log-diaper button[phx-value-kind=diaper_poo]") |> render_click()
 
       assert_push_event(lv, "log-splash", %{kind: "diaper_poo", label: label})
-      assert label =~ ~r/^Poo logged at \d\d:\d\d$/
+      assert label == "Poo logged"
       assert lv |> element("#take-back-label") |> render() =~ label
       assert has_element?(lv, "#take-back")
 
@@ -225,7 +225,7 @@ defmodule TryggWeb.SimpleModeLiveTest do
       lv |> form("#simple-bottle-form", entry: %{amount: "90"}) |> render_submit()
 
       assert_push_event(lv, "log-splash", %{kind: "bottle", label: bottle_label})
-      assert bottle_label =~ ~r/^Bottle logged at \d\d:\d\d · 90/
+      assert bottle_label =~ ~r/^Bottle logged · 90/
       assert lv |> element("#take-back-label") |> render() =~ bottle_label
       assert length(Log.recent_entries(scope, child)) == 2
     end
