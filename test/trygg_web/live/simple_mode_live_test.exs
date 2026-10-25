@@ -180,7 +180,18 @@ defmodule TryggWeb.SimpleModeLiveTest do
 
       lv |> element("#log-bottle") |> render_click()
 
-      assert has_element?(lv, "#simple-bottle-form #bottle-amount")
+      assert has_element?(lv, "#simple-bottle-form #bottle-amount[readonly]")
+      assert has_element?(lv, "#simple-bottle-form button[data-bump^='-']")
+      assert has_element?(lv, "#simple-bottle-form button[data-bump]:not([data-bump^='-'])")
+
+      # Only the two ± buttons: no quick amounts, no reset.
+      assert lv
+             |> element("#simple-bottle-form")
+             |> render()
+             |> String.split("data-bump=")
+             |> length() == 3
+
+      refute has_element?(lv, "#simple-bottle-form #bottle-reset")
       refute has_element?(lv, "#simple-bottle-form input[type=datetime-local]")
       refute has_element?(lv, "#simple-bottle-form input[name='entry[note]']")
       refute has_element?(lv, "#simple-bottle-form select")

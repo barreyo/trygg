@@ -1988,7 +1988,12 @@ defmodule TryggWeb.DashboardLive do
               name="entry[bottle_contents]"
               value={@form.params["bottle_contents"]}
             />
-            <.amount_stepper amount={@form.params["amount"]} unit_system={@unit_system} unit={@unit} />
+            <.amount_stepper
+              amount={@form.params["amount"]}
+              unit_system={@unit_system}
+              unit={@unit}
+              bare?
+            />
             <.sheet_buttons save="Save" />
           </.form>
         <% :sleep_stop -> %>
@@ -2087,6 +2092,10 @@ defmodule TryggWeb.DashboardLive do
   attr :unit_system, :atom, required: true
   attr :unit, :string, required: true
 
+  attr :bare?, :boolean,
+    default: false,
+    doc: "simple mode: only ± change a number that can't be typed into, no quick chips or Reset"
+
   # The bottle sheet's amount control: a big editable number with ± and quick
   # "+N" chips, driven client-side by `SheetControls` (`data-bump`,
   # `data-amount-reset`) so it's instant on a slow connection.
@@ -2113,6 +2122,7 @@ defmodule TryggWeb.DashboardLive do
             name="entry[amount]"
             id="bottle-amount"
             data-client-owned
+            readonly={@bare?}
             value={@amount}
             aria-label={"Amount in #{@unit}"}
             class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -2131,7 +2141,7 @@ defmodule TryggWeb.DashboardLive do
         </.button>
       </div>
 
-      <div class="flex gap-2 justify-center mt-2 flex-wrap">
+      <div :if={not @bare?} class="flex gap-2 justify-center mt-2 flex-wrap">
         <.button
           :for={step <- preset_steps(@unit_system)}
           type="button"
