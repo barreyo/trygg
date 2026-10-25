@@ -853,7 +853,7 @@ defmodule TryggWeb.DashboardLive do
   # Simple mode: the celebration says what was logged in plain words (instead
   # of a joke caption), and the screen offers to take it back for a while.
   defp logged(%{assigns: %{simple?: true}} = socket, %Entry{} = entry, kind) do
-    label = log_confirmation(entry, socket.assigns.current_child, socket.assigns.unit_system)
+    label = log_confirmation(entry, socket.assigns.unit_system)
 
     socket
     |> push_event("log-splash", %{kind: kind, label: label})
@@ -876,14 +876,11 @@ defmodule TryggWeb.DashboardLive do
     assign(socket, :take_back, Map.put(offer, :ref, ref))
   end
 
-  defp log_confirmation(%Entry{type: :diaper} = entry, child, _units),
-    do:
-      "#{String.capitalize(entry.data["kind"])} logged at #{Child.local_clock(child, entry.started_at)}"
+  defp log_confirmation(%Entry{type: :diaper} = entry, _units),
+    do: "#{String.capitalize(entry.data["kind"])} logged"
 
-  defp log_confirmation(%Entry{} = entry, child, units),
-    do:
-      "Bottle logged at #{Child.local_clock(child, entry.started_at)} · " <>
-        Units.format(entry.data["amount_ml"], :volume, units)
+  defp log_confirmation(%Entry{} = entry, units),
+    do: "Bottle logged · " <> Units.format(entry.data["amount_ml"], :volume, units)
 
   defp consume_photo(socket), do: consume_photo(socket, socket.assigns.current_child)
 

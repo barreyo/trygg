@@ -23,7 +23,7 @@ const LOCK_MS = 1500
 const TAP_GUARD_MS = 450
 
 // A server-supplied `label` (simple mode) replaces the random caption with a
-// plain statement of what was logged, e.g. "Pee logged at 14:32".
+// plain statement of what was logged, e.g. "Pee logged".
 //
 // Each scene has a pool of captions; one is picked at random per splash, never
 // the same one twice in a row. Keep them short: they sit on one or two lines.
