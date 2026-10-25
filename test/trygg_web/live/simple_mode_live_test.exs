@@ -23,7 +23,7 @@ defmodule TryggWeb.SimpleModeLiveTest do
 
       assert has_element?(lv, "#glance-feed")
       assert has_element?(lv, "#glance-diaper")
-      assert has_element?(lv, "#entries")
+      refute has_element?(lv, "#entries")
 
       for id <-
             ~w(#glance-sleep #customize-home #bottom-nav #side-nav #today-devices #home-notices) do
@@ -223,40 +223,23 @@ defmodule TryggWeb.SimpleModeLiveTest do
       assert data["bottle_contents"] == "expressed"
     end
 
-    test "recent is just the last few bottles: amount and time, nothing else", %{
+    test "there is no recent list, and the cards still follow what others log", %{
       conn: conn,
       owner: owner,
       child: child
     } do
-      for _ <- 1..4, do: Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "pee"}})
-
-      for ml <- [50, 60, 70, 80, 90, 100] do
-        {:ok, _} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => ml}})
-      end
-
-      {:ok, _} = Log.start_timer(owner, child, :sleep)
-
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert lv |> element("#glance-feed") |> render() =~ "No feeds yet"
 
-      rows =
-        lv
-        |> element("#entries")
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("[id^=entries-]")
-
-      assert Enum.count(rows) == 5
-      assert rows |> Enum.map(&LazyHTML.text/1) |> Enum.join(" ") =~ ~r/\b100 ml\b/
-      refute render(lv) =~ "Pee diaper"
-      refute has_element?(lv, "#entries [role=button]")
-      refute has_element?(lv, "#entries img")
-    end
-
-    test "a change by another caregiver shows up live", %{conn: conn, owner: owner, child: child} do
-      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
       {:ok, _} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => 75}})
+      {:ok, _} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "poo"}})
 
-      assert has_element?(lv, "#entries [id^=entries-]")
+      assert lv |> element("#glance-feed") |> render() =~ "just now"
+      assert lv |> element("#glance-diaper") |> render() =~ "Poo"
+
+      refute has_element?(lv, "#entries")
+      refute has_element?(lv, "#home-recent")
+      refute render(lv) =~ "Recent"
     end
   end
 
