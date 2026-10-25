@@ -225,7 +225,7 @@ defmodule TryggWeb.SimpleModeLiveTest do
       lv |> form("#simple-bottle-form", entry: %{amount: "90"}) |> render_submit()
 
       assert_push_event(lv, "log-splash", %{kind: "bottle", label: bottle_label})
-      assert bottle_label =~ ~r/^Bottle logged · 90/
+      assert bottle_label == "Bottle logged"
       assert lv |> element("#take-back-label") |> render() =~ bottle_label
       assert length(Log.recent_entries(scope, child)) == 2
     end
