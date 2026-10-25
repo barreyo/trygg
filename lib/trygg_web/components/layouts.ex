@@ -88,10 +88,13 @@ defmodule TryggWeb.Layouts do
       ])
 
     ~H"""
-    <div class={[
-      "min-h-dvh flex flex-col bg-base-100 text-base-content",
-      @current_child && not @simple? && "lg:pl-60"
-    ]}>
+    <div
+      data-simple-mode={@simple? || nil}
+      class={[
+        "min-h-dvh flex flex-col bg-base-100 text-base-content",
+        @current_child && not @simple? && "lg:pl-60"
+      ]}
+    >
       <.side_nav
         :if={@current_child && not @simple?}
         current_child={@current_child}
@@ -171,12 +174,15 @@ defmodule TryggWeb.Layouts do
           @immersive && "pt-[max(1rem,env(safe-area-inset-top))]"
         ]}
       >
-        <.demo_banner :if={@current_child && Child.expecting?(@current_child)} child={@current_child} />
+        <.demo_banner
+          :if={@current_child && not @simple? && Child.expecting?(@current_child)}
+          child={@current_child}
+        />
         {render_slot(@inner_block)}
         <%!-- Kept last so it never pushes a page's own content (vital stats,
              alerts, …) down the screen — it reads as a footer-level nudge,
              not something competing for the top of the page. --%>
-        <.install_prompt :if={@current_scope && @current_scope.user} />
+        <.install_prompt :if={@current_scope && @current_scope.user && not @simple?} />
       </main>
 
       <%!-- The tab bar (sidebar on desktop) is child-scoped. Account-level pages
@@ -188,7 +194,9 @@ defmodule TryggWeb.Layouts do
         current_tab={@current_tab}
       />
 
-      <.flash_group flash={@flash} />
+      <%!-- Simple mode stays quiet: no "Welcome back" or "Saved" toasts (logging
+           already plays its own celebration), only what went wrong. --%>
+      <.flash_group flash={if @simple?, do: Map.delete(@flash, "info"), else: @flash} />
     </div>
     """
   end

@@ -11,7 +11,7 @@ defmodule TryggWeb.DashboardLive do
   alias TryggWeb.{Loading, RemoteUpdate}
 
   @recent_limit 20
-  # A `:simple` member's Today: the same two things they can log, a few of them.
+  # A `:simple` member's Today: the two things they can log, and the last few bottles.
   @simple_recent_limit 5
   @simple_types [:feeding, :diaper]
   @tick_ms 60_000
@@ -100,7 +100,7 @@ defmodule TryggWeb.DashboardLive do
 
   @impl true
   def handle_info({:log, action, entry}, socket),
-    do: {:noreply, socket |> refresh() |> RemoteUpdate.flash_home(entry, action)}
+    do: {:noreply, socket |> refresh() |> flash_remote(entry, action)}
 
   def handle_info({:growth, _action, _measurement}, socket),
     do: {:noreply, refresh_summary(socket)}
@@ -167,6 +167,10 @@ defmodule TryggWeb.DashboardLive do
     do: {:noreply, UndoDelete.expire(socket, ref)}
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # A change from elsewhere pulses its card, except in simple mode, which stays still.
+  defp flash_remote(%{assigns: %{simple?: true}} = socket, _entry, _action), do: socket
+  defp flash_remote(socket, entry, action), do: RemoteUpdate.flash_home(socket, entry, action)
 
   # Re-check the caller's role after a membership change: bounce them home if
   # they've lost access, otherwise fold the fresh role onto the socket so
@@ -1023,7 +1027,7 @@ defmodule TryggWeb.DashboardLive do
   # Recent activity limited to what this child's Home tracks, so a hidden
   # tracker's old entries don't linger in the list.
   defp recent_tracked(scope, %Child{role: :simple} = child, _limit),
-    do: Log.list_entries(scope, child, limit: @simple_recent_limit, types: @simple_types)
+    do: Log.list_entries(scope, child, limit: @simple_recent_limit, type: :feeding)
 
   defp recent_tracked(scope, child, limit),
     do: Log.list_entries(scope, child, limit: limit, types: child.tracked_types)
@@ -1166,23 +1170,28 @@ defmodule TryggWeb.DashboardLive do
       </.loadable>
 
       <div class="mt-8 border-b border-base-300 pb-2">
-        <h2 class="font-semibold">Recent</h2>
+        <h2 class="font-semibold">Recent bottles</h2>
       </div>
 
       <.loadable id="home-recent" loaded={@loaded?} failed={@load_failed?} retry={false}>
         <:skeleton><.entry_rows_skeleton count={@simple_recent_limit} /></:skeleton>
         <p :if={@entries_empty?} class="opacity-70 text-sm py-6 text-center">
-          Nothing logged yet — tap a button above.
+          No bottles yet.
         </p>
 
         <div id="entries" phx-update="stream" class="divide-y divide-base-300">
-          <.entry_row
+          <div
             :for={{dom_id, entry} <- @streams.entries}
             id={dom_id}
-            entry={entry}
-            unit_system={@unit_system}
-            tz={@current_child.timezone}
-          />
+            class="flex items-baseline justify-between gap-3 py-3"
+          >
+            <span class="text-lg font-semibold tabular-nums">
+              {Units.format(entry.data["amount_ml"], :volume, @unit_system)}
+            </span>
+            <span class="text-sm opacity-70 tabular-nums whitespace-nowrap">
+              {bottle_time(entry.started_at, @current_child.timezone)}
+            </span>
+          </div>
         </div>
       </.loadable>
 
@@ -1565,11 +1574,15 @@ defmodule TryggWeb.DashboardLive do
         emoji="🍼"
         label="Feeding"
         category="feed"
-        tone={feed_tone(@outlook)}
-        value={feed_value(@summary.last_feeding, @outlook)}
-        sub={feed_sub(@summary.last_feeding, @outlook, @unit_system)}
-        status={feed_status(@summary.last_feeding, @outlook)}
-        today={feed_today(@summary.today, @unit_system)}
+        tone={if @simple?, do: "base", else: feed_tone(@outlook)}
+        value={
+          if @simple?,
+            do: simple_feed_value(@summary.last_feeding),
+            else: feed_value(@summary.last_feeding, @outlook)
+        }
+        sub={if @simple?, do: nil, else: feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+        status={if @simple?, do: nil, else: feed_status(@summary.last_feeding, @outlook)}
+        today={if @simple?, do: nil, else: feed_today(@summary.today, @unit_system)}
       >
         <:actions :if={@can_write or @simple?}>
           <.button
@@ -1596,16 +1609,19 @@ defmodule TryggWeb.DashboardLive do
         emoji={last_diaper_emoji(@summary.last_diaper)}
         label="Diaper"
         category="diaper"
-        tone={diaper_tone(@outlook)}
+        tone={if @simple?, do: "base", else: diaper_tone(@outlook)}
         value={relative_time(time_of(@summary.last_diaper))}
         sub={diaper_sub(@summary.last_diaper, @summary.last_poo)}
-        status={diaper_status(@outlook)}
+        status={if @simple?, do: nil, else: diaper_status(@outlook)}
         today={diaper_today(@summary.today)}
       >
         <:actions :if={@can_write or @simple?}>
-          <div id="log-diaper" class="grid grid-cols-3 gap-2">
+          <div
+            id="log-diaper"
+            class={["grid gap-2", if(@simple?, do: "grid-cols-2", else: "grid-cols-3")]}
+          >
             <.action_btn
-              :for={{emoji, value, label} <- diaper_choices()}
+              :for={{emoji, value, label} <- diaper_buttons(@simple?)}
               kind={"diaper_#{value}"}
               label={label}
               emoji={emoji}
@@ -2218,6 +2234,22 @@ defmodule TryggWeb.DashboardLive do
 
   defp simple_types, do: @simple_types
 
+  # Simple mode's diaper is wet or dirty: no "mixed" to choose.
+  defp diaper_buttons(true),
+    do: Enum.reject(diaper_choices(), fn {_, kind, _} -> kind == "mixed" end)
+
+  defp diaper_buttons(false), do: diaper_choices()
+
+  # Just the clock for today's bottles; earlier ones say which day.
+  defp bottle_time(%DateTime{} = at, tz) do
+    local = DateTime.shift_zone!(at, tz)
+
+    if Date.compare(DateTime.to_date(local), DateTime.to_date(DateTime.shift_zone!(now(), tz))) ==
+         :eq,
+       do: clock(at, tz),
+       else: stamp(at, tz)
+  end
+
   defp nudge_minutes, do: @nudge_minutes
   defp note_suggestions, do: @note_suggestions
 
@@ -2285,6 +2317,11 @@ defmodule TryggWeb.DashboardLive do
   # from their pattern, not a schedule, so the copy says "usual", never
   # "overdue" or "missed".
   @late_seconds -30 * 60
+
+  # Simple mode's feed card says only when the last feed was: no cluster
+  # call-out, no "next feed" estimate, no running total.
+  defp simple_feed_value(nil), do: "No feeds yet"
+  defp simple_feed_value(%Entry{} = e), do: relative_time(feed_time(e))
 
   defp feed_value(nil, _outlook), do: "No feeds yet"
 
