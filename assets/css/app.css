@@ -211,9 +211,9 @@ html:has([data-simple-mode]) { font-size: 125%; }
 [data-simple-mode] .text-xs { font-size: 0.875rem; line-height: 1.25rem; }
 
 /* The glance cards' type, a step up again: what the card says is the whole screen */
-[data-simple-mode] .glance-label { font-size: 1.125rem; }
-[data-simple-mode] .glance-value { font-size: 2.25rem; }
-[data-simple-mode] .glance-sub { font-size: 1.25rem; }
+[data-simple-mode] .glance-label { font-size: 1rem; }
+[data-simple-mode] .glance-value { font-size: 2rem; }
+[data-simple-mode] .glance-sub { font-size: 1.125rem; }
 
 /*
  * A color-less daisyUI `.btn` (the `<.button>` default variant) is nearly
@@ -873,10 +873,10 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 
 /* A plain confirmation (simple mode): big, solid and readable on any scene */
 .splash-caption.is-plain {
-  font-size: 2rem;
+  font-size: 1.6rem;
   line-height: 1.15;
-  padding: 0.7rem 1.4rem;
-  border-radius: 1.5rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: 1.25rem;
   color: #fff;
   background: rgb(0 0 0 / 0.82);
   text-shadow: none;
