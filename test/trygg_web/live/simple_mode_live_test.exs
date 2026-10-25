@@ -81,6 +81,33 @@ defmodule TryggWeb.SimpleModeLiveTest do
       refute has_element?(lv, "#app-menu-children")
     end
 
+    test "the diaper card says when the last diaper was and what it was, nothing more", %{
+      conn: conn,
+      owner: owner,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert lv |> element("#glance-diaper") |> render() =~ "none yet"
+
+      # A pee with no poo before it: everyone else gets "no poo yet" and the day's counts.
+      {:ok, _} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "pee"}})
+
+      html = lv |> element("#glance-diaper") |> render()
+      assert html =~ "just now"
+      assert html =~ "Pee"
+      refute html =~ "no poo yet"
+      refute html =~ ~r/\d+ diapers?/
+
+      # A pee after an earlier poo: no "poo Nh ago" either.
+      {:ok, _} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "poo"}})
+      {:ok, _} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "pee"}})
+
+      html = lv |> element("#glance-diaper") |> render()
+      refute html =~ ~r/\bago\b/
+      refute html =~ ~r/\d+ diapers?/
+      refute html =~ "none today"
+    end
+
     test "nothing alerts: no health call-outs, banners, prompts or toasts", %{
       conn: conn,
       owner: owner,

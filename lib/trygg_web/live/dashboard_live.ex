@@ -1611,9 +1611,13 @@ defmodule TryggWeb.DashboardLive do
         category="diaper"
         tone={if @simple?, do: "base", else: diaper_tone(@outlook)}
         value={relative_time(time_of(@summary.last_diaper))}
-        sub={diaper_sub(@summary.last_diaper, @summary.last_poo)}
+        sub={
+          if @simple?,
+            do: simple_diaper_sub(@summary.last_diaper),
+            else: diaper_sub(@summary.last_diaper, @summary.last_poo)
+        }
         status={if @simple?, do: nil, else: diaper_status(@outlook)}
-        today={diaper_today(@summary.today)}
+        today={if @simple?, do: nil, else: diaper_today(@summary.today)}
       >
         <:actions :if={@can_write or @simple?}>
           <div
@@ -2380,6 +2384,14 @@ defmodule TryggWeb.DashboardLive do
 
   # The value already says when the last diaper was, so the sub line adds what
   # it was and, when that wasn't a poo, how long ago the last poo was.
+  # Simple mode's diaper card says what the last one was and nothing more: no
+  # "no poo yet" / time since the last poo, no counts.
+  defp simple_diaper_sub(%Entry{data: %{"kind" => kind}}) when is_binary(kind),
+    do: String.capitalize(kind)
+
+  defp simple_diaper_sub(%Entry{}), do: nil
+  defp simple_diaper_sub(nil), do: "none yet"
+
   defp diaper_sub(nil, _last_poo), do: "none yet"
 
   defp diaper_sub(%Entry{data: %{"kind" => kind}}, _last_poo) when kind in ["poo", "mixed"],
