@@ -16,7 +16,12 @@ defmodule TryggWeb.InviteLive do
               Help track {Family.label(invite.family)}
             </h1>
             <p class="opacity-70 mt-2">
-              {inviter_email(invite)} invited you as a <span class="font-medium">{invite.role}</span>.
+              {inviter_email(invite)} invited you
+              <%= if invite.role == :simple do %>
+                to help out in <span class="font-medium">simple mode</span>: a single screen for logging bottles and diapers.
+              <% else %>
+                as a <span class="font-medium">{invite.role}</span>.
+              <% end %>
             </p>
             <.button
               variant="primary"

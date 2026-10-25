@@ -25,6 +25,27 @@ defmodule TryggWeb.InviteLiveTest do
     assert Families.member_role(user_scope_fixture(invitee), child) == :caregiver
   end
 
+  test "accepting a simple-mode invite lands on Today in simple mode", %{conn: conn} do
+    owner = user_scope_fixture()
+    child = child_fixture(owner)
+
+    nanny = user_fixture()
+    invite = invite_fixture(owner, child, email: nanny.email, role: :simple)
+
+    conn = log_in_user(conn, nanny)
+    {:ok, lv, html} = live(conn, ~p"/invites/#{invite.token}")
+    assert html =~ "simple mode"
+
+    {:error, {:live_redirect, %{to: path}}} =
+      lv |> element("button", "Accept invitation") |> render_click()
+
+    assert Families.member_role(user_scope_fixture(nanny), child) == :simple
+
+    {:ok, lv, _html} = live_loaded(conn, path)
+    assert has_element?(lv, "#glance-feed")
+    refute has_element?(lv, "#bottom-nav")
+  end
+
   test "a signed-in user whose email doesn't match sees a mismatch notice", %{conn: conn} do
     owner = user_scope_fixture()
     child = child_fixture(owner)

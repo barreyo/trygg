@@ -6,6 +6,9 @@ defmodule TryggWeb.ChildScope do
   realtime topic. `@children` is kept in sync when the user's set of children
   changes.
 
+  A `:simple` member only gets the Today screen (`TryggWeb.DashboardLive`): any
+  other child-scoped page sends them back to it.
+
   No-ops for routes without an `:id` param (e.g. the child index or preferences).
   """
   import Phoenix.Component, only: [assign: 3]
@@ -30,15 +33,19 @@ defmodule TryggWeb.ChildScope do
 
       scope = %{scope | user: %{scope.user | last_child_id: child.id}}
 
-      socket =
-        socket
-        |> assign(:current_scope, Scope.put_child(scope, child, child.role))
-        |> assign(:current_child, child)
-        |> assign(:role, child.role)
-        |> assign(:children, Families.list_children(scope))
-        |> attach_hook(:sync_children, :handle_info, &sync_children_hook/2)
+      if child.role == :simple and socket.view != TryggWeb.DashboardLive do
+        {:halt, redirect(socket, to: ~p"/c/#{child}")}
+      else
+        socket =
+          socket
+          |> assign(:current_scope, Scope.put_child(scope, child, child.role))
+          |> assign(:current_child, child)
+          |> assign(:role, child.role)
+          |> assign(:children, Families.list_children(scope))
+          |> attach_hook(:sync_children, :handle_info, &sync_children_hook/2)
 
-      {:cont, socket}
+        {:cont, socket}
+      end
     rescue
       Ecto.NoResultsError ->
         {:halt,

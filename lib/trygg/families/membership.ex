@@ -2,7 +2,7 @@ defmodule Trygg.Families.Membership do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @roles [:owner, :caregiver, :viewer]
+  @roles [:owner, :caregiver, :simple, :viewer]
 
   schema "memberships" do
     field :role, Ecto.Enum, values: @roles, default: :caregiver
@@ -22,4 +22,11 @@ defmodule Trygg.Families.Membership do
   end
 
   def roles, do: @roles
+
+  @doc """
+  How a role reads to people. `:simple` is a caregiver who only gets the
+  stripped-down Today screen, so it goes by the name of that mode.
+  """
+  def label(:simple), do: "simple mode"
+  def label(role), do: to_string(role)
 end

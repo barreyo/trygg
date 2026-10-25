@@ -292,6 +292,69 @@ defmodule Trygg.LogTest do
 
       assert Log.recent_entries(viewer, child) == []
     end
+
+    test "simple members log a bottle or a diaper, but only as it happens", %{child: child} do
+      %{member_scope: simple} = simple_for(child)
+      long_ago = DateTime.add(DateTime.utc_now(), -3 * 3600, :second)
+
+      assert {:ok, bottle} =
+               Log.create_entry(simple, child, :feeding, %{
+                 "started_at" => long_ago,
+                 "ended_at" => long_ago,
+                 "note" => "sneaky",
+                 "data" => %{"amount_ml" => 90, "bottle_contents" => "formula"}
+               })
+
+      assert DateTime.diff(DateTime.utc_now(), bottle.started_at) < 5
+      assert bottle.ended_at == bottle.started_at
+      assert bottle.note == nil
+      assert bottle.data["amount_ml"] == 90.0
+      assert bottle.logged_by_id == simple.user.id
+
+      assert {:ok, %{type: :diaper}} =
+               Log.create_entry(simple, child, :diaper, %{
+                 "type" => "sleep",
+                 "started_at" => long_ago,
+                 "data" => %{"kind" => "pee"}
+               })
+
+      assert [%{type: :diaper}, %{type: :feeding}] = Log.recent_entries(simple, child)
+    end
+
+    test "simple members can read, but can't log anything else or touch entries", %{
+      child: child,
+      scope: owner
+    } do
+      %{member_scope: simple} = simple_for(child)
+      {:ok, entry} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "poo"}})
+
+      for type <- [:sleep, :breastfeeding] do
+        assert_raise Trygg.Families.NotAuthorizedError, fn ->
+          Log.create_entry(simple, child, type, %{})
+        end
+      end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.start_timer(simple, child, :sleep)
+      end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.update_entry(simple, entry, %{note: "x"})
+      end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn -> Log.delete_entry(simple, entry) end
+      assert_raise Trygg.Families.NotAuthorizedError, fn -> Log.sync_entry(simple, child, %{}) end
+
+      assert [%{id: id}] = Log.recent_entries(simple, child)
+      assert id == entry.id
+      assert %{diapers: 1} = Log.summary(simple, child).today
+    end
+
+    defp simple_for(child) do
+      user = user_fixture()
+      membership_fixture(child, user, :simple)
+      %{member_scope: user_scope_fixture(user)}
+    end
   end
 
   describe "timers" do

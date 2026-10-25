@@ -26,6 +26,60 @@ defmodule TryggWeb.CaregiverLiveTest do
     assert html =~ "Pending invites"
   end
 
+  test "an owner can invite someone in simple mode", %{conn: conn} do
+    %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+    child = child_fixture(scope)
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
+
+    lv
+    |> form("#invite-form", invite: %{email: "nanny@example.com", role: "simple"})
+    |> render_submit()
+
+    assert [%{role: :simple}] = Families.list_invites(scope, child)
+  end
+
+  test "an owner can put a caregiver into simple mode, and back", %{conn: conn} do
+    %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+    child = child_fixture(scope)
+    nanny = user_fixture()
+    membership = membership_fixture(child, nanny, :caregiver)
+
+    {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/caregivers")
+
+    # Only other members' roles are theirs to set: not their own, nor an owner's.
+    assert has_element?(lv, "#member-role-#{membership.id}")
+
+    assert [_] =
+             lv
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("select[id^=member-role-]")
+             |> Enum.to_list()
+
+    lv
+    |> form("#member-role-form-#{membership.id}", role: "simple")
+    |> render_change()
+
+    assert Families.family_role(user_scope_fixture(nanny), child.family_id) == :simple
+    assert render(lv) =~ "is now simple mode"
+
+    lv
+    |> form("#member-role-form-#{membership.id}", role: "caregiver")
+    |> render_change()
+
+    assert Families.family_role(user_scope_fixture(nanny), child.family_id) == :caregiver
+  end
+
+  test "a caregiver can't change anyone's role", %{conn: conn} do
+    %{child: child, member: member} = shared_child_fixture(:caregiver)
+    membership_fixture(child, user_fixture(), :caregiver)
+
+    {:ok, lv, _html} = live_loaded(log_in_user(conn, member), ~p"/c/#{child}/caregivers")
+
+    refute render(lv) =~ "member-role-form"
+  end
+
   test "the heading updates when the child is renamed elsewhere", %{conn: conn} do
     %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
     child = child_fixture(scope)

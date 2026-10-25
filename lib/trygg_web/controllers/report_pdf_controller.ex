@@ -20,6 +20,15 @@ defmodule TryggWeb.ReportPdfController do
   def show(conn, %{"id" => id} = params) do
     scope = conn.assigns.current_scope
     child = Families.get_child!(scope, id)
+
+    if child.role == :simple do
+      conn |> put_status(:forbidden) |> text("Not available in simple mode.")
+    else
+      export(conn, scope, child, params)
+    end
+  end
+
+  defp export(conn, scope, child, params) do
     window = Map.get(@windows, params["window"], @default_window)
     export = Reports.export(scope, child, window)
 

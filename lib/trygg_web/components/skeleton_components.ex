@@ -182,6 +182,7 @@ defmodule TryggWeb.SkeletonComponents do
   "Log from earlier / Customize" row that follows the cards for caregivers.
   """
   attr :can_write, :boolean, default: true
+  attr :footer, :boolean, default: true, doc: "whether the footer row follows the cards"
 
   attr :types, :list,
     default: [:feeding, :diaper, :sleep],
@@ -193,7 +194,7 @@ defmodule TryggWeb.SkeletonComponents do
       <.glance_card_skeleton :for={type <- @types} type={type} action={@can_write} />
     </section>
     <div
-      :if={@can_write}
+      :if={@can_write and @footer}
       id="home-skeleton-footer"
       class="mt-3 flex items-center justify-center gap-1"
     >
