@@ -11,7 +11,8 @@ defmodule TryggWeb.DashboardLive do
   alias TryggWeb.{Loading, RemoteUpdate}
 
   @recent_limit 20
-  # A `:simple` member's Today: just the two things they can log.
+  # A `:simple` member's Today: the two things they can log, and the last few bottles.
+  @simple_recent_limit 5
   @simple_types [:feeding, :diaper]
   @tick_ms 60_000
   @nudge_minutes [-5, -15, -30]
@@ -42,6 +43,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:unit_system, scope.user.unit_system)
       |> assign(:can_write, child.role in [:owner, :caregiver])
       |> assign(:simple?, child.role == :simple)
+      |> assign(:simple_recent_limit, @simple_recent_limit)
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
       |> assign(:editing, nil)
@@ -1024,7 +1026,8 @@ defmodule TryggWeb.DashboardLive do
 
   # Recent activity limited to what this child's Home tracks, so a hidden
   # tracker's old entries don't linger in the list.
-  defp recent_tracked(_scope, %Child{role: :simple}, _limit), do: []
+  defp recent_tracked(scope, %Child{role: :simple} = child, _limit),
+    do: Log.list_entries(scope, child, limit: @simple_recent_limit, type: :feeding)
 
   defp recent_tracked(scope, child, limit),
     do: Log.list_entries(scope, child, limit: limit, types: child.tracked_types)
@@ -1132,8 +1135,8 @@ defmodule TryggWeb.DashboardLive do
   end
 
   # Simple mode (`:simple` members): Today with just the bottle and the diaper
-  # cards, each logging as it happens. No recent list, alerts, devices,
-  # customizing, back-dating, editing or links to other pages.
+  # cards, each logging as it happens, and the last few entries to read. No
+  # alerts, devices, customizing, back-dating, editing or links to other pages.
   def render(%{simple?: true} = assigns) do
     ~H"""
     <Layouts.app
@@ -1164,6 +1167,32 @@ defmodule TryggWeb.DashboardLive do
             simple?
           />
         </section>
+      </.loadable>
+
+      <div class="mt-8 border-b border-base-300 pb-2">
+        <h2 class="font-semibold">Recent bottles</h2>
+      </div>
+
+      <.loadable id="home-recent" loaded={@loaded?} failed={@load_failed?} retry={false}>
+        <:skeleton><.entry_rows_skeleton count={@simple_recent_limit} /></:skeleton>
+        <p :if={@entries_empty?} class="opacity-70 text-sm py-6 text-center">
+          No bottles yet.
+        </p>
+
+        <div id="entries" phx-update="stream" class="divide-y divide-base-300">
+          <div
+            :for={{dom_id, entry} <- @streams.entries}
+            id={dom_id}
+            class="flex items-baseline justify-between gap-3 py-3"
+          >
+            <span class="text-lg font-semibold tabular-nums">
+              {Units.format(entry.data["amount_ml"], :volume, @unit_system)}
+            </span>
+            <span class="text-sm opacity-70 tabular-nums whitespace-nowrap">
+              {bottle_time(entry.started_at, @current_child.timezone)}
+            </span>
+          </div>
+        </div>
       </.loadable>
 
       <.sheet
@@ -2214,6 +2243,16 @@ defmodule TryggWeb.DashboardLive do
     do: Enum.reject(diaper_choices(), fn {_, kind, _} -> kind == "mixed" end)
 
   defp diaper_buttons(false), do: diaper_choices()
+
+  # Just the clock for today's bottles; earlier ones say which day.
+  defp bottle_time(%DateTime{} = at, tz) do
+    local = DateTime.shift_zone!(at, tz)
+
+    if Date.compare(DateTime.to_date(local), DateTime.to_date(DateTime.shift_zone!(now(), tz))) ==
+         :eq,
+       do: clock(at, tz),
+       else: stamp(at, tz)
+  end
 
   defp nudge_minutes, do: @nudge_minutes
   defp note_suggestions, do: @note_suggestions
