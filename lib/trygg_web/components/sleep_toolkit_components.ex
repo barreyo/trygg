@@ -9,7 +9,8 @@ defmodule TryggWeb.SleepToolkitComponents do
   import TryggWeb.CoreComponents
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
-  alias Trygg.Sleep.{Assist, BedtimePlan, NightFeeds, PowerTools, SafeSleep}
+  alias Trygg.Sleep.{Assist, NightFeeds, PowerTools, SafeSleep}
+  alias Trygg.TimeFormat
   alias Trygg.Units
 
   @doc "Links between the Sleep tab's pages."
@@ -198,7 +199,7 @@ defmodule TryggWeb.SleepToolkitComponents do
 
   def bedtime_panel(assigns) do
     {lo, hi} = assigns.plan.window
-    assigns = assign(assigns, lo: BedtimePlan.clock(lo), hi: BedtimePlan.clock(hi))
+    assigns = assign(assigns, lo: TimeFormat.clock(lo), hi: TimeFormat.clock(hi))
 
     ~H"""
     <section id="toolkit-bedtime" class={panel_class()}>
@@ -213,16 +214,14 @@ defmodule TryggWeb.SleepToolkitComponents do
       <ol :if={@plan.steps != []} id="bedtime-steps" class="mt-2 space-y-1 text-sm">
         <li :for={step <- @plan.steps} id={"bedtime-step-#{step.evening}"}>
           <span class="opacity-70">{step_label(step.evening)}</span>
-          <span class="font-semibold tabular-nums">{BedtimePlan.clock(step.minutes)}</span>
+          <span class="font-semibold tabular-nums">{TimeFormat.clock(step.minutes)}</span>
         </li>
       </ol>
 
       <p :if={@plan.last_nap_by} id="bedtime-last-nap" class="mt-3 text-sm">
         For that bedtime, the last nap should end between
         <span class="font-semibold tabular-nums">
-          {BedtimePlan.clock(elem(@plan.last_nap_by, 0))}–{BedtimePlan.clock(
-            elem(@plan.last_nap_by, 1)
-          )}
+          {TimeFormat.clock(elem(@plan.last_nap_by, 0))}–{TimeFormat.clock(elem(@plan.last_nap_by, 1))}
         </span>
         (100–120 minutes before bed).
       </p>
@@ -265,14 +264,14 @@ defmodule TryggWeb.SleepToolkitComponents do
     do: "Log a few bedtimes and this shows how they compare with the window."
 
   defp status_line(%{status: :within, usual: usual}),
-    do: "Their usual bedtime, #{BedtimePlan.clock(usual)}, is inside the window. Keep it."
+    do: "Their usual bedtime, #{TimeFormat.clock(usual)}, is inside the window. Keep it."
 
   defp status_line(%{status: :early, usual: usual}) do
-    "Their usual bedtime, #{BedtimePlan.clock(usual)}, is earlier than the window. That's fine when the last nap ended early; an early bedtime makes up for lost sleep."
+    "Their usual bedtime, #{TimeFormat.clock(usual)}, is earlier than the window. That's fine when the last nap ended early; an early bedtime makes up for lost sleep."
   end
 
   defp status_line(%{status: :late, usual: usual, tonight: tonight}) do
-    "Their usual bedtime, #{BedtimePlan.clock(usual)}, is later than the window. Move it earlier by 10–15 minutes each evening, starting with #{BedtimePlan.clock(tonight)} tonight."
+    "Their usual bedtime, #{TimeFormat.clock(usual)}, is later than the window. Move it earlier by 10–15 minutes each evening, starting with #{TimeFormat.clock(tonight)} tonight."
   end
 
   defp step_label(1), do: "Tonight"
@@ -450,7 +449,7 @@ defmodule TryggWeb.SleepToolkitComponents do
       </div>
 
       <p id="night-dream-feed" class="text-xs opacity-70">
-        Dream feed: 2.5–3 hours after the bedtime feed and no later than {BedtimePlan.clock(
+        Dream feed: 2.5–3 hours after the bedtime feed and no later than {TimeFormat.clock(
           elem(NightFeeds.dream_feed_window(), 1)
         )}. Keep it dark, swaddled and brief.
       </p>

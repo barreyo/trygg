@@ -10,6 +10,8 @@ defmodule TryggWeb.RhythmComponents do
   """
   use Phoenix.Component
 
+  alias Trygg.TimeFormat
+
   # Geometry, in the 240×240 viewBox.
   @c 120
   @r_band 92
@@ -209,10 +211,7 @@ defmodule TryggWeb.RhythmComponents do
 
   defp arc(_m1, _m2, _r), do: nil
 
-  defp hhmm(minutes) do
-    total = minutes |> round() |> Integer.mod(24 * 60)
-    :io_lib.format("~2..0B:~2..0B", [div(total, 60), rem(total, 60)]) |> IO.iodata_to_binary()
-  end
+  defp hhmm(minutes), do: TimeFormat.clock(minutes)
 
   defp f(n), do: :erlang.float_to_binary(n * 1.0, decimals: 2)
 end

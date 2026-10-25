@@ -9,6 +9,7 @@ defmodule TryggWeb.ReportComponents do
   alias Trygg.Families.Child
   alias Trygg.Reports.Alerts
   alias Trygg.Reports.Day
+  alias Trygg.TimeFormat
   alias Trygg.Units
   alias TryggWeb.LogComponents
 
@@ -988,8 +989,7 @@ defmodule TryggWeb.ReportComponents do
   end
 
   defp clock_label(minutes) when is_number(minutes) do
-    minutes = minutes |> round() |> rem(24 * 60)
-    "#{pad2(div(minutes, 60))}:#{pad2(rem(minutes, 60))}"
+    TimeFormat.clock(minutes)
   end
 
   ## Stat table -------------------------------------------------------------
@@ -1533,8 +1533,7 @@ defmodule TryggWeb.ReportComponents do
     for h <- 0..22, rem(h, 2) == 0 do
       dt = Child.at_local(child, day.date, Time.new!(h, 0, 0))
       offset = DateTime.diff(dt, from, :second)
-      label = :io_lib.format("~2..0B", [h]) |> IO.iodata_to_binary()
-      %{hour: h, y: y_fun.(offset), label: label}
+      %{hour: h, y: y_fun.(offset), label: TimeFormat.hour_label(h)}
     end
   end
 
@@ -1694,9 +1693,12 @@ defmodule TryggWeb.ReportComponents do
     end
   end
 
-  defp heat_hour_label(24, _major?), do: "24:00"
-  defp heat_hour_label(hour, true), do: "#{pad2(hour)}:00"
-  defp heat_hour_label(hour, false), do: pad2(hour)
+  defp heat_hour_label(24, _major?), do: TimeFormat.end_of_day()
+  defp heat_hour_label(hour, true), do: TimeFormat.clock(hour * 60) |> heat_major_label()
+  defp heat_hour_label(hour, false), do: TimeFormat.hour_label(hour)
+
+  # "02:00" reads fine on the axis, but "2:00 AM" is too wide; shorten it.
+  defp heat_major_label(clock), do: String.replace(clock, ":00 ", "")
 
   defp heat_markers(morning, bedtime, plot_w) do
     [
@@ -1734,14 +1736,9 @@ defmodule TryggWeb.ReportComponents do
     "#{minutes_clock(start_min)}–#{minutes_clock(stop_min)} · asleep #{pct}% of days"
   end
 
-  defp minutes_clock(minutes) when minutes >= 24 * 60, do: "24:00"
-
-  defp minutes_clock(minutes) do
-    minutes = rem(minutes, 24 * 60)
-    "#{pad2(div(minutes, 60))}:#{pad2(rem(minutes, 60))}"
-  end
-
-  defp pad2(n), do: :io_lib.format("~2..0B", [n]) |> IO.iodata_to_binary()
+  # The heatmap's last half-hour ends at midnight.
+  defp minutes_clock(minutes) when minutes >= 24 * 60, do: TimeFormat.end_of_day()
+  defp minutes_clock(minutes), do: TimeFormat.clock(minutes)
 
   defp join_dots(parts) do
     parts |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" · ")

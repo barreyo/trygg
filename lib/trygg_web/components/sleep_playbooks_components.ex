@@ -12,7 +12,8 @@ defmodule TryggWeb.SleepPlaybooksComponents do
   import TryggWeb.SleepPlanComponents, only: [what_to_try: 1]
 
   alias Phoenix.LiveView.JS
-  alias Trygg.Sleep.{BedtimePlan, NapConventions, Setbacks}
+  alias Trygg.Sleep.{NapConventions, Setbacks}
+  alias Trygg.TimeFormat
 
   ## What's worth a look ---------------------------------------------------------
 
@@ -179,8 +180,8 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <tbody>
           <tr :for={row <- @rows} id={"shift-day-#{row.day}"} class="border-t border-base-300">
             <td class="py-1">{row.day}</td>
-            <td class="tabular-nums">{BedtimePlan.clock(row.bed)}</td>
-            <td class="tabular-nums">{row.wake && BedtimePlan.clock(row.wake)}</td>
+            <td class="tabular-nums">{TimeFormat.clock(row.bed)}</td>
+            <td class="tabular-nums">{row.wake && TimeFormat.clock(row.wake)}</td>
           </tr>
         </tbody>
       </table>
@@ -225,9 +226,9 @@ defmodule TryggWeb.SleepPlaybooksComponents do
             class="border-t border-base-300"
           >
             <td class="py-1">{Calendar.strftime(row.date, "%a %b %-d")}</td>
-            <td class="tabular-nums">{BedtimePlan.clock(row.bed)}</td>
+            <td class="tabular-nums">{TimeFormat.clock(row.bed)}</td>
             <td class="tabular-nums">
-              {BedtimePlan.clock(row.wake)}{if row.new_clock?, do: " (new clock)"}
+              {TimeFormat.clock(row.wake)}{if row.new_clock?, do: " (new clock)"}
             </td>
           </tr>
         </tbody>
@@ -269,7 +270,7 @@ defmodule TryggWeb.SleepPlaybooksComponents do
         <span :if={@plan.light}>
           Bright light, outside if you can, between
           <span class="font-semibold tabular-nums">
-            {BedtimePlan.clock(elem(@plan.light, 0))}–{BedtimePlan.clock(elem(@plan.light, 1))}
+            {TimeFormat.clock(elem(@plan.light, 0))}–{TimeFormat.clock(elem(@plan.light, 1))}
           </span>
           on the clock back home. Do the same in reverse on the way back.
         </span>

@@ -975,6 +975,51 @@ defmodule TryggWeb.DashboardLiveTest do
     end
   end
 
+  describe "time format" do
+    setup %{conn: conn} do
+      %{conn: conn, user: user, scope: scope} = register_and_log_in_user(%{conn: conn})
+      child = child_fixture(scope)
+
+      # Early afternoon in the child's zone, an hour ago, so the entry is on
+      # today's list and its clock is distinguishable between formats.
+      noon =
+        Trygg.Families.Child.at_local(
+          child,
+          Trygg.Families.Child.local_today(child),
+          ~T[13:07:00]
+        )
+
+      started =
+        if DateTime.compare(noon, DateTime.utc_now()) == :gt,
+          do: DateTime.add(noon, -86_400),
+          else: noon
+
+      {:ok, _} =
+        Log.create_entry(scope, child, :diaper, %{
+          "started_at" => started,
+          "data" => %{"kind" => "pee"}
+        })
+
+      %{conn: conn, user: user, child: child}
+    end
+
+    test "24-hour by default", %{conn: conn, child: child} do
+      {:ok, _lv, html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert html =~ "13:07"
+      refute html =~ "1:07 PM"
+    end
+
+    test "12-hour when the user prefers it", %{conn: conn, user: user, child: child} do
+      {:ok, _} = Trygg.Accounts.update_user_settings(user, %{time_format: :h12})
+
+      {:ok, _lv, html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert html =~ "1:07 PM"
+      refute html =~ "13:07"
+    end
+  end
+
   describe "units" do
     setup %{conn: conn} do
       %{conn: conn, user: user, scope: scope} = register_and_log_in_user(%{conn: conn})

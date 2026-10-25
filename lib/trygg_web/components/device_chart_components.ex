@@ -11,6 +11,7 @@ defmodule TryggWeb.DeviceChartComponents do
   use Phoenix.Component
 
   alias Trygg.Devices.AirQuality
+  alias Trygg.TimeFormat
 
   @width 320
   @height 150
@@ -259,7 +260,11 @@ defmodule TryggWeb.DeviceChartComponents do
 
   defp when_label(at, tz, long_range?) do
     local = DateTime.shift_zone!(at, tz)
-    Calendar.strftime(local, if(long_range?, do: "%a %-d %b · %H:%M", else: "%H:%M"))
+
+    Calendar.strftime(
+      local,
+      if(long_range?, do: "%a %-d %b · " <> TimeFormat.pattern(), else: TimeFormat.pattern())
+    )
   end
 
   defp round1(n), do: Float.round(n * 1.0, 1)
@@ -267,8 +272,8 @@ defmodule TryggWeb.DeviceChartComponents do
   ## Time axis ----------------------------------------------------------------
 
   # {gridline spacing in seconds, label format} for the window's length.
-  defp x_step(span) when span <= 6 * 3600, do: {3600, "%H:%M"}
-  defp x_step(span) when span <= 24 * 3600, do: {6 * 3600, "%H:%M"}
+  defp x_step(span) when span <= 6 * 3600, do: {3600, TimeFormat.pattern()}
+  defp x_step(span) when span <= 24 * 3600, do: {6 * 3600, TimeFormat.pattern()}
   defp x_step(span) when span <= 7 * 86_400, do: {86_400, "%a %-d"}
   defp x_step(_span), do: {7 * 86_400, "%-d %b"}
 

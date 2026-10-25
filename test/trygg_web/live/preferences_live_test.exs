@@ -19,6 +19,40 @@ defmodule TryggWeb.PreferencesLiveTest do
     end
   end
 
+  describe "time format" do
+    test "offers 24-hour and 12-hour, 24-hour by default", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      assert has_element?(lv, "#time-format-options")
+      assert has_element?(lv, "input[name='user[time_format]'][value='h24'][checked]")
+      assert has_element?(lv, "input[name='user[time_format]'][value='h12']:not([checked])")
+    end
+
+    test "saving persists the chosen format", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/preferences")
+
+      lv |> form("#preferences-form", user: %{time_format: "h12"}) |> render_change()
+
+      assert Accounts.get_user!(user.id).time_format == :h12
+      assert has_element?(lv, "input[name='user[time_format]'][value='h12'][checked]")
+    end
+
+    test "rejects an unknown format", %{user: user} do
+      assert {:error, %Ecto.Changeset{}} =
+               Accounts.update_user_settings(user, %{time_format: "metric"})
+    end
+
+    test "a simple-mode member can change it too" do
+      %{member: member} = Trygg.FamiliesFixtures.shared_child_fixture(:simple)
+
+      {:ok, lv, _html} = live(log_in_user(build_conn(), member), ~p"/preferences")
+
+      lv |> form("#preferences-form", user: %{time_format: "h12"}) |> render_change()
+
+      assert Accounts.get_user!(member.id).time_format == :h12
+    end
+  end
+
   describe "theme" do
     test "renders a theme option per choice", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/preferences")

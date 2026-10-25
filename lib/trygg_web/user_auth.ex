@@ -6,6 +6,7 @@ defmodule TryggWeb.UserAuth do
 
   alias Trygg.Accounts
   alias Trygg.Accounts.Scope
+  alias Trygg.TimeFormat
 
   # Keep people signed in for a year. This matches the session validity in
   # `Trygg.Accounts.UserToken`; the cookie is always written on login so there
@@ -66,13 +67,22 @@ defmodule TryggWeb.UserAuth do
   def fetch_current_scope_for_user(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
          {user, token_inserted_at} <- Accounts.get_user_by_session_token(token) do
+      put_time_format(user)
+
       conn
       |> assign(:current_scope, Scope.for_user(user))
       |> maybe_reissue_user_session_token(user, token_inserted_at)
     else
-      nil -> assign(conn, :current_scope, Scope.for_user(nil))
+      nil ->
+        put_time_format(nil)
+        assign(conn, :current_scope, Scope.for_user(nil))
     end
   end
+
+  # Always set, even for signed-out requests: a keep-alive connection reuses
+  # its process, so the previous request's choice would otherwise leak.
+  defp put_time_format(%{time_format: format}), do: TimeFormat.put(format)
+  defp put_time_format(_), do: TimeFormat.put(nil)
 
   defp ensure_user_token(conn) do
     if token = get_session(conn, :user_token) do
@@ -219,7 +229,9 @@ defmodule TryggWeb.UserAuth do
   end
 
   def on_mount(:require_sudo_mode, _params, session, socket) do
-    socket = mount_current_scope(socket, session)
+    # Runs after `:require_authenticated` in the same LiveView, which already
+    # attached the time-format hook; a second attach would raise.
+    socket = mount_current_scope(socket, session, attach_hooks?: false)
 
     if Accounts.sudo_mode?(socket.assigns.current_scope.user, -10) do
       {:cont, socket}
@@ -233,16 +245,34 @@ defmodule TryggWeb.UserAuth do
     end
   end
 
-  defp mount_current_scope(socket, session) do
-    Phoenix.Component.assign_new(socket, :current_scope, fn ->
-      {user, _} =
-        if user_token = session["user_token"] do
-          Accounts.get_user_by_session_token(user_token)
-        end || {nil, nil}
+  defp mount_current_scope(socket, session, opts \\ []) do
+    socket =
+      Phoenix.Component.assign_new(socket, :current_scope, fn ->
+        {user, _} =
+          if user_token = session["user_token"] do
+            Accounts.get_user_by_session_token(user_token)
+          end || {nil, nil}
 
-      Scope.for_user(user)
-    end)
+        Scope.for_user(user)
+      end)
+
+    put_time_format(socket.assigns.current_scope && socket.assigns.current_scope.user)
+
+    if Keyword.get(opts, :attach_hooks?, true) and Phoenix.LiveView.connected?(socket) do
+      Phoenix.LiveView.attach_hook(socket, :time_format, :handle_info, &time_format_hook/2)
+    else
+      socket
+    end
   end
+
+  # Picks up a preference changed on another device before the LiveView's own
+  # `{:user_updated, _}` handler re-renders.
+  defp time_format_hook({:user_updated, user}, socket) do
+    put_time_format(user)
+    {:cont, socket}
+  end
+
+  defp time_format_hook(_msg, socket), do: {:cont, socket}
 
   @doc "Returns the path to redirect to after log in."
   def signed_in_path(_conn), do: ~p"/"

@@ -61,7 +61,10 @@ defmodule Trygg.Sleep.BedtimePlan do
   defp shift(usual, lo, _hi) when usual < lo, do: {:early, usual, []}
   defp shift(usual, _lo, _hi), do: {:within, usual, []}
 
-  @doc "Formats minutes since midnight as `HH:MM`."
+  @doc """
+  Formats minutes since midnight as 24-hour `HH:MM`, the form `<input type="time">`
+  takes and gives. To show a time to a person use `Trygg.TimeFormat.clock/2`.
+  """
   def clock(minutes) when is_integer(minutes) do
     :io_lib.format("~2..0B:~2..0B", [div(minutes, 60), rem(minutes, 60)]) |> IO.iodata_to_binary()
   end
