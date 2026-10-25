@@ -451,6 +451,26 @@ nav:has([data-nav-tab][data-pending]) [data-nav-tab][aria-current="page"] {
 }
 
 /*
+ * Simple mode's buttons: a step up on top of its larger root type, so they're
+ * easy to hit. Same hierarchy as above (xs < sm < normal), each about 20% taller
+ * with a slightly bigger label. Declared after the sizes above to win ties.
+ */
+@layer utilities {
+  html:has([data-simple-mode]) .btn {
+    --fontsize: 1rem;
+    --size: calc(var(--size-field, 0.25rem) * 12);
+  }
+  html:has([data-simple-mode]) .btn-xs {
+    --fontsize: 0.9375rem;
+    --size: 2.75rem;
+  }
+  html:has([data-simple-mode]) .btn-sm {
+    --fontsize: 1rem;
+    --size: 3rem;
+  }
+}
+
+/*
  * Playful controls — the whole app's buttons, inputs and labels.
  *
  * daisyUI emits `.btn`/`.input`/… in `@layer utilities`, so this block sits in
