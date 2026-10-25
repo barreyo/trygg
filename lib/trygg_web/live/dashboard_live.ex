@@ -851,7 +851,7 @@ defmodule TryggWeb.DashboardLive do
   # Simple mode: the celebration says what was logged in plain words (instead
   # of a joke caption), and the screen offers to take it back for a while.
   defp logged(%{assigns: %{simple?: true}} = socket, %Entry{} = entry, kind) do
-    label = log_confirmation(entry, socket.assigns.unit_system)
+    label = log_confirmation(entry)
 
     socket
     |> push_event("log-splash", %{kind: kind, label: label})
@@ -874,11 +874,10 @@ defmodule TryggWeb.DashboardLive do
     assign(socket, :take_back, Map.put(offer, :ref, ref))
   end
 
-  defp log_confirmation(%Entry{type: :diaper} = entry, _units),
+  defp log_confirmation(%Entry{type: :diaper} = entry),
     do: "#{String.capitalize(entry.data["kind"])} logged"
 
-  defp log_confirmation(%Entry{} = entry, units),
-    do: "Bottle logged · " <> Units.format(entry.data["amount_ml"], :volume, units)
+  defp log_confirmation(%Entry{}), do: "Bottle logged"
 
   defp consume_photo(socket), do: consume_photo(socket, socket.assigns.current_child)
 
