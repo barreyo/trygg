@@ -3,9 +3,11 @@ defmodule TryggWeb.SimpleModeLiveTest do
 
   import Phoenix.LiveViewTest
   import Trygg.AccountsFixtures
+  import Ecto.Query, only: [from: 2]
   import Trygg.FamiliesFixtures
 
   alias Trygg.{Families, Log}
+  alias Trygg.Families.Child
 
   setup do
     %{owner_scope: owner, child: child, member: member, member_scope: scope} =
@@ -136,7 +138,23 @@ defmodule TryggWeb.SimpleModeLiveTest do
 
       lv |> element("#log-bottle") |> render_click()
       lv |> form("#simple-bottle-form", entry: %{amount: "0"}) |> render_submit()
-      assert has_element?(lv, "#flash-error")
+      assert has_element?(lv, "#simple-error")
+    end
+
+    test "a failure takes over the screen until it is acknowledged", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#simple-error")
+
+      lv |> element("#log-bottle") |> render_click()
+      lv |> form("#simple-bottle-form", entry: %{amount: "0"}) |> render_submit()
+
+      # Not the fading toast everyone else gets: a dialog that waits for "OK".
+      refute has_element?(lv, "#flash-error")
+      assert has_element?(lv, "#simple-error[role=alertdialog] #simple-error-message")
+      assert has_element?(lv, "#simple-error-ok")
+
+      lv |> element("#simple-error-ok") |> render_click()
+      refute has_element?(lv, "#simple-error")
     end
 
     test "the diaper logger is just pee and poo", %{conn: conn, child: child} do
@@ -169,6 +187,109 @@ defmodule TryggWeb.SimpleModeLiveTest do
                Log.recent_entries(scope, child)
 
       assert DateTime.diff(DateTime.utc_now(), entry.started_at) < 5
+    end
+
+    test "the cards pair how long ago with the clock time", %{
+      conn: conn,
+      owner: owner,
+      child: child
+    } do
+      {:ok, entry} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => 90}})
+      {:ok, diaper} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "pee"}})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert lv |> element("#glance-feed") |> render() =~
+               "at #{Child.local_clock(child, entry.started_at)}"
+
+      assert lv |> element("#glance-diaper") |> render() =~
+               "Pee · at #{Child.local_clock(child, diaper.started_at)}"
+    end
+
+    test "logging says what was logged in plain words, and offers to undo it", %{
+      conn: conn,
+      child: child,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      refute has_element?(lv, "#take-back")
+
+      lv |> element("#log-diaper button[phx-value-kind=diaper_poo]") |> render_click()
+
+      assert_push_event(lv, "log-splash", %{kind: "diaper_poo", label: label})
+      assert label =~ ~r/^Poo logged at \d\d:\d\d$/
+      assert lv |> element("#take-back-label") |> render() =~ label
+      assert has_element?(lv, "#take-back")
+
+      lv |> element("#log-bottle") |> render_click()
+      lv |> form("#simple-bottle-form", entry: %{amount: "90"}) |> render_submit()
+
+      assert_push_event(lv, "log-splash", %{kind: "bottle", label: bottle_label})
+      assert bottle_label =~ ~r/^Bottle logged at \d\d:\d\d · 90/
+      assert lv |> element("#take-back-label") |> render() =~ bottle_label
+      assert length(Log.recent_entries(scope, child)) == 2
+    end
+
+    test "Undo takes back only what was just logged, then says so", %{
+      conn: conn,
+      child: child,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      render_click(lv, "quick", %{"kind" => "diaper_pee"})
+      assert [_] = Log.recent_entries(scope, child)
+      assert lv |> element("#glance-diaper") |> render() =~ "Pee"
+
+      lv |> element("#take-back") |> render_click()
+
+      assert Log.recent_entries(scope, child) == []
+      assert lv |> element("#glance-diaper") |> render() =~ "none yet"
+      assert lv |> element("#take-back-label") |> render() =~ "Undone"
+      refute has_element?(lv, "#take-back")
+
+      # A second tap (or a stale one) finds nothing to do.
+      render_click(lv, "take_back", %{})
+      assert has_element?(lv, "#take-back-label")
+    end
+
+    test "the offer moves on to the latest log, and lapses", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      render_click(lv, "quick", %{"kind" => "diaper_pee"})
+      render_click(lv, "quick", %{"kind" => "diaper_poo"})
+      assert lv |> element("#take-back-label") |> render() =~ "Poo"
+
+      %{ref: ref} = :sys.get_state(lv.pid).socket.assigns.take_back
+      send(lv.pid, {:take_back_expired, ref})
+      refute has_element?(lv, "#take-back-label")
+    end
+
+    test "too late to undo says so", %{conn: conn, child: child, scope: scope} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      render_click(lv, "quick", %{"kind" => "diaper_pee"})
+
+      [entry] = Log.recent_entries(scope, child)
+      stale = DateTime.add(DateTime.utc_now(), -5 * 60, :second) |> DateTime.truncate(:second)
+
+      Trygg.Repo.update_all(from(e in Log.Entry, where: e.id == ^entry.id),
+        set: [inserted_at: stale]
+      )
+
+      lv |> element("#take-back") |> render_click()
+
+      assert has_element?(lv, "#simple-error")
+      assert [_] = Log.recent_entries(scope, child)
+    end
+
+    test "others don't get the plain confirmation or Undo", %{child: child, owner: owner} do
+      {:ok, lv, _html} = live_loaded(log_in_user(build_conn(), owner.user), ~p"/c/#{child}")
+
+      render_click(lv, "quick", %{"kind" => "diaper_pee"})
+
+      assert_push_event(lv, "log-splash", payload)
+      refute Map.has_key?(payload, :label)
+      refute has_element?(lv, "#take-back")
     end
 
     test "the bottle sheet is just an amount, and saves it now", %{

@@ -14,6 +14,7 @@
 const PLAY_MS = 1600
 const PLAY_MS_REPEAT = 1000 // a second splash soon after the last one is shorter
 const PLAY_MS_REDUCED = 1000
+const PLAY_MS_PLAIN = 2400 // long enough to read a plain confirmation
 const REPEAT_WINDOW_MS = 30000
 const LEAVE_MS = 260
 const LOCK_MS = 1500
@@ -21,6 +22,9 @@ const LOCK_MS = 1500
 // a tap dismisses the scene so the next action isn't stuck behind a celebration.
 const TAP_GUARD_MS = 450
 
+// A server-supplied `label` (simple mode) replaces the random caption with a
+// plain statement of what was logged, e.g. "Pee logged at 14:32".
+//
 // Each scene has a pool of captions; one is picked at random per splash, never
 // the same one twice in a row. Keep them short: they sit on one or two lines.
 const SCENES = {
@@ -125,7 +129,15 @@ function bits(emoji, count, style) {
   ).join("")
 }
 
-function scene(kind, spec) {
+const escapeHtml = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+
+function caption(kind, spec, label) {
+  return label
+    ? `<div class="splash-caption is-plain">${escapeHtml(label)}</div>`
+    : `<div class="splash-caption">${pickCaption(kind, spec.captions)}</div>`
+}
+
+function scene(kind, spec, label) {
   return [
     spec.milk && `<div class="splash-milk"></div>`,
     spec.rays && `<div class="splash-rays"></div>`,
@@ -135,7 +147,7 @@ function scene(kind, spec) {
     spec.drift && bits(spec.drift[0], spec.drift[1], "drift"),
     `<div class="splash-hero" aria-hidden="true">${spec.hero}</div>`,
     spec.burst && bits(spec.burst[0], spec.burst[1], "burst"),
-    `<div class="splash-caption">${pickCaption(kind, spec.captions)}</div>`,
+    caption(kind, spec, label),
   ].filter(Boolean).join("")
 }
 
@@ -180,7 +192,7 @@ function lock() {
   lockTimer = setTimeout(dismiss, LOCK_MS)
 }
 
-function play(kind) {
+function play(kind, label) {
   const spec = SCENES[kind]
   if (!spec) return dismiss()
 
@@ -188,7 +200,7 @@ function play(kind) {
   clearTimers()
   el.dataset.kind = kind
   el.classList.remove("is-leaving")
-  el.innerHTML = scene(kind, spec)
+  el.innerHTML = scene(kind, spec, label)
   // Restart the entrance even when replacing a scene that was mid-flight.
   el.classList.remove("is-playing")
   void el.offsetWidth
@@ -196,11 +208,13 @@ function play(kind) {
 
   playStartedAt = Date.now()
   const repeat = playStartedAt - lastPlayEndedAt < REPEAT_WINDOW_MS
-  const ms = reducedMotion() ? PLAY_MS_REDUCED : repeat ? PLAY_MS_REPEAT : PLAY_MS
+  const ms = label
+    ? PLAY_MS_PLAIN
+    : reducedMotion() ? PLAY_MS_REDUCED : repeat ? PLAY_MS_REPEAT : PLAY_MS
   playTimer = setTimeout(leave, ms - LEAVE_MS)
 }
 
-window.addEventListener("phx:log-splash", ({detail}) => play(detail.kind))
+window.addEventListener("phx:log-splash", ({detail}) => play(detail.kind, detail.label))
 
 // Capture phase, so the layer is up before the second tap of a double tap.
 document.addEventListener("click", e => {

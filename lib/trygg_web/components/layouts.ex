@@ -195,8 +195,12 @@ defmodule TryggWeb.Layouts do
       />
 
       <%!-- Simple mode stays quiet: no "Welcome back" or "Saved" toasts (logging
-           already plays its own celebration), only what went wrong. --%>
-      <.flash_group flash={if @simple?, do: Map.delete(@flash, "info"), else: @flash} />
+           already plays its own celebration), only what went wrong, which it
+           can't miss: see `flash_group/1`. --%>
+      <.flash_group
+        flash={if @simple?, do: Map.delete(@flash, "info"), else: @flash}
+        simple?={@simple?}
+      />
     </div>
     """
   end
@@ -476,11 +480,18 @@ defmodule TryggWeb.Layouts do
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
 
+  attr :simple?, :boolean,
+    default: false,
+    doc:
+      "an error takes over the screen until it is acknowledged, instead of a toast that fades " <>
+        "after a few seconds (someone who missed it would assume the log was saved)"
+
   def flash_group(assigns) do
     ~H"""
     <div id={@id} aria-live="polite">
       <.flash kind={:info} flash={@flash} dismiss_after={4000} />
-      <.flash kind={:error} flash={@flash} dismiss_after={8000} />
+      <.flash :if={not @simple?} kind={:error} flash={@flash} dismiss_after={8000} />
+      <.simple_error :if={@simple?} flash={@flash} />
 
       <.flash
         id="client-error"
@@ -505,6 +516,35 @@ defmodule TryggWeb.Layouts do
         {gettext("Attempting to reconnect")}
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
+    </div>
+    """
+  end
+
+  attr :flash, :map, required: true
+
+  defp simple_error(assigns) do
+    ~H"""
+    <div
+      :if={msg = Phoenix.Flash.get(@flash, :error)}
+      id="simple-error"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="simple-error-message"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+    >
+      <div class="w-full max-w-sm space-y-5 rounded-3xl border-4 border-error bg-base-100 p-6 text-center shadow-xl">
+        <.icon name="hero-exclamation-triangle" class="mx-auto size-16 text-error" />
+        <p id="simple-error-message" class="text-2xl font-bold leading-snug">{msg}</p>
+        <.button
+          id="simple-error-ok"
+          type="button"
+          variant="primary"
+          class="w-full"
+          phx-click={JS.push("lv:clear-flash", value: %{key: :error})}
+        >
+          OK
+        </.button>
+      </div>
     </div>
     """
   end

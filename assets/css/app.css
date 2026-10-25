@@ -202,6 +202,20 @@ html { overscroll-behavior-y: none; }
 html:has([data-simple-mode]) { font-size: 125%; }
 
 /*
+ * Faint text is hard to read with poor eyesight, so simple mode drops the
+ * dimming (`opacity-70` labels, `opacity-80` sub-lines) and lifts the smallest
+ * type. Unlayered, so it beats the utilities it overrides.
+ */
+[data-simple-mode] .opacity-70,
+[data-simple-mode] .opacity-80 { opacity: 1; }
+[data-simple-mode] .text-xs { font-size: 0.875rem; line-height: 1.25rem; }
+
+/* The glance cards' type, a step up again: what the card says is the whole screen */
+[data-simple-mode] .glance-label { font-size: 1.125rem; }
+[data-simple-mode] .glance-value { font-size: 2.25rem; }
+[data-simple-mode] .glance-sub { font-size: 1.25rem; }
+
+/*
  * A color-less daisyUI `.btn` (the `<.button>` default variant) is nearly
  * invisible on the true-black dark theme. Give it a legible surface + a real
  * hover here, in the components layer, so per-call Tailwind utilities in
@@ -856,6 +870,17 @@ body:has(#quick-sheet, #edit-entry-modal) .snooze i {
 [data-kind="measure_height"] .splash-caption,
 [data-kind="measure_both"] .splash-caption,
 [data-kind="diaper_pee"] .splash-caption { color: oklch(26% 0.05 60); background: rgb(255 255 255 / 0.5); text-shadow: none; }
+
+/* A plain confirmation (simple mode): big, solid and readable on any scene */
+.splash-caption.is-plain {
+  font-size: 2rem;
+  line-height: 1.15;
+  padding: 0.7rem 1.4rem;
+  border-radius: 1.5rem;
+  color: #fff;
+  background: rgb(0 0 0 / 0.82);
+  text-shadow: none;
+}
 
 .splash-bit {
   position: absolute;
