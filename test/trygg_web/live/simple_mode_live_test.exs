@@ -189,7 +189,7 @@ defmodule TryggWeb.SimpleModeLiveTest do
       assert DateTime.diff(DateTime.utc_now(), entry.started_at) < 5
     end
 
-    test "the cards pair how long ago with the clock time", %{
+    test "the cards only give a relative time, never a clock time", %{
       conn: conn,
       owner: owner,
       child: child
@@ -199,11 +199,11 @@ defmodule TryggWeb.SimpleModeLiveTest do
 
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
-      assert lv |> element("#glance-feed") |> render() =~
-               "at #{Child.local_clock(child, entry.started_at)}"
-
-      assert lv |> element("#glance-diaper") |> render() =~
-               "Pee · at #{Child.local_clock(child, diaper.started_at)}"
+      for {id, at} <- [{"#glance-feed", entry.started_at}, {"#glance-diaper", diaper.started_at}] do
+        html = lv |> element(id) |> render()
+        assert html =~ "just now"
+        refute html =~ Child.local_clock(child, at)
+      end
     end
 
     test "logging says what was logged in plain words, and offers to undo it", %{

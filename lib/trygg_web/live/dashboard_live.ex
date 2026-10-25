@@ -1615,11 +1615,7 @@ defmodule TryggWeb.DashboardLive do
             do: simple_feed_value(@summary.last_feeding),
             else: feed_value(@summary.last_feeding, @outlook)
         }
-        sub={
-          if @simple?,
-            do: simple_feed_sub(@summary.last_feeding, @current_child),
-            else: feed_sub(@summary.last_feeding, @outlook, @unit_system)
-        }
+        sub={if @simple?, do: nil, else: feed_sub(@summary.last_feeding, @outlook, @unit_system)}
         status={if @simple?, do: nil, else: feed_status(@summary.last_feeding, @outlook)}
         today={if @simple?, do: nil, else: feed_today(@summary.today, @unit_system)}
       >
@@ -1652,7 +1648,7 @@ defmodule TryggWeb.DashboardLive do
         value={relative_time(time_of(@summary.last_diaper))}
         sub={
           if @simple?,
-            do: simple_diaper_sub(@summary.last_diaper, @current_child),
+            do: simple_diaper_sub(@summary.last_diaper),
             else: diaper_sub(@summary.last_diaper, @summary.last_poo)
         }
         status={if @simple?, do: nil, else: diaper_status(@outlook)}
@@ -1782,7 +1778,7 @@ defmodule TryggWeb.DashboardLive do
       class={["gap-1.5 px-1", @color_class]}
     >
       <span class="whitespace-nowrap text-xl leading-none" aria-hidden="true">{@emoji}</span>
-      <span class={["font-bold", if(@large, do: "text-lg", else: "text-sm")]}>{@label}</span>
+      <span class={["font-bold", if(@large, do: "text-base", else: "text-sm")]}>{@label}</span>
     </.button>
     """
   end
@@ -1800,7 +1796,7 @@ defmodule TryggWeb.DashboardLive do
       class="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1.5rem)] z-40 flex justify-center px-4"
     >
       <div class="undo-toast pointer-events-auto relative flex max-w-md items-center gap-4 overflow-hidden rounded-3xl bg-neutral py-3 pl-6 pr-3 text-neutral-content shadow-lg">
-        <span id="take-back-label" class="text-lg font-bold">{@take_back.label}</span>
+        <span id="take-back-label" class="text-base font-bold">{@take_back.label}</span>
         <.button
           :if={@take_back.entry}
           id="take-back"
@@ -2454,16 +2450,11 @@ defmodule TryggWeb.DashboardLive do
   # it was and, when that wasn't a poo, how long ago the last poo was.
   # Simple mode's diaper card says what the last one was and nothing more: no
   # "no poo yet" / time since the last poo, no counts.
-  # Simple mode pairs "2h 5m ago" with the clock time, so there's no sum to do
-  # and it can be read out to a parent as is.
-  defp simple_feed_sub(%Entry{} = e, child), do: "at #{Child.local_clock(child, feed_time(e))}"
-  defp simple_feed_sub(nil, _child), do: nil
+  defp simple_diaper_sub(%Entry{data: %{"kind" => kind}}) when is_binary(kind),
+    do: String.capitalize(kind)
 
-  defp simple_diaper_sub(%Entry{data: %{"kind" => kind}} = e, child) when is_binary(kind),
-    do: "#{String.capitalize(kind)} · at #{Child.local_clock(child, e.started_at)}"
-
-  defp simple_diaper_sub(%Entry{} = e, child), do: "At #{Child.local_clock(child, e.started_at)}"
-  defp simple_diaper_sub(nil, _child), do: "none yet"
+  defp simple_diaper_sub(%Entry{}), do: nil
+  defp simple_diaper_sub(nil), do: "none yet"
 
   defp diaper_sub(nil, _last_poo), do: "none yet"
 
