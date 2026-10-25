@@ -146,16 +146,20 @@ defmodule TryggWeb.LogComponents do
           <span :if={@snooze} class="snooze glance-snooze"><i>z</i><i>z</i><i>z</i></span>
         </span>
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-bold uppercase tracking-wider opacity-70">{@label}</div>
+          <div class="glance-label text-sm font-bold uppercase tracking-wider opacity-70">
+            {@label}
+          </div>
           <div
             id={@timer && "timer-#{@timer.id}"}
             phx-hook={@timer && "Timer"}
             data-since={@timer && DateTime.to_unix(@timer.started_at)}
-            class="text-3xl font-extrabold leading-[1.1] tracking-tight tabular-nums break-words"
+            class="glance-value text-3xl font-extrabold leading-[1.1] tracking-tight tabular-nums break-words"
           >
             {@value}
           </div>
-          <div :if={@sub} class="text-base leading-snug opacity-80 break-words">{@sub}</div>
+          <div :if={@sub} class="glance-sub text-base leading-snug opacity-80 break-words">
+            {@sub}
+          </div>
         </div>
       </div>
       <div :if={@status || @today} class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">

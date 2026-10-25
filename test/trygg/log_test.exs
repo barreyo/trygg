@@ -350,6 +350,60 @@ defmodule Trygg.LogTest do
       assert %{diapers: 1} = Log.summary(simple, child).today
     end
 
+    test "simple members can take back their own bottle or diaper just after logging it", %{
+      child: child,
+      scope: owner
+    } do
+      %{member_scope: simple} = simple_for(child)
+      Families.subscribe(child.id)
+
+      {:ok, diaper} = Log.create_entry(simple, child, :diaper, %{"data" => %{"kind" => "pee"}})
+      {:ok, bottle} = Log.create_entry(simple, child, :feeding, %{"data" => %{"amount_ml" => 60}})
+
+      assert {:ok, _} = Log.take_back_entry(simple, diaper)
+      assert_receive {:log, :deleted, %{id: id}} when id == diaper.id
+      assert {:ok, _} = Log.take_back_entry(simple, bottle)
+      assert Repo.get(Entry, diaper.id) == nil
+      assert Repo.get(Entry, bottle.id) == nil
+
+      assert {:error, :not_found} = Log.take_back_entry(simple, diaper)
+
+      # Caregivers log with the same call, so it works for them too.
+      {:ok, theirs} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "poo"}})
+      assert {:ok, _} = Log.take_back_entry(owner, theirs)
+    end
+
+    test "taking back is limited to the caller's own recent bottles and diapers", %{
+      child: child,
+      scope: owner
+    } do
+      %{member_scope: simple} = simple_for(child)
+
+      {:ok, others} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "pee"}})
+      assert {:error, :not_allowed} = Log.take_back_entry(simple, others)
+
+      {:ok, mine} = Log.create_entry(simple, child, :diaper, %{"data" => %{"kind" => "pee"}})
+      stale = DateTime.add(DateTime.utc_now(), -5 * 60, :second) |> DateTime.truncate(:second)
+      Repo.update_all(from(e in Entry, where: e.id == ^mine.id), set: [inserted_at: stale])
+      assert {:error, :not_allowed} = Log.take_back_entry(simple, mine)
+
+      {:ok, sleep} = Log.start_timer(owner, child, :sleep)
+
+      Repo.update_all(from(e in Entry, where: e.id == ^sleep.id),
+        set: [logged_by_id: simple.user.id]
+      )
+
+      assert {:error, :not_allowed} = Log.take_back_entry(simple, sleep)
+
+      for id <- [others.id, mine.id, sleep.id], do: assert(Repo.get(Entry, id))
+
+      stranger = user_scope_fixture()
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        Log.take_back_entry(stranger, others)
+      end
+    end
+
     defp simple_for(child) do
       user = user_fixture()
       membership_fixture(child, user, :simple)

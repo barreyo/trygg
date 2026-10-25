@@ -15,6 +15,10 @@ defmodule TryggWeb.DashboardLive do
   @simple_recent_limit 5
   @simple_types [:feeding, :diaper]
   @tick_ms 60_000
+  # How long a simple member's "Undo" stays up after a log (their celebration
+  # takes the first couple of seconds), and how long "Undone" lingers.
+  @take_back_ms 12_000
+  @taken_back_ms 3_000
   @nudge_minutes [-5, -15, -30]
   @note_suggestions ["Peaceful", "Restless", "Short one", "Woke a lot"]
 
@@ -48,6 +52,7 @@ defmodule TryggWeb.DashboardLive do
       |> assign(:sheet_form, nil)
       |> assign(:editing, nil)
       |> assign(:undo, nil)
+      |> assign(:take_back, nil)
       |> assign(:edit_vitamin_d?, false)
       |> assign(:edit_form, nil)
       |> assign(:now_tick, System.system_time(:second))
@@ -165,6 +170,9 @@ defmodule TryggWeb.DashboardLive do
 
   def handle_info({:undo_expired, ref}, socket),
     do: {:noreply, UndoDelete.expire(socket, ref)}
+
+  def handle_info({:take_back_expired, ref}, %{assigns: %{take_back: %{ref: ref}}} = socket),
+    do: {:noreply, assign(socket, :take_back, nil)}
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -539,6 +547,26 @@ defmodule TryggWeb.DashboardLive do
     {:noreply, socket |> assign(editing: nil, edit_form: nil) |> UndoDelete.stash(deleted)}
   end
 
+  # A simple member's "Undo" on what they just logged: removes only that entry.
+  def handle_event(
+        "take_back",
+        _params,
+        %{assigns: %{take_back: %{entry: %Entry{} = entry}}} = socket
+      ) do
+    case Log.take_back_entry(socket.assigns.current_scope, entry) do
+      {:error, :not_allowed} ->
+        {:noreply,
+         socket
+         |> assign(:take_back, nil)
+         |> put_flash(:error, "It's too late to undo that one.")}
+
+      _removed_or_already_gone ->
+        {:noreply, offer_taken_back(socket)}
+    end
+  end
+
+  def handle_event("take_back", _params, socket), do: {:noreply, socket}
+
   def handle_event("undo_delete", _params, socket) do
     scope = socket.assigns.current_scope
     {entry, socket} = UndoDelete.take(socket)
@@ -632,12 +660,12 @@ defmodule TryggWeb.DashboardLive do
   defp settle_diaper(socket, {:error, _}),
     do: put_flash(socket, :error, "Hmm, that didn't save — try again.")
 
-  defp settle_feed(socket, {:ok, _}),
+  defp settle_feed(socket, {:ok, entry}),
     do:
       socket
       |> assign(sheet: nil, sheet_form: nil)
       |> put_flash(:info, "Saved.")
-      |> splash("bottle")
+      |> logged(entry, "bottle")
 
   defp settle_feed(socket, {:error, :future}),
     do: put_flash(socket, :error, "That's in the future — pick an earlier time.")
@@ -811,7 +839,7 @@ defmodule TryggWeb.DashboardLive do
       })
 
     case result do
-      {:ok, _} -> socket |> put_flash(:info, "Saved.") |> splash("diaper_#{kind}")
+      {:ok, entry} -> socket |> put_flash(:info, "Saved.") |> logged(entry, "diaper_#{kind}")
       _ -> put_flash(socket, :error, "Hmm, that didn't save — try again.")
     end
   end
@@ -821,6 +849,41 @@ defmodule TryggWeb.DashboardLive do
   # so a fast double tap can't log the same thing twice. Only for the caregiver's
   # own taps: changes from elsewhere pulse instead (`TryggWeb.RemoteUpdate`).
   defp splash(socket, kind), do: push_event(socket, "log-splash", %{kind: kind})
+
+  # Simple mode: the celebration says what was logged in plain words (instead
+  # of a joke caption), and the screen offers to take it back for a while.
+  defp logged(%{assigns: %{simple?: true}} = socket, %Entry{} = entry, kind) do
+    label = log_confirmation(entry, socket.assigns.current_child, socket.assigns.unit_system)
+
+    socket
+    |> push_event("log-splash", %{kind: kind, label: label})
+    |> offer_take_back(entry, label)
+  end
+
+  defp logged(socket, _entry, kind), do: splash(socket, kind)
+
+  defp offer_take_back(socket, entry, label),
+    do: put_take_back(socket, %{entry: entry, label: label}, @take_back_ms)
+
+  defp offer_taken_back(socket),
+    do: put_take_back(socket, %{entry: nil, label: "Undone"}, @taken_back_ms)
+
+  defp put_take_back(socket, offer, ms) do
+    ref = System.unique_integer([:positive])
+
+    if connected?(socket), do: Process.send_after(self(), {:take_back_expired, ref}, ms)
+
+    assign(socket, :take_back, Map.put(offer, :ref, ref))
+  end
+
+  defp log_confirmation(%Entry{type: :diaper} = entry, child, _units),
+    do:
+      "#{String.capitalize(entry.data["kind"])} logged at #{Child.local_clock(child, entry.started_at)}"
+
+  defp log_confirmation(%Entry{} = entry, child, units),
+    do:
+      "Bottle logged at #{Child.local_clock(child, entry.started_at)} · " <>
+        Units.format(entry.data["amount_ml"], :volume, units)
 
   defp consume_photo(socket), do: consume_photo(socket, socket.assigns.current_child)
 
@@ -1203,6 +1266,7 @@ defmodule TryggWeb.DashboardLive do
         photo_upload={@uploads.photo}
         timezone={@current_child.timezone}
       />
+      <.take_back_toast take_back={@take_back} />
     </Layouts.app>
     """
   end
@@ -1580,7 +1644,11 @@ defmodule TryggWeb.DashboardLive do
             do: simple_feed_value(@summary.last_feeding),
             else: feed_value(@summary.last_feeding, @outlook)
         }
-        sub={if @simple?, do: nil, else: feed_sub(@summary.last_feeding, @outlook, @unit_system)}
+        sub={
+          if @simple?,
+            do: simple_feed_sub(@summary.last_feeding, @current_child),
+            else: feed_sub(@summary.last_feeding, @outlook, @unit_system)
+        }
         status={if @simple?, do: nil, else: feed_status(@summary.last_feeding, @outlook)}
         today={if @simple?, do: nil, else: feed_today(@summary.today, @unit_system)}
       >
@@ -1613,7 +1681,7 @@ defmodule TryggWeb.DashboardLive do
         value={relative_time(time_of(@summary.last_diaper))}
         sub={
           if @simple?,
-            do: simple_diaper_sub(@summary.last_diaper),
+            do: simple_diaper_sub(@summary.last_diaper, @current_child),
             else: diaper_sub(@summary.last_diaper, @summary.last_poo)
         }
         status={if @simple?, do: nil, else: diaper_status(@outlook)}
@@ -1630,6 +1698,7 @@ defmodule TryggWeb.DashboardLive do
               label={label}
               emoji={emoji}
               color_class={diaper_color_class(value)}
+              large={@simple?}
             />
           </div>
         </:actions>
@@ -1730,6 +1799,7 @@ defmodule TryggWeb.DashboardLive do
   attr :label, :string, required: true
   attr :emoji, :string, required: true
   attr :color_class, :string, required: true
+  attr :large, :boolean, default: false
 
   defp action_btn(assigns) do
     ~H"""
@@ -1741,10 +1811,47 @@ defmodule TryggWeb.DashboardLive do
       class={["gap-1.5 px-1", @color_class]}
     >
       <span class="whitespace-nowrap text-xl leading-none" aria-hidden="true">{@emoji}</span>
-      <span class="text-sm font-bold">{@label}</span>
+      <span class={["font-bold", if(@large, do: "text-lg", else: "text-sm")]}>{@label}</span>
     </.button>
     """
   end
+
+  attr :take_back, :map, default: nil, doc: "the simple member's offer, or nil"
+
+  # What a simple member just logged, in plain words, with a big "Undo" for a
+  # while. Once taken back it only says "Undone", for a moment.
+  defp take_back_toast(assigns) do
+    ~H"""
+    <div
+      :if={@take_back}
+      id={"take-back-toast-#{@take_back.ref}"}
+      role="status"
+      class="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1.5rem)] z-40 flex justify-center px-4"
+    >
+      <div class="undo-toast pointer-events-auto relative flex max-w-md items-center gap-4 overflow-hidden rounded-3xl bg-neutral py-3 pl-6 pr-3 text-neutral-content shadow-lg">
+        <span id="take-back-label" class="text-lg font-bold">{@take_back.label}</span>
+        <.button
+          :if={@take_back.entry}
+          id="take-back"
+          type="button"
+          variant="primary"
+          phx-click="take_back"
+          class="shrink-0"
+        >
+          Undo
+        </.button>
+        <span
+          :if={@take_back.entry}
+          class="undo-toast-timer absolute inset-x-0 bottom-0 h-1 bg-primary"
+          style={"animation-duration: #{take_back_ms()}ms"}
+          aria-hidden="true"
+        ></span>
+      </div>
+    </div>
+    """
+  end
+
+  defp take_back_ms, do: @take_back_ms
 
   # Each diaper kind gets its own fixed, literal color (see the
   # --color-diaper-* vars in app.css) instead of one shared variant, so the
@@ -2396,11 +2503,16 @@ defmodule TryggWeb.DashboardLive do
   # it was and, when that wasn't a poo, how long ago the last poo was.
   # Simple mode's diaper card says what the last one was and nothing more: no
   # "no poo yet" / time since the last poo, no counts.
-  defp simple_diaper_sub(%Entry{data: %{"kind" => kind}}) when is_binary(kind),
-    do: String.capitalize(kind)
+  # Simple mode pairs "2h 5m ago" with the clock time, so there's no sum to do
+  # and it can be read out to a parent as is.
+  defp simple_feed_sub(%Entry{} = e, child), do: "at #{Child.local_clock(child, feed_time(e))}"
+  defp simple_feed_sub(nil, _child), do: nil
 
-  defp simple_diaper_sub(%Entry{}), do: nil
-  defp simple_diaper_sub(nil), do: "none yet"
+  defp simple_diaper_sub(%Entry{data: %{"kind" => kind}} = e, child) when is_binary(kind),
+    do: "#{String.capitalize(kind)} · at #{Child.local_clock(child, e.started_at)}"
+
+  defp simple_diaper_sub(%Entry{} = e, child), do: "At #{Child.local_clock(child, e.started_at)}"
+  defp simple_diaper_sub(nil, _child), do: "none yet"
 
   defp diaper_sub(nil, _last_poo), do: "none yet"
 
