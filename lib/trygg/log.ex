@@ -519,32 +519,6 @@ defmodule Trygg.Log do
     result
   end
 
-  @take_back_seconds 60
-
-  @doc """
-  Takes back a bottle or diaper the caller logged moments ago, for a `:simple`
-  member's "Undo" after a mis-tap. They can't delete or edit entries, so this
-  is the one way they remove anything, and only their own, recent
-  bottle or diaper: `{:error, :not_allowed}` for anything else, and
-  `{:error, :not_found}` once it is already gone.
-  """
-  def take_back_entry(%Scope{user: %{id: user_id}} = scope, %Entry{} = entry) do
-    Families.authorize!(scope, %Child{id: entry.child_id}, :simple)
-
-    with %Entry{} = current <- Repo.get(Entry, entry.id),
-         true <- takeable_back?(current, user_id) do
-      current |> Repo.delete() |> broadcast(current.child_id, :deleted)
-    else
-      nil -> {:error, :not_found}
-      false -> {:error, :not_allowed}
-    end
-  end
-
-  defp takeable_back?(%Entry{} = entry, user_id) do
-    entry.type in [:feeding, :diaper] and entry.logged_by_id == user_id and
-      DateTime.diff(DateTime.utc_now(), entry.inserted_at, :second) <= @take_back_seconds
-  end
-
   @doc """
   Puts back an entry that `delete_entry/3` just removed, with the same id and
   timestamps, so it reappears where it was. Requires `:caregiver`.
