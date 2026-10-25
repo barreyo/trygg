@@ -17,6 +17,7 @@ defmodule TryggWeb.ReportPdfHTML do
   alias Trygg.Reports.Alerts
   alias Trygg.Reports.Norms
   alias Trygg.Reports.Shifts
+  alias Trygg.TimeFormat
   alias Trygg.Units
   alias TryggWeb.GrowthComponents
 
@@ -190,7 +191,10 @@ defmodule TryggWeb.ReportPdfHTML do
       assigns
       |> assign(:age_label, age_label(Child.age(child, assigns.export.today)))
       |> assign(:sex_label, sex_label(child.sex))
-      |> assign(:generated_label, Calendar.strftime(local_generated, "%-d %b %Y, %H:%M"))
+      |> assign(
+        :generated_label,
+        Calendar.strftime(local_generated, "%-d %b %Y, " <> TimeFormat.pattern())
+      )
 
     ~H"""
     <header id="pdf-header" class="pdf-card border-b border-base-300 pb-3">

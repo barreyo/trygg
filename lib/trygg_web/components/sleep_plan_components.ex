@@ -14,7 +14,8 @@ defmodule TryggWeb.SleepPlanComponents do
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
   alias Trygg.Log.Entry
-  alias Trygg.Sleep.{Assist, BedtimePlan, Cries, Cue, Guide}
+  alias Trygg.Sleep.{Assist, Cries, Cue, Guide}
+  alias Trygg.TimeFormat
 
   @doc "A banner on the Sleep tab while a night waking is being worked through."
   attr :wake, :map, required: true
@@ -668,7 +669,7 @@ defmodule TryggWeb.SleepPlanComponents do
   end
 
   defp compare_range(%{metric: :bedtime, range: {lo, hi}}),
-    do: "#{BedtimePlan.clock(lo)}–#{BedtimePlan.clock(hi)}"
+    do: "#{TimeFormat.clock(lo)}–#{TimeFormat.clock(hi)}"
 
   defp compare_range(%{metric: :nap_minutes, range: range}), do: mins(range)
 
@@ -690,9 +691,9 @@ defmodule TryggWeb.SleepPlanComponents do
 
   defp hours({lo, hi}), do: "#{lo}–#{hi} h"
 
-  defp clocks({lo, hi}), do: "#{BedtimePlan.clock(lo)}–#{BedtimePlan.clock(hi)}"
+  defp clocks({lo, hi}), do: "#{TimeFormat.clock(lo)}–#{TimeFormat.clock(hi)}"
 
-  defp compare_value(%{metric: :bedtime, value: value}), do: BedtimePlan.clock(round(value))
+  defp compare_value(%{metric: :bedtime, value: value}), do: TimeFormat.clock(round(value))
 
   defp compare_value(%{metric: :nap_minutes, value: value}),
     do: format_duration(round(value * 60))

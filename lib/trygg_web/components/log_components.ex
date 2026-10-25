@@ -13,6 +13,7 @@ defmodule TryggWeb.LogComponents do
   alias Trygg.Log
   alias Trygg.Log.Entry
   alias Trygg.Sleep.Cue
+  alias Trygg.TimeFormat
   alias Trygg.Units
 
   @doc """
@@ -399,14 +400,14 @@ defmodule TryggWeb.LogComponents do
 
   def entry_detail(%Entry{note: note}, _units), do: presence(note)
 
-  @doc "A `HH:MM` clock for a UTC datetime, in the given IANA time zone."
+  @doc "A clock for a UTC datetime, in the given IANA time zone and the viewer's time format."
   def clock(%DateTime{} = dt, tz \\ "Etc/UTC") do
-    dt |> DateTime.shift_zone!(tz) |> Calendar.strftime("%H:%M")
+    dt |> DateTime.shift_zone!(tz) |> TimeFormat.clock()
   end
 
-  @doc "A `Mon 1 Sep · HH:MM` stamp for a UTC datetime, in the given IANA time zone."
+  @doc "A `Mon 1 Sep · 14:30` stamp for a UTC datetime, in the given IANA time zone."
   def stamp(%DateTime{} = dt, tz \\ "Etc/UTC") do
-    dt |> DateTime.shift_zone!(tz) |> Calendar.strftime("%a %-d %b · %H:%M")
+    dt |> DateTime.shift_zone!(tz) |> Calendar.strftime("%a %-d %b · " <> TimeFormat.pattern())
   end
 
   @doc "Relative distance from now, e.g. \"just now\", \"3h 12m ago\", \"2d ago\"."

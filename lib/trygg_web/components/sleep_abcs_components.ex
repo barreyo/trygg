@@ -11,7 +11,8 @@ defmodule TryggWeb.SleepAbcsComponents do
   import TryggWeb.CoreComponents
   import TryggWeb.LogComponents, only: [format_duration: 1, clock: 2]
 
-  alias Trygg.Sleep.{Abcs, BedtimePlan, Checkins, Definitions, NapTraining}
+  alias Trygg.Sleep.{Abcs, Checkins, Definitions, NapTraining}
+  alias Trygg.TimeFormat
   alias Trygg.Units
 
   ## Before starting -------------------------------------------------------------
@@ -291,7 +292,7 @@ defmodule TryggWeb.SleepAbcsComponents do
         <ul class="mt-3 space-y-2 text-sm leading-snug">
           <li id="abcs-bedtime">
             <span class="font-semibold">Bedtime</span>
-            between {BedtimePlan.clock(elem(Abcs.bedtime_window(), 0))}–{BedtimePlan.clock(
+            between {TimeFormat.clock(elem(Abcs.bedtime_window(), 0))}–{TimeFormat.clock(
               elem(Abcs.bedtime_window(), 1)
             )},
             no later. A routine of {Abcs.definition().routine_minutes} minutes or less, ending in their room, then down
@@ -310,7 +311,7 @@ defmodule TryggWeb.SleepAbcsComponents do
             <span class="font-semibold">Night feeds tonight:</span>
             <ul class="mt-1 space-y-0.5">
               <li :for={feed <- @tonight.weaning} class="tabular-nums">
-                {BedtimePlan.clock(feed.time)}: {amount_text(
+                {TimeFormat.clock(feed.time)}: {amount_text(
                   feed.amount,
                   @plan.feed_kind,
                   @unit_system
@@ -676,9 +677,9 @@ defmodule TryggWeb.SleepAbcsComponents do
           )} between · {format_duration(elem(@table.daytime_goal, 0) * 60)}–{format_duration(
             elem(@table.daytime_goal, 1) * 60
           )} of daytime
-          sleep (not over {format_duration(@table.daytime_cap * 60)}) · bedtime {BedtimePlan.clock(
+          sleep (not over {format_duration(@table.daytime_cap * 60)}) · bedtime {TimeFormat.clock(
             elem(@table.bedtime, 0)
-          )}–{BedtimePlan.clock(elem(@table.bedtime, 1))} · feeds {@table.feeds}.
+          )}–{TimeFormat.clock(elem(@table.bedtime, 1))} · feeds {@table.feeds}.
         </p>
       </div>
 
@@ -731,7 +732,7 @@ defmodule TryggWeb.SleepAbcsComponents do
       >
         <p class="font-medium">Night feeds tonight</p>
         <p :for={feed <- @tonight.weaning} class="tabular-nums opacity-90">
-          {BedtimePlan.clock(feed.time)}: {amount_text(feed.amount, @plan.feed_kind, @unit_system)}
+          {TimeFormat.clock(feed.time)}: {amount_text(feed.amount, @plan.feed_kind, @unit_system)}
         </p>
         <p class="mt-1 text-xs opacity-70">Only once they've been asleep 5–10 minutes.</p>
       </div>
@@ -1049,7 +1050,7 @@ defmodule TryggWeb.SleepAbcsComponents do
           <tbody>
             <tr :for={row <- @table.rows} class="border-t border-base-300">
               <th scope="row" class="py-1.5 pr-2 font-medium tabular-nums">
-                {BedtimePlan.clock(row.time)}
+                {TimeFormat.clock(row.time)}
               </th>
               <td :for={amount <- row.amounts} class="py-1.5 pr-2 tabular-nums">
                 {if amount, do: amount_cell(amount, @table.kind, @unit_system), else: "none"}

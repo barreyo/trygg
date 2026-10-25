@@ -3,6 +3,7 @@ defmodule TryggWeb.PreferencesLive do
 
   alias Trygg.Accounts
   alias Trygg.Push
+  alias Trygg.TimeFormat
 
   @reminder_options [
     {"", "Recommended schedule", "follows the CDC well-child visit spacing for their age"},
@@ -55,6 +56,34 @@ defmodule TryggWeb.PreferencesLive do
             <span class="text-sm opacity-70">ounces, pounds, inches</span>
           </span>
         </label>
+
+        <div class="pt-6">
+          <.header>
+            Time format
+            <:subtitle>
+              How clock times are shown, like 14:30 or 2:30 PM. Only affects what you see.
+            </:subtitle>
+          </.header>
+        </div>
+
+        <div id="time-format-options" class="space-y-3">
+          <label
+            :for={format <- TimeFormat.formats()}
+            class={option_class(@form[:time_format].value, format)}
+          >
+            <input
+              type="radio"
+              name="user[time_format]"
+              value={format}
+              class="radio radio-primary"
+              checked={to_string(@form[:time_format].value) == to_string(format)}
+            />
+            <span class="flex-1">
+              <span class="font-medium block">{TimeFormat.label(format)}</span>
+              <span class="text-sm opacity-70">{TimeFormat.example(format)}</span>
+            </span>
+          </label>
+        </div>
 
         <div class="pt-6">
           <.header>
@@ -200,6 +229,8 @@ defmodule TryggWeb.PreferencesLive do
   def handle_event("save", %{"user" => params}, socket) do
     case Accounts.update_user_settings(socket.assigns.current_scope.user, normalize(params)) do
       {:ok, user} ->
+        TimeFormat.put(user.time_format)
+
         socket =
           socket
           |> assign(:current_scope, %{socket.assigns.current_scope | user: user})

@@ -10,6 +10,8 @@ defmodule Trygg.Accounts.User do
     field :authenticated_at, :utc_datetime, virtual: true
     field :unit_system, Ecto.Enum, values: [:metric, :imperial], default: :metric
     field :theme, Ecto.Enum, values: [:system, :light, :dark], default: :system
+    # How clock times read: 24-hour (`14:30`) or 12-hour (`2:30 PM`).
+    field :time_format, Ecto.Enum, values: [:h24, :h12], default: :h24
     # How often this caregiver wants a "log a weight" nudge. `nil` follows the
     # CDC well-child schedule; `0` turns reminders off; a positive integer is a
     # fixed number of days without a logged weight.
@@ -24,12 +26,12 @@ defmodule Trygg.Accounts.User do
 
   @doc """
   A changeset for the user's app preferences (measurement units, theme,
-  weight-check reminder cadence, ...).
+  time format, weight-check reminder cadence, ...).
   """
   def settings_changeset(user, attrs) do
     user
-    |> cast(attrs, [:unit_system, :theme, :weight_reminder_days])
-    |> validate_required([:unit_system, :theme])
+    |> cast(attrs, [:unit_system, :theme, :time_format, :weight_reminder_days])
+    |> validate_required([:unit_system, :theme, :time_format])
     |> validate_number(:weight_reminder_days,
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 365

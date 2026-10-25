@@ -230,6 +230,25 @@ defmodule TryggWeb.SimpleModeLiveTest do
       assert length(Log.recent_entries(scope, child)) == 2
     end
 
+    test "clock times follow the member's 12-hour preference", %{
+      conn: conn,
+      owner: owner,
+      child: child,
+      scope: scope
+    } do
+      {:ok, _} = Trygg.Accounts.update_user_settings(scope.user, %{time_format: :h12})
+      {:ok, _} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => 90}})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert lv |> element("#glance-feed") |> render() =~ ~r/at \d{1,2}:\d\d (AM|PM)/
+
+      lv |> element("#log-diaper button[phx-value-kind=diaper_poo]") |> render_click()
+
+      assert_push_event(lv, "log-splash", %{label: label})
+      assert label =~ ~r/^Poo logged at \d{1,2}:\d\d (AM|PM)$/
+    end
+
     test "Undo takes back only what was just logged, then says so", %{
       conn: conn,
       child: child,

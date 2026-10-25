@@ -20,6 +20,7 @@ defmodule Trygg.Reports.Insights do
   alias Trygg.Reports.Day
   alias Trygg.Reports.Norms
   alias Trygg.Reports.Stats
+  alias Trygg.TimeFormat
 
   @min_sample 3
   @heatmap_bins 48
@@ -488,11 +489,7 @@ defmodule Trygg.Reports.Insights do
   defp format_hhmm(nil), do: nil
 
   defp format_hhmm(minutes) when is_number(minutes) do
-    minutes = minutes |> round() |> rem(24 * 60)
-    minutes = if minutes < 0, do: minutes + 24 * 60, else: minutes
-    hour = div(minutes, 60)
-    min = rem(minutes, 60)
-    :io_lib.format("~2..0B:~2..0B", [hour, min]) |> IO.iodata_to_binary()
+    TimeFormat.clock(minutes)
   end
 
   ## Heatmap --------------------------------------------------------------

@@ -2,6 +2,8 @@ defmodule Trygg.Families.Child do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Trygg.TimeFormat
+
   @sexes [:female, :male, :unspecified]
   # What the Home screen can track — the same atoms as `Trygg.Log.Entry` types.
   # Bottles, diapers and sleep are on by default; breastfeeding is optional.
@@ -453,12 +455,12 @@ defmodule Trygg.Families.Child do
     end
   end
 
-  @doc ~S'Formats a `Time` as `"HH:MM"`.'
-  def format_clock(%Time{} = time), do: Calendar.strftime(Time.truncate(time, :second), "%H:%M")
+  @doc "Formats a `Time` as a clock in the viewer's time format (see `Trygg.TimeFormat`)."
+  def format_clock(%Time{} = time), do: TimeFormat.clock(Time.truncate(time, :second))
 
-  @doc "`HH:MM` for a UTC datetime, in the child's local time."
+  @doc "A clock for a UTC datetime, in the child's local time and the viewer's time format."
   def local_clock(%__MODULE__{timezone: tz}, %DateTime{} = dt) do
-    dt |> DateTime.shift_zone!(tz) |> Calendar.strftime("%H:%M")
+    dt |> DateTime.shift_zone!(tz) |> TimeFormat.clock()
   end
 
   @doc """
