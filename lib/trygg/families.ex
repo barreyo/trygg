@@ -9,8 +9,12 @@ defmodule Trygg.Families do
 
   Every public function takes a `%Trygg.Accounts.Scope{}` as its first argument
   and authorizes the caller through their membership of the child's family.
-  Roles form a hierarchy: `:owner` > `:caregiver` > `:viewer`. A scope that came
-  in on an API token (`scope.api_token`) is further confined to the token's
+  Roles form a hierarchy: `:owner` > `:caregiver` > `:simple` > `:viewer`.
+  `:simple` is a caregiver for a helper (a grandparent, a nanny) who only gets
+  the stripped-down Today screen: it can read what Today shows and log a bottle
+  or a diaper as it happens, nothing else — every other write asks for
+  `:caregiver`, so a new kind of write is closed to it until someone opts in.
+  A scope that came in on an API token (`scope.api_token`) is further confined to the token's
   family and can never rise above the token's role, which is never `:owner`.
   """
 
@@ -21,7 +25,7 @@ defmodule Trygg.Families do
   alias Trygg.Accounts.{Scope, User}
   alias Trygg.Families.{ApiToken, Child, Family, Membership, Invite, FamilyNotifier}
 
-  @role_rank %{owner: 3, caregiver: 2, viewer: 1}
+  @role_rank %{owner: 4, caregiver: 3, simple: 2, viewer: 1}
 
   ## PubSub -------------------------------------------------------------------
 

@@ -2,7 +2,7 @@ defmodule Trygg.Families.Invite do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @roles [:caregiver, :viewer]
+  @roles [:caregiver, :simple, :viewer]
   @valid_for_days 14
 
   schema "invites" do

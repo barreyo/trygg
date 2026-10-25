@@ -61,6 +61,18 @@ defmodule Trygg.ApiTokensTest do
       assert %{role: ["can't be more than your own access"]} = errors_on(changeset)
     end
 
+    test "a simple member can't issue a token that writes" do
+      %{child: child, member_scope: simple} = shared_child_fixture(:simple)
+
+      assert {:ok, %{role: :viewer}} =
+               ApiTokens.create_token(simple, child.family_id, %{name: "Read", role: :viewer})
+
+      assert {:error, changeset} =
+               ApiTokens.create_token(simple, child.family_id, %{name: "Write", role: :caregiver})
+
+      assert %{role: ["can't be more than your own access"]} = errors_on(changeset)
+    end
+
     test "non-members can't issue one" do
       %{child: child} = shared_child_fixture()
 

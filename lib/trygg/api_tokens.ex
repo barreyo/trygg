@@ -68,7 +68,7 @@ defmodule Trygg.ApiTokens do
     |> Repo.insert()
   end
 
-  defp validate_role_within(changeset, :viewer) do
+  defp validate_role_within(changeset, issuer_role) when issuer_role in [:viewer, :simple] do
     if Ecto.Changeset.get_field(changeset, :role) == :caregiver do
       Ecto.Changeset.add_error(changeset, :role, "can't be more than your own access")
     else

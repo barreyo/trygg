@@ -11,6 +11,9 @@ defmodule TryggWeb.DashboardLive do
   alias TryggWeb.{Loading, RemoteUpdate}
 
   @recent_limit 20
+  # A `:simple` member's Today: the same two things they can log, a few of them.
+  @simple_recent_limit 5
+  @simple_types [:feeding, :diaper]
   @tick_ms 60_000
   @nudge_minutes [-5, -15, -30]
   @note_suggestions ["Peaceful", "Restless", "Short one", "Woke a lot"]
@@ -39,6 +42,8 @@ defmodule TryggWeb.DashboardLive do
       socket
       |> assign(:unit_system, scope.user.unit_system)
       |> assign(:can_write, child.role in [:owner, :caregiver])
+      |> assign(:simple?, child.role == :simple)
+      |> assign(:simple_recent_limit, @simple_recent_limit)
       |> assign(:sheet, nil)
       |> assign(:sheet_form, nil)
       |> assign(:editing, nil)
@@ -180,6 +185,7 @@ defmodule TryggWeb.DashboardLive do
         child = %{child | role: role}
 
         can_write = role in [:owner, :caregiver]
+        simple? = role == :simple
 
         socket =
           socket
@@ -188,10 +194,17 @@ defmodule TryggWeb.DashboardLive do
           |> assign(:current_child, child)
           |> assign(:current_scope, Scope.put_child(scope, child, role))
 
-        if can_write do
-          socket
-        else
-          assign(socket, editing: nil, edit_form: nil)
+        cond do
+          # Moved into or out of simple mode: a different screen with a
+          # different recent list, so start it afresh.
+          simple? != socket.assigns.simple? ->
+            push_navigate(socket, to: ~p"/c/#{child}")
+
+          can_write ->
+            socket
+
+          true ->
+            assign(socket, editing: nil, edit_form: nil)
         end
     end
   end
@@ -347,6 +360,23 @@ defmodule TryggWeb.DashboardLive do
       |> assign(sheet: :bottle, sheet_form: form)
 
     {:noreply, socket}
+  end
+
+  # Simple mode's bottle: just an amount, seeded from the last feed. What the
+  # last bottle held carries over unseen, and the time is always now.
+  def handle_event("open_sheet", %{"kind" => "bottle_simple"}, socket) do
+    last = socket.assigns.summary.last_feeding
+
+    form =
+      to_form(
+        %{
+          "bottle_contents" => last_bottle_contents(last),
+          "amount" => trim(last_bottle_amount(last, socket.assigns.unit_system))
+        },
+        as: :entry
+      )
+
+    {:noreply, assign(socket, sheet: :bottle_simple, sheet_form: form)}
   end
 
   def handle_event("open_sheet", %{"kind" => "sleep_start"}, socket) do
@@ -537,6 +567,22 @@ defmodule TryggWeb.DashboardLive do
             consume_photo(socket)
           )
         )
+      end
+
+    {:noreply, settle_feed(socket, result)}
+  end
+
+  def handle_event("save_bottle_now", %{"entry" => params}, socket) do
+    units = socket.assigns.unit_system
+    ml = Units.from_display(parse_number(params["amount"]) || 0, :volume, units)
+
+    result =
+      if ml > 0 do
+        Log.create_entry(socket.assigns.current_scope, socket.assigns.current_child, :feeding, %{
+          "data" => %{"bottle_contents" => params["bottle_contents"], "amount_ml" => ml}
+        })
+      else
+        {:error, :no_amount}
       end
 
     {:noreply, settle_feed(socket, result)}
@@ -976,6 +1022,9 @@ defmodule TryggWeb.DashboardLive do
 
   # Recent activity limited to what this child's Home tracks, so a hidden
   # tracker's old entries don't linger in the list.
+  defp recent_tracked(scope, %Child{role: :simple} = child, _limit),
+    do: Log.list_entries(scope, child, limit: @simple_recent_limit, types: @simple_types)
+
   defp recent_tracked(scope, child, limit),
     do: Log.list_entries(scope, child, limit: limit, types: child.tracked_types)
 
@@ -1028,6 +1077,7 @@ defmodule TryggWeb.DashboardLive do
   defp sheet_label(:earlier), do: "Log from earlier"
   defp sheet_label(:layout), do: "Customize Today"
   defp sheet_label(:bottle), do: "Log a bottle"
+  defp sheet_label(:bottle_simple), do: "Log a bottle"
   defp sheet_label(:sleep_stop), do: "How did they sleep?"
   defp sheet_label(:sleep_start), do: "When did they fall asleep?"
   defp sheet_label(:sleep_past), do: "Add a sleep from earlier"
@@ -1080,6 +1130,74 @@ defmodule TryggWeb.DashboardLive do
     """
   end
 
+  # Simple mode (`:simple` members): Today with just the bottle and the diaper
+  # cards, each logging as it happens, and the last few entries to read. No
+  # alerts, devices, customizing, back-dating, editing or links to other pages.
+  def render(%{simple?: true} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_child={@current_child}
+      current_tab={:home}
+      title={@current_child.name}
+      subtitle={Child.caption(@current_child)}
+      children={@children}
+    >
+      <.pull_to_refresh />
+
+      <.loadable id="home-status" loaded={@loaded?} failed={@load_failed?}>
+        <:skeleton>
+          <.home_status_skeleton types={simple_types()} footer={false} />
+        </:skeleton>
+        <section id="glance-cards" class="space-y-3">
+          <.glance
+            :for={{type, i} <- Enum.with_index(simple_types())}
+            type={type}
+            index={i}
+            summary={@summary}
+            outlook={@outlook}
+            current_child={@current_child}
+            unit_system={@unit_system}
+            can_write={false}
+            simple?
+          />
+        </section>
+      </.loadable>
+
+      <div class="mt-8 border-b border-base-300 pb-2">
+        <h2 class="font-semibold">Recent</h2>
+      </div>
+
+      <.loadable id="home-recent" loaded={@loaded?} failed={@load_failed?} retry={false}>
+        <:skeleton><.entry_rows_skeleton count={@simple_recent_limit} /></:skeleton>
+        <p :if={@entries_empty?} class="opacity-70 text-sm py-6 text-center">
+          Nothing logged yet — tap a button above.
+        </p>
+
+        <div id="entries" phx-update="stream" class="divide-y divide-base-300">
+          <.entry_row
+            :for={{dom_id, entry} <- @streams.entries}
+            id={dom_id}
+            entry={entry}
+            unit_system={@unit_system}
+            tz={@current_child.timezone}
+          />
+        </div>
+      </.loadable>
+
+      <.sheet
+        :if={@sheet}
+        kind={@sheet}
+        form={@sheet_form}
+        unit_system={@unit_system}
+        photo_upload={@uploads.photo}
+        timezone={@current_child.timezone}
+      />
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -1107,23 +1225,7 @@ defmodule TryggWeb.DashboardLive do
         data-tracked-types={Enum.join(@current_child.tracked_types, ",")}
       />
 
-      <%!-- Pull-to-refresh: a standalone PWA has no native pull-to-refresh, so
-           this inert sentinel's `PullToRefresh` hook drives the gesture on
-           <main> and pushes `refresh`. --%>
-      <div id="pull-to-refresh" phx-hook="PullToRefresh" class="contents">
-        <div
-          data-ptr-indicator
-          class="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 -mt-9 flex justify-center opacity-0"
-          aria-hidden="true"
-        >
-          <span
-            data-ptr-spinner
-            class="mt-2 flex size-8 items-center justify-center rounded-full border border-base-300 bg-base-100 text-base-content/70 shadow-sm"
-          >
-            <.icon name="hero-arrow-path" class="size-4" />
-          </span>
-        </div>
-      </div>
+      <.pull_to_refresh />
 
       <%!-- Status and quick actions on the left, the recent log beside them
            once there is room (stacked on phones). --%>
@@ -1389,6 +1491,28 @@ defmodule TryggWeb.DashboardLive do
 
   ## Small render components ---------------------------------------------
 
+  # Pull-to-refresh: a standalone PWA has no native pull-to-refresh, so this
+  # inert sentinel's `PullToRefresh` hook drives the gesture on <main> and
+  # pushes `refresh`.
+  defp pull_to_refresh(assigns) do
+    ~H"""
+    <div id="pull-to-refresh" phx-hook="PullToRefresh" class="contents">
+      <div
+        data-ptr-indicator
+        class="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 -mt-9 flex justify-center opacity-0"
+        aria-hidden="true"
+      >
+        <span
+          data-ptr-spinner
+          class="mt-2 flex size-8 items-center justify-center rounded-full border border-base-300 bg-base-100 text-base-content/70 shadow-sm"
+        >
+          <.icon name="hero-arrow-path" class="size-4" />
+        </span>
+      </div>
+    </div>
+    """
+  end
+
   attr :type, :atom, required: true, values: [:sleep, :breastfeeding]
   attr :edit_start?, :boolean, default: false
 
@@ -1429,6 +1553,7 @@ defmodule TryggWeb.DashboardLive do
   attr :current_child, :map, required: true
   attr :unit_system, :atom, required: true
   attr :can_write, :boolean, required: true
+  attr :simple?, :boolean, default: false, doc: "simple mode: log the bottle with just an amount"
 
   # One at-a-glance card with its log buttons. Home renders these in the order
   # of the child's `tracked_types`, which is how caregivers arrange Home.
@@ -1446,13 +1571,13 @@ defmodule TryggWeb.DashboardLive do
         status={feed_status(@summary.last_feeding, @outlook)}
         today={feed_today(@summary.today, @unit_system)}
       >
-        <:actions :if={@can_write}>
+        <:actions :if={@can_write or @simple?}>
           <.button
             id="log-bottle"
             type="button"
             variant="info"
             phx-click="open_sheet"
-            phx-value-kind="bottle"
+            phx-value-kind={if @simple?, do: "bottle_simple", else: "bottle"}
             class="w-full"
           >
             <.icon name="hero-beaker" class="size-5" /> Log a bottle
@@ -1477,7 +1602,7 @@ defmodule TryggWeb.DashboardLive do
         status={diaper_status(@outlook)}
         today={diaper_today(@summary.today)}
       >
-        <:actions :if={@can_write}>
+        <:actions :if={@can_write or @simple?}>
           <div id="log-diaper" class="grid grid-cols-3 gap-2">
             <.action_btn
               :for={{emoji, value, label} <- diaper_choices()}
@@ -1791,66 +1916,7 @@ defmodule TryggWeb.DashboardLive do
             class="space-y-4"
             {@controls}
           >
-            <div>
-              <div class="flex items-center justify-center gap-4">
-                <.button
-                  type="button"
-                  variant="outline"
-                  class="btn-circle"
-                  data-bump={-fine_step(@unit_system)}
-                  aria-label={"Decrease by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
-                >
-                  <.icon name="hero-minus" class="size-4" />
-                </.button>
-
-                <div class="flex items-baseline gap-1">
-                  <input
-                    type="number"
-                    inputmode="decimal"
-                    step="any"
-                    min="0"
-                    name="entry[amount]"
-                    id="bottle-amount"
-                    data-client-owned
-                    value={@form.params["amount"]}
-                    aria-label={"Amount in #{@unit}"}
-                    class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <span class="text-base font-normal opacity-70">{@unit}</span>
-                </div>
-
-                <.button
-                  type="button"
-                  variant="outline"
-                  class="btn-circle"
-                  data-bump={fine_step(@unit_system)}
-                  aria-label={"Increase by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
-                >
-                  <.icon name="hero-plus" class="size-4" />
-                </.button>
-              </div>
-
-              <div class="flex gap-2 justify-center mt-2 flex-wrap">
-                <.button
-                  :for={step <- preset_steps(@unit_system)}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  data-bump={step}
-                >
-                  +{step}
-                </.button>
-                <.button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  id="bottle-reset"
-                  data-amount-reset
-                >
-                  Reset
-                </.button>
-              </div>
-            </div>
+            <.amount_stepper amount={@form.params["amount"]} unit_system={@unit_system} unit={@unit} />
 
             <select
               name="entry[bottle_contents]"
@@ -1886,6 +1952,24 @@ defmodule TryggWeb.DashboardLive do
             <.photo_field upload={@photo_upload} />
 
             <.sheet_buttons save="Save" uploading?={photo_uploading?(@photo_upload)} />
+          </.form>
+        <% :bottle_simple -> %>
+          <h3 class="font-semibold text-lg mb-3">Log a bottle</h3>
+          <.form
+            for={@form}
+            id="simple-bottle-form"
+            phx-change="sheet_change"
+            phx-submit="save_bottle_now"
+            class="space-y-4"
+            {@controls}
+          >
+            <input
+              type="hidden"
+              name="entry[bottle_contents]"
+              value={@form.params["bottle_contents"]}
+            />
+            <.amount_stepper amount={@form.params["amount"]} unit_system={@unit_system} unit={@unit} />
+            <.sheet_buttons save="Save" />
           </.form>
         <% :sleep_stop -> %>
           <h3 class="font-semibold text-lg mb-3">How did they sleep?</h3>
@@ -1979,6 +2063,78 @@ defmodule TryggWeb.DashboardLive do
     """
   end
 
+  attr :amount, :any, required: true
+  attr :unit_system, :atom, required: true
+  attr :unit, :string, required: true
+
+  # The bottle sheet's amount control: a big editable number with ± and quick
+  # "+N" chips, driven client-side by `SheetControls` (`data-bump`,
+  # `data-amount-reset`) so it's instant on a slow connection.
+  defp amount_stepper(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center justify-center gap-4">
+        <.button
+          type="button"
+          variant="outline"
+          class="btn-circle"
+          data-bump={-fine_step(@unit_system)}
+          aria-label={"Decrease by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
+        >
+          <.icon name="hero-minus" class="size-4" />
+        </.button>
+
+        <div class="flex items-baseline gap-1">
+          <input
+            type="number"
+            inputmode="decimal"
+            step="any"
+            min="0"
+            name="entry[amount]"
+            id="bottle-amount"
+            data-client-owned
+            value={@amount}
+            aria-label={"Amount in #{@unit}"}
+            class="w-24 rounded-field bg-transparent py-1 text-center text-3xl font-bold tracking-tight tabular-nums outline-none focus-visible:bg-base-200 focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <span class="text-base font-normal opacity-70">{@unit}</span>
+        </div>
+
+        <.button
+          type="button"
+          variant="outline"
+          class="btn-circle"
+          data-bump={fine_step(@unit_system)}
+          aria-label={"Increase by #{trim(fine_step(@unit_system) * 1.0)} #{@unit}"}
+        >
+          <.icon name="hero-plus" class="size-4" />
+        </.button>
+      </div>
+
+      <div class="flex gap-2 justify-center mt-2 flex-wrap">
+        <.button
+          :for={step <- preset_steps(@unit_system)}
+          type="button"
+          variant="outline"
+          size="sm"
+          data-bump={step}
+        >
+          +{step}
+        </.button>
+        <.button
+          type="button"
+          variant="ghost"
+          size="sm"
+          id="bottle-reset"
+          data-amount-reset
+        >
+          Reset
+        </.button>
+      </div>
+    </div>
+    """
+  end
+
   attr :form, :any, required: true
 
   defp note_field(assigns) do
@@ -2059,6 +2215,8 @@ defmodule TryggWeb.DashboardLive do
       "data-server-now": DateTime.to_unix(DateTime.utc_now(), :millisecond)
     ]
   end
+
+  defp simple_types, do: @simple_types
 
   defp nudge_minutes, do: @nudge_minutes
   defp note_suggestions, do: @note_suggestions

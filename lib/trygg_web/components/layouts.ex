@@ -66,6 +66,8 @@ defmodule TryggWeb.Layouts do
   slot :actions, doc: "optional controls rendered at the right of the top bar"
 
   def app(assigns) do
+    # A `:simple` member only has Today, so there are no tabs to switch between.
+    assigns = assign(assigns, :simple?, match?(%{role: :simple}, assigns.current_child))
     assigns = assign(assigns, :child_switcher, child_switcher_kind(assigns))
 
     assigns =
@@ -88,10 +90,10 @@ defmodule TryggWeb.Layouts do
     ~H"""
     <div class={[
       "min-h-dvh flex flex-col bg-base-100 text-base-content",
-      @current_child && "lg:pl-60"
+      @current_child && not @simple? && "lg:pl-60"
     ]}>
       <.side_nav
-        :if={@current_child}
+        :if={@current_child && not @simple?}
         current_child={@current_child}
         current_tab={@current_tab}
       />
@@ -135,7 +137,11 @@ defmodule TryggWeb.Layouts do
             children={@children}
             child_switch_to={@child_switch_to}
           />
-          <.app_menu :if={@current_scope && @current_scope.user} current_child={@current_child} />
+          <.app_menu
+            :if={@current_scope && @current_scope.user}
+            current_child={@current_child}
+            simple?={@simple?}
+          />
         </div>
       </header>
 
@@ -161,7 +167,7 @@ defmodule TryggWeb.Layouts do
         class={[
           @column_class,
           "flex-1 px-4 py-4",
-          if(@current_child, do: "pb-28 lg:pb-8", else: "pb-8"),
+          if(@current_child && not @simple?, do: "pb-28 lg:pb-8", else: "pb-8"),
           @immersive && "pt-[max(1rem,env(safe-area-inset-top))]"
         ]}
       >
@@ -177,7 +183,7 @@ defmodule TryggWeb.Layouts do
            (children, preferences, account) are secondary screens reached from
            the ⋮ menu and exited via the back arrow, so they don't show a tab bar. --%>
       <.bottom_nav
-        :if={@current_child}
+        :if={@current_child && not @simple?}
         current_child={@current_child}
         current_tab={@current_tab}
       />
@@ -672,10 +678,12 @@ defmodule TryggWeb.Layouts do
   end
 
   attr :current_child, :map, default: nil
+  attr :simple?, :boolean, default: false
 
   # On child pages the menu opens with that child's own actions (edit / sharing),
   # followed by the account-level ones. Editing is owner-only, matching
-  # `Families.update_child/3`.
+  # `Families.update_child/3`. In simple mode it is only the account-level ones
+  # that are the person's own: preferences, account and log out.
   defp app_menu(assigns) do
     ~H"""
     <div id="app-menu" class="dropdown dropdown-end">
@@ -689,7 +697,7 @@ defmodule TryggWeb.Layouts do
         <.icon name="hero-ellipsis-vertical" class="size-5" />
       </.button>
       <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-40 w-56 p-2 shadow">
-        <%= if @current_child do %>
+        <%= if @current_child && not @simple? do %>
           <li class="menu-title truncate">{@current_child.name}</li>
           <li :if={@current_child.role == :owner}>
             <.link id="app-menu-edit-child" navigate={~p"/children/#{@current_child}/edit"}>
@@ -707,7 +715,7 @@ defmodule TryggWeb.Layouts do
             </.link>
           </li>
         <% end %>
-        <li class={@current_child && "border-t border-base-300 mt-1 pt-1"}>
+        <li :if={not @simple?} class={@current_child && "border-t border-base-300 mt-1 pt-1"}>
           <.link id="app-menu-children" navigate={~p"/children"}>
             <.icon name="hero-users" class="size-4" /> Children
           </.link>

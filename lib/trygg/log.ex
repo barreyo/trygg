@@ -258,20 +258,23 @@ defmodule Trygg.Log do
 
   @doc """
   Creates an entry of `type` for the child. `attrs` may carry `"started_at"`,
-  `"ended_at"`, `"note"` and a `"data"` map. Requires `:caregiver`.
+  `"ended_at"`, `"note"` and a `"data"` map. Requires `:caregiver` — except for
+  a bottle (`:feeding`) or a diaper, which a `:simple` member may log too, but
+  only as it happens: whatever times, note or photo they send are dropped.
 
   A `:feeding` entry created without an explicit `"ended_at"` is treated as
   instantaneous (`ended_at == started_at`). Sleep and breastfeeding timers are
   started with `start_timer/4`.
   """
   def create_entry(%Scope{} = scope, %Child{} = child, type, attrs \\ %{}) do
-    Families.authorize!(scope, child, :caregiver)
+    role = Families.authorize!(scope, child, create_role(type))
 
     started_at = DateTime.utc_now() |> DateTime.truncate(:second)
 
     attrs =
       attrs
       |> stringify()
+      |> only_now(role)
       |> Map.put_new("type", to_string(type))
       |> Map.put_new("started_at", started_at)
 
@@ -287,6 +290,14 @@ defmodule Trygg.Log do
     |> Repo.insert()
     |> broadcast(child.id, :created)
   end
+
+  defp create_role(type) when type in [:feeding, :diaper], do: :simple
+  defp create_role(_type), do: :caregiver
+
+  @simple_dropped ~w(type started_at ended_at note photo_key photo_content_type client_id)
+
+  defp only_now(attrs, :simple), do: Map.drop(attrs, @simple_dropped)
+  defp only_now(attrs, _role), do: attrs
 
   @doc """
   Idempotently records an entry that was captured offline and is now being

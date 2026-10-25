@@ -3,6 +3,7 @@ defmodule TryggWeb.CaregiverLive do
 
   alias Trygg.ApiTokens
   alias Trygg.Families
+  alias Trygg.Families.Membership
   alias TryggWeb.Loading
 
   @impl true
@@ -38,7 +39,33 @@ defmodule TryggWeb.CaregiverLive do
                   (you)
                 </span>
               </div>
-              <div class="text-xs opacity-70">{m.role}</div>
+              <div
+                :if={not role_editable?(@is_owner, m, @current_scope.user)}
+                class="text-xs opacity-70"
+              >
+                {Membership.label(m.role)}
+              </div>
+              <form
+                :if={role_editable?(@is_owner, m, @current_scope.user)}
+                id={"member-role-form-#{m.id}"}
+                phx-change="change_role"
+              >
+                <input type="hidden" name="member_id" value={m.id} />
+                <select
+                  name="role"
+                  id={"member-role-#{m.id}"}
+                  aria-label={"Role of #{m.user.email}"}
+                  class="select select-xs mt-0.5 -ml-2"
+                >
+                  <option
+                    :for={{label, role} <- member_role_options()}
+                    value={role}
+                    selected={role == m.role}
+                  >
+                    {label}
+                  </option>
+                </select>
+              </form>
             </div>
             <.button
               :if={@is_owner and m.user_id != @current_scope.user.id}
@@ -63,7 +90,7 @@ defmodule TryggWeb.CaregiverLive do
               <div class="flex-1 min-w-0">
                 <div class="truncate">{i.email}</div>
                 <div class="text-xs opacity-70">
-                  {i.role} · invited {relative_time(i.inserted_at)}
+                  {Membership.label(i.role)} · invited {relative_time(i.inserted_at)}
                 </div>
               </div>
               <.button
@@ -95,7 +122,11 @@ defmodule TryggWeb.CaregiverLive do
               field={@form[:role]}
               type="select"
               aria-label="What they can do"
-              options={[{"Caregiver — can log", :caregiver}, {"Viewer — read only", :viewer}]}
+              options={[
+                {"Caregiver — can log", :caregiver},
+                {"Simple mode — bottles & diapers only", :simple},
+                {"Viewer — read only", :viewer}
+              ]}
             />
             <.button variant="primary" phx-disable-with="Sending…" class="w-full">
               Send invite
@@ -327,6 +358,35 @@ defmodule TryggWeb.CaregiverLive do
     {:noreply, load(socket)}
   end
 
+  def handle_event("change_role", %{"member_id" => id, "role" => role}, socket) do
+    member = Enum.find(socket.assigns.members, &(&1.id == String.to_integer(id)))
+    role = Enum.find(Membership.roles(), &(to_string(&1) == role))
+
+    socket =
+      case member && role &&
+             Families.update_member_role(
+               socket.assigns.current_scope,
+               socket.assigns.current_child,
+               member,
+               role
+             ) do
+        {:ok, updated} ->
+          put_flash(
+            socket,
+            :info,
+            "#{member.user.email} is now #{Membership.label(updated.role)}."
+          )
+
+        {:error, :last_owner} ->
+          put_flash(socket, :error, "Can't demote the last owner.")
+
+        _ ->
+          socket
+      end
+
+    {:noreply, load(socket)}
+  end
+
   def handle_event("remove_member", %{"id" => id}, socket) do
     member = Enum.find(socket.assigns.members, &(&1.id == String.to_integer(id)))
 
@@ -373,6 +433,17 @@ defmodule TryggWeb.CaregiverLive do
 
   defp apply_people(socket, %{members: members, invites: invites, tokens: tokens}),
     do: assign(socket, members: members, invites: invites, tokens: tokens)
+
+  # Owners set the role of every other member who isn't an owner themselves.
+  defp role_editable?(is_owner, member, user),
+    do: is_owner and member.user_id != user.id and member.role != :owner
+
+  defp member_role_options,
+    do: [
+      {"Caregiver", :caregiver},
+      {"Simple mode", :simple},
+      {"Viewer", :viewer}
+    ]
 
   defp token_form, do: to_form(ApiTokens.change_token(), as: :token)
 
