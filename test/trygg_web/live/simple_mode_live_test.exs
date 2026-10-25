@@ -34,6 +34,29 @@ defmodule TryggWeb.SimpleModeLiveTest do
       refute render(lv) =~ "Full log"
     end
 
+    test "the feed card only says when the last feed was", %{
+      conn: conn,
+      owner: owner,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert lv |> element("#glance-feed") |> render() =~ "No feeds yet"
+
+      # Enough feeds in a short while to trip the cluster call-out for everyone else.
+      for _ <- 1..4 do
+        {:ok, _} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => 90}})
+      end
+
+      html = lv |> element("#glance-feed") |> render()
+      assert html =~ "just now"
+
+      for text <- ["cluster", "feeds in 2h", "Next", "today", "Bottle ·"] do
+        refute html =~ text
+      end
+
+      refute has_element?(lv, "#glance-feed .glance-pill")
+    end
+
     test "even when the child's Today is arranged without them", %{
       conn: conn,
       owner: owner,
@@ -56,6 +79,58 @@ defmodule TryggWeb.SimpleModeLiveTest do
       refute has_element?(lv, "#app-menu-sharing")
       refute has_element?(lv, "#app-menu-devices")
       refute has_element?(lv, "#app-menu-children")
+    end
+
+    test "nothing alerts: no health call-outs, banners, prompts or toasts", %{
+      conn: conn,
+      owner: owner,
+      child: child
+    } do
+      # Long enough without a wet diaper that everyone else gets a warning on the card.
+      long_ago = DateTime.add(DateTime.utc_now(), -8 * 3600, :second)
+
+      {:ok, _} =
+        Log.create_entry(owner, child, :diaper, %{
+          "started_at" => long_ago,
+          "data" => %{"kind" => "poo"}
+        })
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      refute has_element?(lv, ".glance-pill")
+      refute has_element?(lv, "#glance-diaper [data-tone=warning]")
+      refute has_element?(lv, "#install-prompt")
+      refute has_element?(lv, "#push-prompt")
+      refute has_element?(lv, "#home-notices")
+
+      # Logging is confirmed by the celebration, not a toast; a failure still says so.
+      render_click(lv, "quick", %{"kind" => "diaper_pee"})
+      refute has_element?(lv, "#flash-info")
+
+      lv |> element("#log-bottle") |> render_click()
+      lv |> form("#simple-bottle-form", entry: %{amount: "0"}) |> render_submit()
+      assert has_element?(lv, "#flash-error")
+    end
+
+    test "the diaper logger is just pee and poo", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+
+      assert has_element?(lv, "#log-diaper button[phx-value-kind=diaper_pee]")
+      assert has_element?(lv, "#log-diaper button[phx-value-kind=diaper_poo]")
+      refute has_element?(lv, "#log-diaper button[phx-value-kind=diaper_mixed]")
+    end
+
+    test "the page is marked for larger type, and others aren't", %{
+      conn: conn,
+      owner: owner,
+      child: child
+    } do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
+      assert has_element?(lv, "[data-simple-mode]")
+
+      {:ok, lv, _html} = live_loaded(log_in_user(build_conn(), owner.user), ~p"/c/#{child}")
+      refute has_element?(lv, "[data-simple-mode]")
+      assert has_element?(lv, "#log-diaper button[phx-value-kind=diaper_mixed]")
     end
 
     test "a diaper logs with one tap, as it happens", %{conn: conn, child: child, scope: scope} do
@@ -121,33 +196,38 @@ defmodule TryggWeb.SimpleModeLiveTest do
       assert data["bottle_contents"] == "expressed"
     end
 
-    test "recent is the last few bottles and diapers, to read only", %{
+    test "recent is just the last few bottles: amount and time, nothing else", %{
       conn: conn,
       owner: owner,
       child: child
     } do
       for _ <- 1..4, do: Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "pee"}})
 
-      for _ <- 1..4,
-          do: Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => 60}})
+      for ml <- [50, 60, 70, 80, 90, 100] do
+        {:ok, _} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => ml}})
+      end
 
       {:ok, _} = Log.start_timer(owner, child, :sleep)
 
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
 
-      assert lv
-             |> element("#entries")
-             |> render()
-             |> LazyHTML.from_fragment()
-             |> LazyHTML.query("[id^=entries-]")
-             |> Enum.count() == 5
+      rows =
+        lv
+        |> element("#entries")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id^=entries-]")
 
+      assert Enum.count(rows) == 5
+      assert rows |> Enum.map(&LazyHTML.text/1) |> Enum.join(" ") =~ ~r/\b100 ml\b/
+      refute render(lv) =~ "Pee diaper"
       refute has_element?(lv, "#entries [role=button]")
+      refute has_element?(lv, "#entries img")
     end
 
     test "a change by another caregiver shows up live", %{conn: conn, owner: owner, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}")
-      {:ok, _} = Log.create_entry(owner, child, :diaper, %{"data" => %{"kind" => "mixed"}})
+      {:ok, _} = Log.create_entry(owner, child, :feeding, %{"data" => %{"amount_ml" => 75}})
 
       assert has_element?(lv, "#entries [id^=entries-]")
     end

@@ -194,6 +194,14 @@ html, body { overflow-x: clip; }
 html { overscroll-behavior-y: none; }
 
 /*
+ * Simple mode (`Layouts.app` marks its page with `data-simple-mode`) scales
+ * everything up: type, buttons and spacing are all rem-based, so a bigger root
+ * font size enlarges the whole screen in proportion. `:has` ties it to the page
+ * being shown, so it drops away on any navigation out of simple mode.
+ */
+html:has([data-simple-mode]) { font-size: 125%; }
+
+/*
  * A color-less daisyUI `.btn` (the `<.button>` default variant) is nearly
  * invisible on the true-black dark theme. Give it a legible surface + a real
  * hover here, in the components layer, so per-call Tailwind utilities in
