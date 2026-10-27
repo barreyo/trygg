@@ -128,9 +128,9 @@ const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
 const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
 const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
 
-// How the board is mounted, as M5GFX rotation as seen by whoever is reading it: 0 = buttons below the
-// screen, 1 = buttons on the right, 2 = above, 3 = on the left. The Basic has no accelerometer, so this
-// is fixed at build time.
+// How the board is mounted, as seen by whoever is reading it: 0 = buttons below the screen, 1 = buttons
+// on the right, 2 = above, 3 = on the left. The Basic has no accelerometer, so this is fixed at build
+// time. M5GFX counts from the panel's own landscape, which is its rotation 1.
 const int SCREEN_ROTATION = 0;
 
 // Screen brightness (0-255): dim at night so it doesn't light up the nursery.
@@ -1443,7 +1443,7 @@ void setup() {
   WiFi.setAutoReconnect(true);
   device_id = WiFi.macAddress();
   xTaskCreatePinnedToCore(syncTask, "sync", 24576, nullptr, 1, &sync_task, 0);  // TLS + the updater need room
-  M5.Display.setRotation(SCREEN_ROTATION);
+  M5.Display.setRotation((SCREEN_ROTATION + 1) & 3);  // our 0 is the Basic panel's default, M5GFX's 1
   lay = layoutFor(SCREEN_ROTATION);
   drawAll();
   kickSync(true);  // the first children fetch
