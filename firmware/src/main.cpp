@@ -2,9 +2,9 @@
 //
 //   A = PEE   B = POO   C = MIXED   (with the board upright)
 //
-// Shows the child's name on top and the emoji above each button. The IMU tells which way up the
-// board is held and the whole UI turns with it, each emoji staying over its own button: upside down
-// the buttons are above the screen and the order flips, on its side they are a column down one edge.
+// Shows the child's name on top and the emoji above each button. SCREEN_ROTATION picks how the board
+// is mounted, with each emoji staying over its own button: upside down the buttons are above the
+// screen and the order flips, on its side they are a column down one edge.
 //
 // Meant to run from mains power: WiFi stays connected. A press is acknowledged on the
 // spot (green screen + chime) and put on a queue. A background task POSTs the queued
@@ -128,18 +128,10 @@ const unsigned long UPDATE_CHECK_MS = 6UL * 60UL * 60UL * 1000UL;
 const unsigned long UPDATE_RETRY_MS = 15UL * 60UL * 1000UL;
 const unsigned long UPDATE_QUIET_MS = 60UL * 1000UL;
 
-// Orientation: the IMU says which way up the board is held and the screen turns to match (M5GFX
-// rotation 0 = buttons below the screen, 1 = buttons on the right, 2 = above, 3 = on the left, as seen by
-// whoever is reading it). M5Unified reports the Basic's accelerometer with X to the right and Y up the
-// screen when it stands upright, and an accelerometer reads +1 g along the axis that points up. If a
-// board shows upside down when it stands upright, flip IMU_UP_Y (and IMU_UP_X for the two sideways
-// positions); the serial monitor prints the raw reading on every change.
-const float IMU_UP_X = 1.0f;
-const float IMU_UP_Y = 1.0f;
-const unsigned long ORIENT_CHECK_MS = 100;
-const unsigned long ORIENT_SETTLE_MS = 700;  // held steady this long before the screen turns
-const float ORIENT_MIN_G = 0.35f;            // less gravity than this across the screen: lying flat, keep as is
-const float ORIENT_MARGIN = 1.4f;            // how clearly one axis must win; stops flapping near 45 degrees
+// How the board is mounted, as seen by whoever is reading it: 0 = buttons below the screen, 1 = buttons
+// on the right, 2 = above, 3 = on the left. The Basic has no accelerometer, so this is fixed at build
+// time. M5GFX counts from the panel's own landscape, which is its rotation 1.
+const int SCREEN_ROTATION = 0;
 
 // Screen brightness (0-255): dim at night so it doesn't light up the nursery.
 const int DAY_BRIGHTNESS = 90;
@@ -907,63 +899,6 @@ void closeList(bool apply) {
   }
 }
 
-// ---- orientation (runs on the UI task) ------------------------------------------
-
-// The rotation that has the screen the right way up for how the board is held, or `current` when it
-// can't tell: lying flat or face down, or too close to the diagonal to be sure. `ax`/`ay` are the
-// accelerometer's X and Y; with the board upright "up" is +Y.
-int rotationFor(float ax, float ay, int current) {
-  float up_x = IMU_UP_X * ax, up_y = IMU_UP_Y * ay;
-  float x = fabsf(up_x), y = fabsf(up_y);
-  if (max(x, y) < ORIENT_MIN_G) return current;
-  if (y >= ORIENT_MARGIN * x) return up_y > 0 ? 0 : 2;
-  if (x >= ORIENT_MARGIN * y) return up_x > 0 ? 1 : 3;
-  return current;
-}
-
-// Turns the screen and the buttons' meaning together, then redraws whatever was up.
-void turnTo(int r) {
-  M5.Display.setRotation(r);
-  lay = layoutFor(r);
-  drawAll();
-}
-
-// Called once at boot, so the first screen is already the right way up.
-void initOrientation() {
-  float ax, ay, az;
-  int r = M5.Imu.isEnabled() && M5.Imu.getAccel(&ax, &ay, &az) ? rotationFor(ax, ay, 0) : 0;
-  Serial.printf("IMU %s, starting at rotation %d\n", M5.Imu.isEnabled() ? "found" : "missing", r);
-  M5.Display.setRotation(r);
-  lay = layoutFor(r);
-}
-
-// Follows the board as it's turned. A new position has to hold for ORIENT_SETTLE_MS (a knock while
-// pressing a button, or picking it up, mustn't flip the screen), and nothing turns while a button is
-// down, the green "logged" screen is up or the child picker is open.
-void updateOrientation() {
-  static unsigned long last_check = 0, candidate_since = 0;
-  static int candidate = -1;
-  if (!M5.Imu.isEnabled() || millis() - last_check < ORIENT_CHECK_MS) return;
-  last_check = millis();
-  float ax, ay, az;
-  if (!M5.Imu.getAccel(&ax, &ay, &az)) return;
-  int want = rotationFor(ax, ay, lay.rotation);
-  if (want == lay.rotation) {
-    candidate = -1;
-    return;
-  }
-  if (want != candidate) {
-    candidate = want;
-    candidate_since = millis();
-    return;
-  }
-  bool busy = logged_until || list_open || M5.BtnA.isPressed() || M5.BtnB.isPressed() || M5.BtnC.isPressed();
-  if (busy || millis() - candidate_since < ORIENT_SETTLE_MS) return;
-  Serial.printf("Rotation %d -> %d (accel %.2f %.2f %.2f)\n", lay.rotation, want, ax, ay, az);
-  candidate = -1;
-  turnTo(want);
-}
-
 // ---- sensor (runs on the UI task) ----------------------------------------------
 
 #ifndef BME68X_USE_FPU
@@ -1508,7 +1443,8 @@ void setup() {
   WiFi.setAutoReconnect(true);
   device_id = WiFi.macAddress();
   xTaskCreatePinnedToCore(syncTask, "sync", 24576, nullptr, 1, &sync_task, 0);  // TLS + the updater need room
-  initOrientation();
+  M5.Display.setRotation((SCREEN_ROTATION + 1) & 3);  // our 0 is the Basic panel's default, M5GFX's 1
+  lay = layoutFor(SCREEN_ROTATION);
   drawAll();
   kickSync(true);  // the first children fetch
 }
@@ -1525,7 +1461,6 @@ void loop() {
     updateBrightness();
   }
 
-  updateOrientation();
   sensorTick();
 
   // Retry a failed sync once its back-off is over. Presses and boot kick it directly.

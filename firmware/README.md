@@ -1,7 +1,7 @@
 # Trygg diaper button (M5Stack Basic)
 
 Three buttons, one tap each: **A = 💧 PEE**, **B = 💩 POO**, **C = 💧💩 MIXED** (with the
-board upright; see "Orientation" for other positions).
+board mounted upright; see "Orientation" for other positions).
 The screen shows the child's name on top and the emoji above each button. A press
 POSTs a `diaper` entry to the [REST API](../docs/api.md) with a family API token;
 it shows up live in the app for everyone in the family.
@@ -12,29 +12,21 @@ while it's up, so a fumbled double tap can't log twice.
 
 ## Orientation
 
-The board's accelerometer tells which way up it is held, and the screen turns to match. The emoji
-always sit right next to the button they belong to, so what you see is what the button under it does:
+The board is mounted one way, set by `SCREEN_ROTATION` at the top of `src/main.cpp` (the Basic has no
+accelerometer, so it can't tell which way up it is held). The emoji always sit right next to the button
+they belong to, so what you see is what the button under it does:
 
-| Held                                   | Buttons are | Left→right / top→bottom as you read it |
+| `SCREEN_ROTATION`                      | Buttons are | Left→right / top→bottom as you read it |
 | -------------------------------------- | ----------- | -------------------------------------- |
-| upright (default)                      | below       | A = 💧 PEE, B = 💩 POO, C = 💧💩 MIXED |
-| upside down                            | above       | C = PEE, B = POO, A = MIXED            |
-| on its side, buttons on the right      | right edge  | C = PEE, B = POO, A = MIXED (top→bottom) |
-| on its side, buttons on the left       | left edge   | A = PEE, B = POO, C = MIXED (top→bottom) |
+| 0 upright (default)                    | below       | A = 💧 PEE, B = 💩 POO, C = 💧💩 MIXED |
+| 2 upside down                          | above       | C = PEE, B = POO, A = MIXED            |
+| 1 on its side, buttons on the right    | right edge  | C = PEE, B = POO, A = MIXED (top→bottom) |
+| 3 on its side, buttons on the left     | left edge   | A = PEE, B = POO, C = MIXED (top→bottom) |
 
 So pee is always first in reading order (the left or top button), mixed last, and the hold gestures
 below follow the screen too: hold the **first** button for the previous child, the **last** for the
 next, the middle for the list. When it's on its side the name and the status line move into the
 space beside the buttons, in smaller type and wrapped.
-
-The screen turns about 0.7 s after the board settles in a new position, and not while a button is
-held, the green "logged" screen is up or the child list is open. Lying flat (or face down) it keeps
-whatever it was showing. Which way up it starts is read at boot.
-
-`IMU_UP_X` / `IMU_UP_Y` at the top of `src/main.cpp` set the sign convention of the sensor's axes. If
-a board shows upside down when it stands upright, flip `IMU_UP_Y`; if it turns the wrong way when laid
-on its side, flip `IMU_UP_X`. The serial monitor (`make fw-monitor`) prints the raw reading on every
-turn.
 
 ## Network: WiFi stays connected
 
