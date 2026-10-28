@@ -223,7 +223,7 @@ fw-monitor: firmware/.venv/bin/pio ## Serial monitor for the M5Stack
 	@$(PIO) device monitor -d firmware
 
 .PHONY: fw-icons
-fw-icons: firmware/.venv/bin/pio ## Regenerate firmware/src/icons.h from the macOS emoji font
+fw-icons: firmware/.venv/bin/pio ## Regenerate firmware/src/icons.h (flat icons drawn with Pillow)
 	@firmware/.venv/bin/python firmware/tools/gen_icons.py
 
 ##

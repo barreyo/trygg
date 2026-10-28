@@ -209,6 +209,6 @@ keeps running; a failed check is retried after 15 minutes.
 - The children (names, new child) are re-fetched when they're over an hour old.
 - The first build downloads the ESP32 toolchain (~1 GB, cached in `~/.platformio`).
   `make` creates the Python venv in `firmware/.venv` on demand.
-- Icons are rendered from the macOS emoji font into `src/icons.h` (`make fw-icons`);
-  the screen can't draw colour emoji itself.
+- Icons are flat shapes drawn with Pillow into `src/icons.h` (`make fw-icons`);
+  the screen can't draw colour emoji, and downscaled emoji looked muddy.
 - Upload speed is 460800 baud; 921600 fails on this board's CP2104.
