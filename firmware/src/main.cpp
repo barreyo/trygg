@@ -956,7 +956,10 @@ void bsecSaveState() {
 
 bool bsecBegin() {
   if (!bsec_inst) bsec_inst = (uint8_t*)malloc(bsec_get_instance_size_m());
-  if (!bsec_inst || bsec_init_m(bsec_inst) != BSEC_OK) return false;
+  if (!bsec_inst || bsec_init_m(bsec_inst) != BSEC_OK) {
+    Serial.println("BSEC: init failed");
+    return false;
+  }
 
   uint8_t state[BSEC_MAX_STATE_BLOB_SIZE];
   Preferences prefs;
@@ -986,7 +989,14 @@ bool bsecBegin() {
   }
   bsec_sensor_configuration_t needed[BSEC_MAX_PHYSICAL_SENSOR];
   uint8_t n_needed = BSEC_MAX_PHYSICAL_SENSOR;
-  if (bsec_update_subscription_m(bsec_inst, subscribe, sizeof(wanted), needed, &n_needed) != BSEC_OK) return false;
+  bsec_library_return_t sub = bsec_update_subscription_m(bsec_inst, subscribe, sizeof(wanted), needed, &n_needed);
+  // BSEC reports errors as negative codes and warnings as positive ones; a warning (such as 14, the
+  // requested rate differing from the library's configured one) still leaves a working subscription.
+  if (sub < BSEC_OK) {
+    Serial.printf("BSEC: subscription failed (%d)\n", (int)sub);
+    return false;
+  }
+  if (sub > BSEC_OK) Serial.printf("BSEC: subscription warning (%d)\n", (int)sub);
 
   memset(&env.settings, 0, sizeof(env.settings));  // next_call 0: ask BSEC what to do right away
   memset(&env.latest, 0, sizeof(env.latest));
@@ -1003,7 +1013,11 @@ bool sensorBegin() {
   env.dev.write = sensorWrite;
   env.dev.delay_us = sensorDelay;
   env.dev.amb_temp = 25;
-  if (bme68x_init(&env.dev) != BME68X_OK) return false;
+  int8_t rc = bme68x_init(&env.dev);
+  if (rc != BME68X_OK) {
+    Serial.printf("ENV Pro: bme68x_init failed (%d)\n", (int)rc);
+    return false;
+  }
   env.conf = {};
   env.conf.filter = BME68X_FILTER_OFF;
   env.conf.odr = BME68X_ODR_NONE;
@@ -1047,7 +1061,7 @@ bool bsecProcess(const bme68x_data& d) {
   if (wants(BSEC_INPUT_HEATSOURCE)) add(BSEC_INPUT_HEATSOURCE, SENSOR_TEMP_OFFSET_C);
   if (wants(BSEC_INPUT_TEMPERATURE)) add(BSEC_INPUT_TEMPERATURE, d.temperature);
   if (wants(BSEC_INPUT_HUMIDITY)) add(BSEC_INPUT_HUMIDITY, d.humidity);
-  if (wants(BSEC_INPUT_PRESSURE)) add(BSEC_INPUT_PRESSURE, d.pressure / 100.0f);  // the driver reports Pa
+  if (wants(BSEC_INPUT_PRESSURE)) add(BSEC_INPUT_PRESSURE, d.pressure);  // Pa, as the driver reports it and BSEC expects
   if (wants(BSEC_INPUT_GASRESISTOR)) add(BSEC_INPUT_GASRESISTOR, d.gas_resistance);
   if (!n_in) return true;
 
@@ -1070,7 +1084,7 @@ bool bsecProcess(const bme68x_data& d) {
         env.have_temperature = true;
         break;
       case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY: l.humidity_pct = out[i].signal; break;
-      case BSEC_OUTPUT_RAW_PRESSURE: l.pressure_hpa = out[i].signal; break;
+      case BSEC_OUTPUT_RAW_PRESSURE: l.pressure_hpa = out[i].signal / 100.0f; break;  // BSEC's Pa
       case BSEC_OUTPUT_RAW_GAS:
         l.gas_ohms = out[i].signal;
         l.has_gas = true;
@@ -1259,6 +1273,7 @@ bool deliverSample() {
   String body, response;
   serializeJson(doc, body);
   int status = request("POST", "/api/v1/devices/" + device_id + "/readings", body, response);
+  Serial.printf("Reading posted: HTTP %d\n", status);
   if (status == 200 || status == 201) {
     adoptShortId(response);
     return true;
@@ -1317,6 +1332,7 @@ void runSync() {
   }
   syncing = true;
   bool ok = wifiUp();
+  if (!ok) Serial.printf("Sync: WiFi/clock not ready (wifi %d, clock %d)\n", (int)WiFi.status(), (int)clockSynced());
   bool refreshed = false;
   bool update_checked = false;
   while (ok) {
