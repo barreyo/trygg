@@ -1,56 +1,95 @@
 #!/usr/bin/env python3
-"""Render the 💧 / 💩 / 💧💩 icons to RGB565 arrays in src/icons.h.
+"""Draw the pee / poo / mixed icons to RGB565 arrays in src/icons.h.
 
-macOS only (uses Apple Color Emoji, which Pillow can render at size 160).
-The icons are pre-composited onto BG (tiles) and OK_BG (full-screen "logged"
-view), so they must match the firmware's colours. Re-run only to change the icons: `make fw-icons`.
+The icons are flat shapes (a drop, a three-tier swirl) drawn with Pillow and anti-aliased by drawing
+at 8x and scaling down, so they stay crisp on the 320x240 display. They are pre-composited onto BG
+(tiles) and OK_BG (full-screen "logged" view), so those must match the firmware's colours.
+Re-run only to change the icons: `make fw-icons`. Pass --preview DIR to also write enlarged PNGs.
 """
+import math
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-FONT = "/System/Library/Fonts/Apple Color Emoji.ttc"
 SIZE = 64
 BG = (16, 20, 24)  # keep in sync with COLOR_BG in src/main.cpp
 OK_BG = (34, 160, 80)  # keep in sync with COLOR_OK_BG in src/main.cpp
 BIG_SIZE = 96
+SS = 8  # supersampling factor
+
+DROP = (255, 208, 64)
+DROP_SHINE = (255, 240, 170)
+POO = (150, 92, 48)
+POO_EDGE = (92, 52, 24)
+POO_SHINE = (190, 128, 78)
 
 
-def emoji(char: str) -> Image.Image:
-    img = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
-    ImageDraw.Draw(img).text((0, 0), char, font=ImageFont.truetype(FONT, 160), embedded_color=True)
-    return img.crop(img.getbbox())
+def drop(d: ImageDraw.ImageDraw, u: float, cx: float, cy: float, h: float) -> None:
+    """A teardrop `h` tall (in 0..1 units of a `u`-pixel canvas), centred on (cx, cy)."""
+    r = h * 0.3
+    tip_y = cy - h / 2
+    c_y = cy + h / 2 - r
+    phi = math.acos(r / (c_y - tip_y))  # angle of the tangent points, from straight up
+    pts = [(cx, tip_y)]
+    for i in range(41):
+        t = phi + (2 * math.pi - 2 * phi) * i / 40
+        pts.append((cx + r * math.sin(t), c_y - r * math.cos(t)))
+    d.polygon([(x * u, y * u) for x, y in pts], fill=DROP)
+    # a short highlight on the left of the bowl
+    s = r * 0.42
+    d.ellipse([(cx - r * 0.6) * u, (c_y - r * 0.15) * u, (cx - r * 0.6 + s * 0.8) * u, (c_y - r * 0.15 + s * 1.6) * u], fill=DROP_SHINE)
 
 
-def fit(img: Image.Image, box: int) -> Image.Image:
-    scale = box / max(img.size)
-    return img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+def poo(d: ImageDraw.ImageDraw, u: float, cx: float, cy: float, w: float) -> None:
+    """A three-tier swirl `w` wide, centred on (cx, cy)."""
+    edge = max(1.0, w * 0.045 * u)
+
+    def blob(x0, y0, x1, y1):
+        box = [(cx + (x0 - 0.5) * w) * u, (cy + (y0 - 0.5) * w) * u, (cx + (x1 - 0.5) * w) * u, (cy + (y1 - 0.5) * w) * u]
+        d.rounded_rectangle(box, radius=(box[3] - box[1]) / 2, fill=POO, outline=POO_EDGE, width=round(edge))
+        return box
+
+    blob(0.04, 0.62, 0.96, 0.96)
+    blob(0.16, 0.38, 0.84, 0.70)
+    blob(0.30, 0.17, 0.70, 0.46)
+    # the curl on top
+    d.polygon([((cx + (x - 0.5) * w) * u, (cy + (y - 0.5) * w) * u) for x, y in ((0.40, 0.22), (0.54, 0.02), (0.60, 0.22))], fill=POO_EDGE)
+    d.polygon([((cx + (x - 0.5) * w) * u, (cy + (y - 0.5) * w) * u) for x, y in ((0.43, 0.22), (0.54, 0.07), (0.57, 0.22))], fill=POO)
+    # a highlight on each tier
+    for x0, y0, x1, y1 in ((0.14, 0.72, 0.34, 0.80), (0.26, 0.47, 0.42, 0.55), (0.38, 0.26, 0.50, 0.33)):
+        d.rounded_rectangle(
+            [(cx + (x0 - 0.5) * w) * u, (cy + (y0 - 0.5) * w) * u, (cx + (x1 - 0.5) * w) * u, (cy + (y1 - 0.5) * w) * u],
+            radius=2 * SS,
+            fill=POO_SHINE,
+        )
 
 
-def canvas(size: int, bg: tuple) -> Image.Image:
-    return Image.new("RGBA", (size, size), bg + (255,))
+def render(size: int, bg: tuple, paint) -> Image.Image:
+    big = Image.new("RGB", (size * SS, size * SS), bg)
+    paint(ImageDraw.Draw(big), size * SS)
+    return big.resize((size, size), Image.LANCZOS)
 
 
-def centred(base: Image.Image, img: Image.Image, cx: int, cy: int) -> None:
-    base.alpha_composite(img, (cx - img.width // 2, cy - img.height // 2))
+def pee(size: int, bg: tuple) -> Image.Image:
+    return render(size, bg, lambda d, u: drop(d, u, 0.5, 0.5, 0.86))
 
 
-def single(char: str, size: int, bg: tuple) -> Image.Image:
-    base = canvas(size, bg)
-    centred(base, fit(emoji(char), size), size // 2, size // 2)
-    return base
+def poop(size: int, bg: tuple) -> Image.Image:
+    return render(size, bg, lambda d, u: poo(d, u, 0.5, 0.5, 0.9))
 
 
 def mixed(size: int, bg: tuple) -> Image.Image:
-    base = canvas(size, bg)
-    u = size / 64  # laid out on a 64px grid
-    centred(base, fit(emoji("💧"), round(40 * u)), round(18 * u), round(24 * u))
-    centred(base, fit(emoji("💩"), round(44 * u)), round(40 * u), round(40 * u))
-    return base
+    def paint(d, u):
+        drop(d, u, 0.26, 0.32, 0.46)
+        poo(d, u, 0.60, 0.60, 0.74)
+
+    return render(size, bg, paint)
 
 
 def rgb565(img: Image.Image) -> list[int]:
-    return [((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) for r, g, b, _ in img.convert("RGBA").getdata()]
+    raw = img.convert("RGB").tobytes()
+    return [((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) for r, g, b in zip(raw[0::3], raw[1::3], raw[2::3])]
 
 
 def array(name: str, img: Image.Image) -> str:
@@ -59,7 +98,7 @@ def array(name: str, img: Image.Image) -> str:
     return f"static const uint16_t {name}[{img.width * img.height}] PROGMEM = {{\n" + "\n".join(rows) + "\n};\n"
 
 
-kinds = (("PEE", lambda s, bg: single("💧", s, bg)), ("POO", lambda s, bg: single("💩", s, bg)), ("MIXED", mixed))
+kinds = (("PEE", pee), ("POO", poop), ("MIXED", mixed))
 parts = [
     "// Generated by tools/gen_icons.py — do not edit.\n#pragma once\n#include <Arduino.h>\n\n",
     f"static const int ICON_SIZE = {SIZE};\nstatic const int ICON_BIG_SIZE = {BIG_SIZE};\n\n",
@@ -72,3 +111,17 @@ for name, draw in kinds:  # big, on the "logged" full-screen background
 out = Path(__file__).resolve().parent.parent / "src" / "icons.h"
 out.write_text("".join(parts))
 print("wrote", out)
+
+if "--preview" in sys.argv:
+    prev = Path(sys.argv[sys.argv.index("--preview") + 1])
+    prev.mkdir(parents=True, exist_ok=True)
+    sheet = Image.new("RGB", (SIZE * 3 * 3 + BIG_SIZE * 3 * 3, max(SIZE, BIG_SIZE) * 3), (0, 0, 0))
+    x = 0
+    for _, draw in kinds:
+        sheet.paste(draw(SIZE, BG).resize((SIZE * 3, SIZE * 3), Image.NEAREST), (x, 0))
+        x += SIZE * 3
+    for _, draw in kinds:
+        sheet.paste(draw(BIG_SIZE, OK_BG).resize((BIG_SIZE * 3, BIG_SIZE * 3), Image.NEAREST), (x, 0))
+        x += BIG_SIZE * 3
+    sheet.save(prev / "icons.png")
+    print("preview", prev / "icons.png")
