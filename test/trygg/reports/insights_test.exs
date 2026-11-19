@@ -579,6 +579,61 @@ defmodule Trygg.Reports.InsightsTest do
     assert DateTime.diff(p.next_nap.at, ~U[2026-03-06 07:00:00Z], :second) in 3000..4800
   end
 
+  describe "a recent change in the night" do
+    # 20:00 → 07:00 in one go.
+    defp night_entries(date, :unbroken) do
+      [
+        sleep(
+          date.day * 100,
+          datetime(date, ~T[20:00:00]),
+          datetime(Date.add(date, 1), ~T[07:00:00])
+        )
+      ]
+    end
+
+    # 22:00 → 04:30, a feed, then 05:00 → 08:00: a long first sleep.
+    defp night_entries(date, :long_first_sleep) do
+      next = Date.add(date, 1)
+
+      [
+        sleep(date.day * 100 + 1, datetime(date, ~T[22:00:00]), datetime(next, ~T[04:30:00])),
+        sleep(date.day * 100 + 2, datetime(next, ~T[05:00:00]), datetime(next, ~T[08:00:00]))
+      ]
+    end
+
+    defp night_day(date, shape_for) do
+      prev = Date.add(date, -1)
+
+      entries =
+        night_entries(prev, shape_for.(prev)) ++
+          [sleep(date.day * 100 + 50, datetime(date, ~T[11:00:00]), datetime(date, ~T[12:00:00]))] ++
+          night_entries(date, shape_for.(date))
+
+      Day.build(child(), date, entries, datetime(Date.add(date, 1), ~T[12:00:00]))
+    end
+
+    test "bedtime and morning wake follow the new night before the 21-day median does" do
+      shape_for = fn date ->
+        if Date.compare(date, ~D[2026-03-14]) == :lt, do: :unbroken, else: :long_first_sleep
+      end
+
+      days = for n <- 1..21, do: night_day(Date.new!(2026, 3, n), shape_for)
+      now = ~U[2026-03-22 12:00:00Z]
+      today = Day.build(child(), ~D[2026-03-22], [], now)
+
+      stats = Insights.summarize(child(), days, today, now)
+
+      # Thirteen old nights outnumber the eight new ones, so the all-days median is
+      # still the old pattern — that is the trend view, left alone.
+      assert stats.bedtime.median_minutes == 20 * 60
+      assert stats.morning_wake.median_minutes == 7 * 60
+
+      # The prediction leans on the recent nights.
+      assert DateTime.compare(stats.prediction.bedtime.at, ~U[2026-03-22 21:30:00Z]) != :lt
+      assert DateTime.compare(stats.prediction.morning_wake.at, ~U[2026-03-22 07:45:00Z]) != :lt
+    end
+  end
+
   test "bedtime is pulled earlier when the day's naps run short" do
     # ~113 days old; steady 2-nap days of ~90 min each.
     child = %{child() | birth_date: ~D[2025-11-15]}

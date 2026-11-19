@@ -91,8 +91,8 @@ defmodule Trygg.Reports.Insights do
     recent_stats = %{
       naps: weighted_nap_stats(child, weighted, today.date),
       wake_windows: weighted_wake_stats(weighted),
-      morning_wake: clock_stat(child, Enum.map(recent, & &1.morning_wake), recent_ready?, false),
-      bedtime: clock_stat(child, Enum.map(recent, & &1.bedtime), recent_ready?, true),
+      morning_wake: weighted_clock_stat(child, weighted, :morning_wake, recent_ready?, false),
+      bedtime: weighted_clock_stat(child, weighted, :bedtime, recent_ready?, true),
       corrected_age_days: Norms.corrected_age_days(child, today.date)
     }
 
@@ -457,6 +457,43 @@ defmodule Trygg.Reports.Insights do
         iqr_minutes: iqr,
         median_label: format_hhmm(med),
         mean_label: format_hhmm(mn),
+        consistency_label: consistency_label(iqr)
+      }
+    end
+  end
+
+  # The prediction-path twin of `clock_stat/4`: each day's clock time counts
+  # by its recency weight, so a recent shift in the night (a longer first
+  # stretch pushing morning wake later, a later bedtime) moves the predicted
+  # clock within days instead of waiting for the 21-day median to turn over.
+  defp weighted_clock_stat(_child, _weighted_days, _field, false, _bedtime?),
+    do: nil_sample_clock()
+
+  defp weighted_clock_stat(child, weighted_days, field, true, bedtime?) do
+    pairs =
+      for {day, w} <- weighted_days, dt = Map.fetch!(day, field), not is_nil(dt) do
+        {minutes_from_midnight(child, dt, bedtime?), w}
+      end
+
+    if length(pairs) < @min_sample do
+      nil_sample_clock()
+    else
+      values = pairs_values(pairs)
+      weights = pairs_weights(pairs)
+      med = Stats.weighted_median(values, weights)
+      iqr = weighted_iqr(pairs)
+
+      mean =
+        (values |> Enum.zip(weights) |> Enum.map(fn {v, w} -> v * w end) |> Enum.sum()) /
+          Enum.sum(weights)
+
+      %{
+        n: length(pairs),
+        median_minutes: med,
+        mean_minutes: mean,
+        iqr_minutes: iqr,
+        median_label: format_hhmm(med),
+        mean_label: format_hhmm(mean),
         consistency_label: consistency_label(iqr)
       }
     end
