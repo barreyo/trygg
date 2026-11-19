@@ -66,7 +66,7 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
       %{entries: entries, dates: dates}
     end
 
-    test "predicts the first feed from how long the first stretch usually lasts", ctx do
+    test "predicts the first feed from how long that stretch usually lasts", ctx do
       # Asleep since 21:00 on the 10th.
       entries = ctx.entries ++ [sleep(~U[2026-03-10 21:00:00Z], nil)]
       now = ~U[2026-03-10 22:00:00Z]
@@ -75,7 +75,7 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
       %{prediction: p} = summarize(entries, ctx.dates, today, now)
 
       assert p.state == :asleep
-      assert %{stretch: :first_stretch, feeds_so_far: 0, next_feed: feed} = p.night
+      assert %{feeds_so_far: 0, next_feed: feed} = p.night
       assert feed.at == ~U[2026-03-11 03:30:00Z]
       assert feed.in_seconds == 5 * 3600 + 30 * 60
       assert feed.nights >= 3
@@ -93,7 +93,7 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
 
       %{prediction: p} = summarize(entries, ctx.dates, ~D[2026-03-11], now)
 
-      assert %{stretch: :first_stretch, next_feed: feed} = p.night
+      assert %{next_feed: feed} = p.night
       assert feed.at == ~U[2026-03-11 03:30:00Z]
       assert feed.in_seconds == 90 * 60
       # Past midnight the day's own morning wake is the one still to come.
@@ -115,7 +115,7 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
 
       # No history of stretches after a feed (one feed a night), so no second
       # feed is invented.
-      assert %{stretch: :later_stretch, feeds_so_far: 1, next_feed: nil} = p.night
+      assert %{feeds_so_far: 1, next_feed: nil} = p.night
       assert p.morning_wake.at == ~U[2026-03-11 07:30:00Z]
     end
 
@@ -138,6 +138,76 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
       %{prediction: p} = summarize(entries, dates, ~D[2026-03-02], ~U[2026-03-02 22:00:00Z])
 
       assert %{next_feed: nil} = p.night
+    end
+  end
+
+  describe "the next feed depends on the time of night and how long she has slept" do
+    # Evenings alternate: a top-up feed 45 minutes after the 20:00 feed, or the
+    # long sleep straight through to 02:00. After midnight she wakes about 3.5h
+    # after the last feed.
+    defp evening_entries(date, kind) do
+      at = fn time ->
+        if Time.compare(time, ~T[12:00:00]) == :lt,
+          do: dt(Date.add(date, 1), time),
+          else: dt(date, time)
+      end
+
+      segments =
+        case kind do
+          :top_up ->
+            [
+              {~T[18:00:00], ~T[19:30:00]},
+              {~T[20:00:00], ~T[20:45:00]},
+              {~T[21:15:00], ~T[03:45:00]},
+              {~T[04:15:00], ~T[08:00:00]}
+            ]
+
+          :long ->
+            [
+              {~T[18:00:00], ~T[19:30:00]},
+              {~T[20:00:00], ~T[02:00:00]},
+              {~T[02:30:00], ~T[08:00:00]}
+            ]
+        end
+
+      for {from, to} <- segments, do: sleep(at.(from), at.(to))
+    end
+
+    setup do
+      dates = Date.range(~D[2026-03-01], ~D[2026-03-10]) |> Enum.to_list()
+
+      entries =
+        for {date, i} <- Enum.with_index([~D[2026-02-28] | dates]),
+            entry <- evening_entries(date, if(rem(i, 2) == 0, do: :top_up, else: :long)),
+            do: entry
+
+      # Tonight: down at 18:00, fed at 19:30, asleep again from 20:00.
+      tonight = [
+        sleep(~U[2026-03-11 18:00:00Z], ~U[2026-03-11 19:30:00Z]),
+        sleep(~U[2026-03-11 20:00:00Z], nil)
+      ]
+
+      %{entries: entries ++ tonight, dates: dates}
+    end
+
+    test "once she has slept past the short gaps, only the long ones count", ctx do
+      %{prediction: p} =
+        summarize(ctx.entries, ctx.dates, ~D[2026-03-11], ~U[2026-03-11 21:30:00Z])
+
+      assert %{feeds_so_far: 1, next_feed: feed} = p.night
+      # Past an hour and a half, the 45 minute top-ups are ruled out.
+      assert DateTime.compare(feed.at, ~U[2026-03-12 01:50:00Z]) != :lt
+      assert DateTime.compare(feed.at, ~U[2026-03-12 04:00:00Z]) == :lt
+    end
+
+    test "just after a feed, the short gaps still count", ctx do
+      %{prediction: early} =
+        summarize(ctx.entries, ctx.dates, ~D[2026-03-11], ~U[2026-03-11 20:10:00Z])
+
+      %{prediction: late} =
+        summarize(ctx.entries, ctx.dates, ~D[2026-03-11], ~U[2026-03-11 21:30:00Z])
+
+      assert DateTime.compare(early.night.next_feed.at, late.night.next_feed.at) == :lt
     end
   end
 

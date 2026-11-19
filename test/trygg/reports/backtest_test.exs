@@ -55,7 +55,7 @@ defmodule Trygg.Reports.BacktestTest do
       assert mae <= 5 * 60, "#{kind} was off by #{mae}s on a perfectly steady rhythm"
     end
 
-    assert kinds.first_feed.within_15_min == 1.0
+    assert kinds.next_feed.within_15_min == 1.0
     assert kinds.bedtime.in_range in [nil, 1.0]
   end
 
@@ -85,7 +85,7 @@ defmodule Trygg.Reports.BacktestTest do
 
     assert [{:current, current}, {:legacy, legacy}] = results
     assert current.points == legacy.points
-    assert current.kinds.first_feed.n > 0
+    assert current.kinds.next_feed.n > 0
     # Same points scored for both; the variants differ in how they predict.
     for kind <- Backtest.kinds() do
       assert current.kinds[kind].n == legacy.kinds[kind].n

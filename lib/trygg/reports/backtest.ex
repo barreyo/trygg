@@ -6,8 +6,8 @@ defmodule Trygg.Reports.Backtest do
   At every wake the app would have predicted from (the morning wake and the end
   of each nap) it rebuilds the same trailing window of days using only what
   was logged by then, makes the prediction, and compares it with what actually
-  happened next. Overnight it does the same shortly after the night began, for
-  the first feed and the morning wake.
+  happened next. Overnight it does the same shortly after the night began and
+  after each feed, for the next feed and the morning wake.
 
   Scored kinds (`error = actual - predicted`, so positive means later than
   predicted):
@@ -15,12 +15,15 @@ defmodule Trygg.Reports.Backtest do
     * `:next_nap` — the next sleep after a wake, within 8 hours (as the
       `Trygg.Reports.PredictionLedger` scores it)
     * `:bedtime` — that day's bedtime
-    * `:first_feed` — the first waking of the night, from bedtime
+    * `:next_feed` — the next feed (waking) of the night, from bedtime or the
+      last feed
     * `:morning_wake` — the wake that ends the night
 
   Each kind reports `%{n, mae_seconds, bias_seconds, median_abs_seconds,
   within_15_min, in_range}`; `in_range` is the share of misses that landed in
-  the predicted range, `nil` when no prediction had one.
+  the predicted range, `nil` when no prediction had one. The result also
+  carries `rows`, every scored prediction as `%{kind, error, in_range, predicted, actual,
+  at}` (`at` is when it was made), for slicing the errors further.
 
   Pure: takes the child and every entry (sleeps, feeds, diapers) to replay. It
   does not use the ledger's bias, accuracy or cue factor — those are feedback
@@ -41,7 +44,7 @@ defmodule Trygg.Reports.Backtest do
   @default_days 14
   @good_seconds 15 * 60
 
-  @kinds [:next_nap, :bedtime, :first_feed, :morning_wake]
+  @kinds [:next_nap, :bedtime, :next_feed, :morning_wake]
 
   @doc "The kinds that are scored."
   def kinds, do: @kinds
@@ -104,7 +107,7 @@ defmodule Trygg.Reports.Backtest do
         score(child, entries, sleeps, truth, point, summarize_opts)
       end)
 
-    %{points: length(points), kinds: aggregate(scored)}
+    %{points: length(points), kinds: aggregate(scored), rows: scored}
   end
 
   # Moments the app would predict "next nap" and "bedtime" from.
@@ -120,15 +123,23 @@ defmodule Trygg.Reports.Backtest do
     morning ++ naps
   end
 
-  # Shortly after the night began (once it counts as a night, not a nap).
+  # Shortly after the night began (once it counts as a night, not a nap), and
+  # after each feed during it.
   defp night_points(child, truth, date) do
     day = Map.fetch!(truth, date)
 
     case day.bedtime do
       %DateTime{} = bed ->
         {night_start, _} = Child.night_bounds(child, date)
-        at = bed |> latest(night_start) |> DateTime.add(60, :second)
-        [%{type: :night, at: at, bed: bed, date: date}]
+        first = bed |> latest(night_start) |> DateTime.add(60, :second)
+
+        after_feeds =
+          for waking <- day.night_wakings,
+              at = DateTime.add(waking.end, 60, :second),
+              DateTime.compare(at, first) == :gt,
+              do: at
+
+        for at <- [first | after_feeds], do: %{type: :night, at: at, bed: bed, date: date}
 
       nil ->
         []
@@ -151,6 +162,7 @@ defmodule Trygg.Reports.Backtest do
       :wake -> score_wake(prediction, sleeps, truth, point)
       :night -> score_night(prediction, truth, point)
     end
+    |> Enum.map(&Map.put(&1, :at, point.at))
   end
 
   defp score_wake(%{state: :awake} = prediction, sleeps, truth, %{at: wake, date: date}) do
@@ -179,11 +191,11 @@ defmodule Trygg.Reports.Backtest do
   defp score_night(%{state: :asleep, night: %{} = night}, truth, %{at: at, date: date}) do
     day = Map.fetch!(truth, date)
 
-    first_feed =
+    next_feed =
       with %{} = feed <- night.next_feed,
-           [%{start: actual} | _] <- day.night_wakings,
-           :gt <- DateTime.compare(actual, at) do
-        [error(:first_feed, feed.at, actual, feed[:range])]
+           %{start: actual} <-
+             Enum.find(day.night_wakings, &(DateTime.compare(&1.start, at) == :gt)) do
+        [error(:next_feed, feed.at, actual, feed[:range])]
       else
         _ -> []
       end
@@ -196,7 +208,7 @@ defmodule Trygg.Reports.Backtest do
         _ -> []
       end
 
-    first_feed ++ morning
+    next_feed ++ morning
   end
 
   defp score_night(_prediction, _truth, _point), do: []
@@ -205,7 +217,9 @@ defmodule Trygg.Reports.Backtest do
     %{
       kind: kind,
       error: DateTime.diff(actual, predicted, :second),
-      in_range: in_range(range, actual)
+      in_range: in_range(range, actual),
+      predicted: predicted,
+      actual: actual
     }
   end
 
@@ -286,7 +300,7 @@ defmodule Trygg.Reports.Backtest do
 
   ## Helpers ------------------------------------------------------------------
 
-  defp empty, do: %{points: 0, kinds: aggregate([])}
+  defp empty, do: %{points: 0, kinds: aggregate([]), rows: []}
 
   defp last_finished(sleeps) do
     sleeps
