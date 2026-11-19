@@ -297,10 +297,10 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
       now = ~U[2026-03-18 12:00:00Z]
       today = ~D[2026-03-18]
 
-      %{prediction: p} = summarize(entries, dates, today, now)
+      %{prediction: p} =
+        summarize(entries, dates, today, now, features: %{shift_half_life: true})
 
-      %{prediction: slow} =
-        summarize(entries, dates, today, now, features: %{shift_half_life: false})
+      %{prediction: slow} = summarize(entries, dates, today, now)
 
       # Both lean late, but re-locking faster gets further toward the new 23:00.
       assert DateTime.compare(p.bedtime.at, slow.bedtime.at) == :gt
@@ -322,10 +322,10 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
       entries = entries ++ [sleep(~U[2026-03-15 20:00:00Z], nil)]
       now = ~U[2026-03-15 21:00:00Z]
 
-      %{prediction: p} = summarize(entries, dates, ~D[2026-03-15], now)
+      %{prediction: p} =
+        summarize(entries, dates, ~D[2026-03-15], now, features: %{shift_half_life: true})
 
-      %{prediction: slow} =
-        summarize(entries, dates, ~D[2026-03-15], now, features: %{shift_half_life: false})
+      %{prediction: slow} = summarize(entries, dates, ~D[2026-03-15], now)
 
       new_feed = ~U[2026-03-16 02:30:00Z]
       # Re-locking faster gets nearer the new 6.5h stretch than the slow half-life.
@@ -345,15 +345,35 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
       entries = Enum.flat_map([~D[2026-02-28] | dates], &night(&1, shape.(&1)))
       now = ~U[2026-03-18 12:00:00Z]
 
-      %{prediction: a} = summarize(entries, dates, ~D[2026-03-18], now, half_life_days: 6)
-
-      %{prediction: b} =
+      %{prediction: a} =
         summarize(entries, dates, ~D[2026-03-18], now,
           half_life_days: 6,
-          features: %{shift_half_life: false}
+          features: %{shift_half_life: true}
         )
 
+      %{prediction: b} = summarize(entries, dates, ~D[2026-03-18], now, half_life_days: 6)
+
       assert a.bedtime.at == b.bedtime.at
+    end
+
+    test "is opt-in: by default the half-life is left alone" do
+      dates = for d <- 1..17, do: Date.new!(2026, 3, d)
+
+      shape = fn date ->
+        if Date.compare(date, ~D[2026-03-14]) == :lt,
+          do: @unbroken,
+          else: {~T[23:00:00], ~T[05:00:00]}
+      end
+
+      entries = Enum.flat_map([~D[2026-02-28] | dates], &night(&1, shape.(&1)))
+      now = ~U[2026-03-18 12:00:00Z]
+
+      %{prediction: default} = summarize(entries, dates, ~D[2026-03-18], now)
+
+      %{prediction: off} =
+        summarize(entries, dates, ~D[2026-03-18], now, features: %{shift_half_life: false})
+
+      assert default.bedtime.at == off.bedtime.at
     end
   end
 

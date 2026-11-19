@@ -85,7 +85,9 @@ defmodule Trygg.Reports.Insights do
   @range_mae_factor 1.25
   # Prediction refinements that can be switched off, so a backtest can score
   # them against the behaviour before them (`legacy_features/0`).
-  @default_features %{night_length_wake: true, shift_half_life: true}
+  # `shift_half_life` is off: on a real child's backtest it did not help (bedtime
+  # ~3 min worse), so it is opt-in until more data says otherwise.
+  @default_features %{night_length_wake: true, shift_half_life: false}
 
   @doc """
   Summarizes `days` (oldest first) and builds a prediction for `today`.
