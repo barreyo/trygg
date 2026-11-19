@@ -19,6 +19,7 @@ defmodule Trygg.Reports.Insights do
   alias Trygg.Families.Child
   alias Trygg.Reports.Day
   alias Trygg.Reports.Norms
+  alias Trygg.Reports.Shifts
   alias Trygg.Reports.Stats
   alias Trygg.TimeFormat
 
@@ -54,6 +55,39 @@ defmodule Trygg.Reports.Insights do
   # A per-kind ledger bias is applied at half strength, capped here.
   @bias_damp 0.5
   @max_bias_seconds 20 * 60
+  # A night statistic (the stretches between feeds, night length) is only
+  # trusted from this many matching stretches / nights.
+  @min_night_sample 3
+  # How far (minutes) the time of night a stretch began at can differ from now
+  # for it to still count toward the next-feed estimate, tapering linearly:
+  # an 02:00 feed is followed by a 3h gap, a 19:30 one by the long first sleep.
+  @stretch_kernel_minutes 90
+  # The morning wake's share taken from bedtime + night length is measured over
+  # this many recent nights (at least this many), else this default, never above
+  # the maximum.
+  @share_nights 14
+  @min_share_nights 6
+  @default_length_share 0.3
+  @max_length_share 0.8
+  # A shift in the nights' timing (longest stretch, length, bedtime) needs this
+  # many recent nights against at
+  # least this many earlier ones, a move of at least an hour, and a robust z of
+  # at least 2 (with a half-hour floor on the spread).
+  @shift_recent_nights 3
+  @min_shift_baseline 6
+  @shift_min_move_seconds 3600
+  @shift_spread_floor_seconds 30 * 60
+  @shift_z 2.0
+  # Bedtime-range half-width bounds, and how many MAEs a ledger-calibrated
+  # half-width spans (~1 sd of the error for roughly normal errors).
+  @min_range_half_seconds 10 * 60
+  @max_range_half_seconds 90 * 60
+  @range_mae_factor 1.25
+  # Prediction refinements that can be switched off, so a backtest can score
+  # them against the behaviour before them (`legacy_features/0`).
+  # `shift_half_life` is off: on a real child's backtest it did not help (bedtime
+  # ~3 min worse), so it is opt-in until more data says otherwise.
+  @default_features %{night_length_wake: true, shift_half_life: false}
 
   @doc """
   Summarizes `days` (oldest first) and builds a prediction for `today`.
@@ -70,6 +104,15 @@ defmodule Trygg.Reports.Insights do
     * `:cue_factor` — a multiplier (about 0.85–1.15) on predicted wake windows
       from `Trygg.Reports.SleepHabits.cue_adjustment/3`: below 1 when sleeps
       noted as "ready" come earlier than the history's wake windows.
+    * `:accuracy` — `%{bedtime: %{mae_seconds, n}}` from the ledger, used to
+      size the bedtime range from how far off bedtime has actually been.
+    * `:features` — switches for the refinements in `legacy_features/0`
+      (default all on); used by `Trygg.Reports.Backtest` to compare.
+
+  The prediction also carries `night` while the child is asleep overnight: the
+  expected first feed (from how long recent nights' first stretch lasted, and
+  the stretches after a feed) and the morning wake from bedtime plus the usual
+  night length.
   """
   def summarize(%Child{} = child, days, %Day{} = today, %DateTime{} = now, opts \\ [])
       when is_list(days) do
@@ -83,8 +126,15 @@ defmodule Trygg.Reports.Insights do
     morning = clock_stat(child, Enum.map(days, & &1.morning_wake), ready?, false)
     bedtime = clock_stat(child, Enum.map(days, & &1.bedtime), ready?, true)
 
-    half_life = opts[:half_life_days] || @recency_half_life_days
+    features = Map.merge(@default_features, Map.new(opts[:features] || []))
+
     recent = Enum.take(days, -@recency_window_days)
+    nights = complete_nights(recent, today)
+
+    half_life =
+      opts[:half_life_days] || shift_half_life(child, days, nights, features) ||
+        @recency_half_life_days
+
     recent_ready? = Enum.count(recent, &(&1.total_sleep_seconds > 0)) >= @min_sample
     weighted = recency_weights(recent, today.date, half_life)
 
@@ -100,6 +150,10 @@ defmodule Trygg.Reports.Insights do
       recent_stats
       |> Map.put(:transition?, transition?(weighted, today.date))
       |> Map.put(:cue_factor, opts[:cue_factor] || 1.0)
+      |> Map.put(:features, features)
+      |> Map.put(:night, night_stats(child, nights, weighted))
+      |> Map.put(:prev_day, Enum.find(days, &(&1.date == Date.add(today.date, -1))))
+      |> Map.put(:bedtime_accuracy, opts[:accuracy] && opts[:accuracy][:bedtime])
 
     %{
       sample_days: length(days),
@@ -116,6 +170,9 @@ defmodule Trygg.Reports.Insights do
       prediction: predict(child, today, recent_stats, now, bias_map(opts[:bias]))
     }
   end
+
+  @doc "The prediction refinements, all off: the model as it was before them."
+  def legacy_features, do: Map.new(@default_features, fn {k, _} -> {k, false} end)
 
   @doc "How many days of recent history a prediction is weighted over."
   def prediction_days, do: @recency_window_days
@@ -136,6 +193,48 @@ defmodule Trygg.Reports.Insights do
 
   defp capped_bias(seconds) when is_number(seconds) do
     (seconds * @bias_damp) |> round() |> max(-@max_bias_seconds) |> min(@max_bias_seconds)
+  end
+
+  # The child's own pattern has moved off their baseline, so re-lock faster on
+  # the new one without waiting for the ledger to notice a run of misses. Two
+  # signals: how much they sleep (`Trygg.Reports.Shifts` — overnight sleep,
+  # night wakings, nap count) and *when* — a first stretch, night length or
+  # bedtime that has moved by an hour or more. A longer first stretch at an
+  # unchanged amount of sleep only shows up in the second.
+  defp shift_half_life(child, days, nights, %{shift_half_life: true}) do
+    if amounts_shifted?(days) or timing_shifted?(child, nights),
+      do: max(div(@recency_half_life_days, 2), 1)
+  end
+
+  defp shift_half_life(_child, _days, _nights, _features), do: nil
+
+  defp amounts_shifted?(days) do
+    days
+    |> Shifts.summarize()
+    |> Map.fetch!(:sleep)
+    |> Enum.any?(&(&1.metric in [:overnight_sleep, :night_wakings, :naps]))
+  end
+
+  defp timing_shifted?(child, nights)
+       when length(nights) >= @shift_recent_nights + @min_shift_baseline do
+    {baseline, recent} = Enum.split(nights, -@shift_recent_nights)
+
+    [
+      & &1.longest,
+      & &1.length,
+      &(minutes_from_midnight(child, &1.bed, true) * 60)
+    ]
+    |> Enum.any?(fn metric -> moved?(Enum.map(baseline, metric), Enum.map(recent, metric)) end)
+  end
+
+  defp timing_shifted?(_child, _nights), do: false
+
+  defp moved?(baseline, recent) do
+    base = Stats.median(baseline)
+    now = Stats.median(recent)
+    z = Stats.robust_z(now, baseline, @shift_spread_floor_seconds)
+
+    is_number(z) and abs(z) >= @shift_z and abs(now - base) >= @shift_min_move_seconds
   end
 
   ## Totals / trends ------------------------------------------------------
@@ -380,6 +479,135 @@ defmodule Trygg.Reports.Insights do
     day.naps |> Enum.reject(& &1.running?) |> Enum.map(& &1.seconds) |> Enum.sum()
   end
 
+  ## Night stats (prediction path only) --------------------------------
+
+  # Complete nights in `recent`, oldest first, each
+  # `%{date, bed, stretches, longest, length}` (seconds; the date the night
+  # began). `stretches` are the sleeps between feeds, `{start, seconds}`: from
+  # bedtime, or from the end of a waking, to the next waking (feed) — the stretch
+  # that runs into the morning wake isn't one, it ended for another reason.
+  # `longest` is the longest of those stretches. A night is
+  # complete when the next day has its morning wake; the night in progress is
+  # never counted.
+  defp complete_nights(recent, today) do
+    sequence =
+      case List.last(recent) do
+        %{date: date} when date == today.date -> recent
+        _ -> recent ++ [today]
+      end
+
+    sequence
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(fn [d, nxt] ->
+      if Date.diff(nxt.date, d.date) == 1, do: complete_night(d, nxt), else: []
+    end)
+  end
+
+  defp complete_night(%{bedtime: %DateTime{} = bed} = d, %{morning_wake: %DateTime{} = wake}) do
+    if DateTime.compare(wake, bed) == :gt do
+      anchors = [bed | Enum.map(d.night_wakings, & &1.end)]
+
+      stretches =
+        anchors
+        |> Enum.zip(Enum.map(d.night_wakings, & &1.start))
+        |> Enum.map(fn {from, to} -> {from, DateTime.diff(to, from, :second)} end)
+        |> Enum.filter(fn {_from, seconds} -> seconds > 0 end)
+
+      final = DateTime.diff(wake, List.last(anchors), :second)
+
+      [
+        %{
+          date: d.date,
+          bed: bed,
+          stretches: stretches,
+          longest: longest_stretch(stretches, final),
+          length: DateTime.diff(wake, bed, :second)
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp complete_night(_day, _next), do: []
+
+  # The longest sleep between feeds; the whole night's final stretch only when
+  # she slept through (it ended for another reason, so it isn't comparable
+  # while there are feeds).
+  defp longest_stretch([], final), do: final
+  defp longest_stretch(stretches, _final), do: stretches |> Enum.map(&elem(&1, 1)) |> Enum.max()
+
+  # The nights, recency-weighted (a night counts as its date's day does).
+  # Each stretch carries the time of night it began at (minutes, after noon),
+  # which is what tells the long first sleep from a top-up in the evening.
+  defp night_stats(child, nights, weighted) do
+    weights = Map.new(weighted, fn {day, w} -> {day.date, w} end)
+    weight = fn n -> Map.get(weights, n.date, 1.0) end
+
+    %{
+      stretches:
+        for n <- nights, {from, seconds} <- n.stretches do
+          {minutes_from_midnight(child, from, true), seconds, weight.(n)}
+        end,
+      length: weighted_summary(for n <- nights, do: {n.length, weight.(n)}),
+      length_share: length_share(child, nights)
+    }
+  end
+
+  # How much of the morning-wake estimate should come from the night's length
+  # (bedtime + usual night) rather than the usual clock time: whichever would
+  # have done better on the recent nights, leave-one-out — each night predicted
+  # from the others — so a bedtime that wanders without dragging the wake
+  # along (evening catnaps, say) earns the length no say at all.
+  defp length_share(child, nights) do
+    recent = Enum.take(nights, -@share_nights)
+
+    if length(recent) < @min_share_nights do
+      @default_length_share
+    else
+      errors =
+        for {night, i} <- Enum.with_index(recent) do
+          others = List.delete_at(recent, i)
+          wake = DateTime.add(night.bed, night.length, :second)
+
+          clock =
+            others
+            |> Enum.map(
+              &minutes_from_midnight(child, DateTime.add(&1.bed, &1.length, :second), false)
+            )
+            |> Stats.median()
+
+          length = others |> Enum.map(& &1.length) |> Stats.median()
+
+          {abs(minutes_from_midnight(child, wake, false) - clock),
+           abs(night.length - length) / 60}
+        end
+
+      mae_clock = Enum.sum(for {c, _} <- errors, do: c) / length(errors)
+      mae_length = Enum.sum(for {_, l} <- errors, do: l) / length(errors)
+
+      # Inverse-variance weights; a perfectly steady clock keeps the length out.
+      cond do
+        # Both perfect: no evidence either way.
+        mae_length == 0 and mae_clock == 0 ->
+          0.5
+
+        mae_length == 0 ->
+          @max_length_share
+
+        mae_clock == 0 ->
+          0.0
+
+        true ->
+          clamp(
+            1 / mae_length ** 2 / (1 / mae_length ** 2 + 1 / mae_clock ** 2),
+            0.0,
+            @max_length_share
+          )
+      end
+    end
+  end
+
   ## Nap-transition signal ----------------------------------------------
 
   # True when the child looks mid-transition: their own nap count has dropped
@@ -563,7 +791,6 @@ defmodule Trygg.Reports.Insights do
   ## Predictions ----------------------------------------------------------
 
   defp predict(child, today, stats, now, bias) do
-    morning = morning_prediction(child, today, stats)
     asleep? = Enum.any?(today.sleep_segments, & &1.running?)
     completed = Enum.reject(today.naps, & &1.running?)
     n_done = length(completed)
@@ -581,6 +808,9 @@ defmodule Trygg.Reports.Insights do
 
     bedtime =
       bedtime_prediction(child, today, stats, last_wake, n_done, typical, bias[:bedtime])
+
+    night = night_context(today, stats)
+    morning = morning_prediction(child, today, stats, night, now)
 
     base =
       if asleep? do
@@ -617,6 +847,7 @@ defmodule Trygg.Reports.Insights do
       anchor_ts: last_wake,
       morning_wake: morning,
       bedtime: bedtime,
+      night: night_prediction(child, night, stats, now),
       transition?: transition?
     })
   end
@@ -636,7 +867,7 @@ defmodule Trygg.Reports.Insights do
     end
   end
 
-  defp morning_prediction(child, today, stats) do
+  defp morning_prediction(child, today, stats, night, now) do
     cond do
       today.morning_wake ->
         %{
@@ -645,16 +876,143 @@ defmodule Trygg.Reports.Insights do
           label: Child.local_clock(child, today.morning_wake)
         }
 
+      estimate = night && night_morning(child, night, stats, now) ->
+        estimate
+
       stats.morning_wake.median_minutes ->
         at = minutes_to_dt(child, today.date, stats.morning_wake.median_minutes)
 
         %{
           actual?: false,
           at: at,
-          label: stats.morning_wake.median_label
+          label: stats.morning_wake.median_label,
+          source: :clock
         }
 
       true ->
+        nil
+    end
+  end
+
+  # Asleep overnight: the night's own start is known, so the morning wake can
+  # come from how long recent nights have lasted as well as from the usual
+  # clock time — leaning on whichever has been steadier. A later bedtime then
+  # carries through to a later wake instead of being averaged away.
+  defp night_morning(child, %{start: start}, stats, now) do
+    len = stats.night.length
+    clock = stats.morning_wake
+
+    clock_dt =
+      is_number(clock.median_minutes) && next_clock_after(child, start, clock.median_minutes)
+
+    by_length =
+      stats.features.night_length_wake and is_number(len.median) and
+        len.n >= @min_night_sample and add_seconds(start, len.median)
+
+    {at, source} =
+      cond do
+        by_length && clock_dt ->
+          {blend_datetimes(clock_dt, by_length, stats.night.length_share), :blended}
+
+        by_length ->
+          {by_length, :night_length}
+
+        clock_dt ->
+          {clock_dt, :clock}
+
+        true ->
+          {nil, nil}
+      end
+
+    if at do
+      at = latest_of(at, [now])
+      %{actual?: false, at: at, label: Child.local_clock(child, at), source: source}
+    end
+  end
+
+  # The first time the clock reads `minutes` after `start`.
+  defp next_clock_after(child, %DateTime{} = start, minutes) do
+    date = start |> DateTime.shift_zone!(child.timezone) |> DateTime.to_date()
+    dt = minutes_to_dt(child, date, minutes)
+
+    if DateTime.compare(dt, start) == :gt,
+      do: dt,
+      else: minutes_to_dt(child, Date.add(date, 1), minutes)
+  end
+
+  # The night in progress, when the child is asleep overnight (not a nap):
+  # when it started and the wakings (feeds) so far. After midnight the night
+  # began on the previous day.
+  defp night_context(today, stats) do
+    asleep? = Enum.any?(today.sleep_segments, & &1.running?)
+    nap? = Enum.any?(today.naps, & &1.running?)
+
+    cond do
+      not asleep? or nap? ->
+        nil
+
+      is_nil(today.morning_wake) ->
+        case stats[:prev_day] do
+          %{bedtime: %DateTime{} = bed, night_wakings: wakings} -> %{start: bed, wakings: wakings}
+          _ -> nil
+        end
+
+      today.bedtime ->
+        %{start: today.bedtime, wakings: today.night_wakings}
+
+      true ->
+        nil
+    end
+  end
+
+  # When the next feed is expected while asleep overnight, from the last feed
+  # (or bedtime). What follows a feed depends on the time of night and on how
+  # long she has already slept, so the estimate is the recency-weighted median
+  # of past stretches that began at about this time of night and lasted longer
+  # than she has slept so far — at 19:30 that is a mix of a top-up and the long
+  # first sleep; three hours in, it is only the long ones.
+  defp night_prediction(_child, nil, _stats, _now), do: nil
+
+  defp night_prediction(child, %{start: start, wakings: wakings}, stats, now) do
+    anchor =
+      case List.last(wakings) do
+        nil -> start
+        waking -> waking.end
+      end
+
+    %{
+      start: start,
+      feeds_so_far: length(wakings),
+      next_feed: next_feed(child, anchor, stats.night.stretches, now),
+      morning_wake: night_morning(child, %{start: start}, stats, now)
+    }
+  end
+
+  defp next_feed(child, anchor, stretches, now) do
+    clock = minutes_from_midnight(child, anchor, true)
+    elapsed = max(DateTime.diff(now, anchor, :second), 0)
+
+    pairs =
+      for {from, seconds, w} <- stretches,
+          seconds > elapsed,
+          k = 1 - abs(from - clock) / @stretch_kernel_minutes,
+          k > 0,
+          do: {seconds, w * k}
+
+    case weighted_summary(pairs) do
+      %{median: med, n: n, eff_n: eff} = summary when is_number(med) and n >= @min_night_sample ->
+        at = add_seconds(anchor, med)
+
+        %{
+          at: at,
+          label: Child.local_clock(child, at),
+          in_seconds: DateTime.diff(at, now, :second),
+          range: summary.quartiles && range_labels(child, anchor, summary.quartiles, 0),
+          source: if(eff >= @history_source_eff_n, do: :history, else: :blended),
+          nights: n
+        }
+
+      _ ->
         nil
     end
   end
@@ -867,8 +1225,39 @@ defmodule Trygg.Reports.Insights do
       at: shifted,
       label: Child.local_clock(child, shifted),
       estimate?: true,
-      shifted_by_seconds: debt
+      shifted_by_seconds: debt,
+      range: bedtime_range(child, shifted, stats)
     })
+  end
+
+  # How far bedtime has actually been off, where the ledger knows (about one
+  # standard deviation of the miss), otherwise the spread of the child's own
+  # bedtimes: half their IQR either side. Bounded so it stays useful.
+  defp bedtime_range(child, at, stats) do
+    half =
+      case stats[:bedtime_accuracy] do
+        %{mae_seconds: mae, n: n} when is_number(mae) and n >= 4 ->
+          {mae * @range_mae_factor, :ledger}
+
+        _ ->
+          case stats.bedtime.iqr_minutes do
+            iqr when is_number(iqr) -> {iqr * 60 / 2, :history}
+            _ -> nil
+          end
+      end
+
+    with {seconds, source} <- half do
+      seconds = round(clamp(seconds, @min_range_half_seconds, @max_range_half_seconds))
+      from = add_seconds(at, -seconds)
+      to = add_seconds(at, seconds)
+
+      %{
+        from: from,
+        to: to,
+        label: "#{Child.local_clock(child, from)}–#{Child.local_clock(child, to)}",
+        source: source
+      }
+    end
   end
 
   # When the day's daytime sleep is running short of this child's norm, bring

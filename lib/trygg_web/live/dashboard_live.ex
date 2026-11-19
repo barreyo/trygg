@@ -927,7 +927,7 @@ defmodule TryggWeb.DashboardLive do
         %{
           eyebrow: "Asleep",
           since_unix: DateTime.to_unix(e.started_at),
-          detail: "since #{Child.local_clock(child, e.started_at)}",
+          detail: "since #{Child.local_clock(child, e.started_at)}" <> night_feed_note(outlook),
           tone: :success
         }
 
@@ -964,6 +964,16 @@ defmodule TryggWeb.DashboardLive do
         }
     end
   end
+
+  # Overnight: when the first feed is expected, from how long her first stretch
+  # has lately lasted. Nothing before there is enough history, or by day.
+  defp night_feed_note(%{prediction: %{state: :asleep, night: %{next_feed: %{} = feed}}}) do
+    if feed.in_seconds < -60,
+      do: " · feed any time now",
+      else: " · feed ≈ #{feed.label}"
+  end
+
+  defp night_feed_note(_outlook), do: ""
 
   defp awake_next_nap(%{prediction: %{state: :awake, next_nap: %{} = nap}}), do: nap
   defp awake_next_nap(_), do: nil
@@ -2499,7 +2509,7 @@ defmodule TryggWeb.DashboardLive do
   defp sleep_sub(summary, outlook, child) do
     cond do
       e = Log.running(summary, :sleep) ->
-        "since #{Child.local_clock(child, e.started_at)}"
+        "since #{Child.local_clock(child, e.started_at)}" <> night_feed_note(outlook)
 
       nap = awake_next_nap(outlook) ->
         case woke_at(summary) do

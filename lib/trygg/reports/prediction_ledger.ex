@@ -153,7 +153,8 @@ defmodule Trygg.Reports.PredictionLedger do
   @doc """
   Feedback for `Trygg.Reports.Insights.summarize/5`: a recency half-life
   override when the recent errors look like a regime shift, and a per-kind
-  signed bias to correct out.
+  signed bias to correct out, plus the recent bedtime accuracy that sizes the
+  bedtime range.
   """
   def prediction_opts(child_id) do
     nap = accuracy(child_id, :next_nap)
@@ -166,7 +167,8 @@ defmodule Trygg.Reports.PredictionLedger do
 
     [
       half_life_days: half_life,
-      bias: %{next_nap: bias_for(nap), bedtime: bias_for(bed)}
+      bias: %{next_nap: bias_for(nap), bedtime: bias_for(bed)},
+      accuracy: %{bedtime: bed}
     ]
   end
 
@@ -223,8 +225,8 @@ defmodule Trygg.Reports.PredictionLedger do
           ordinal: nil,
           source: Map.get(bed, :source, :blended),
           target_ts: DateTime.truncate(bed.at, :second),
-          range_lo_ts: nil,
-          range_hi_ts: nil
+          range_lo_ts: bed[:range] && DateTime.truncate(bed.range.from, :second),
+          range_hi_ts: bed[:range] && DateTime.truncate(bed.range.to, :second)
         },
         now
       )
