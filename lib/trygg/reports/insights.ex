@@ -55,18 +55,6 @@ defmodule Trygg.Reports.Insights do
   # A per-kind ledger bias is applied at half strength, capped here.
   @bias_damp 0.5
   @max_bias_seconds 20 * 60
-  # Bedtime moves *later* for a daytime-sleep surplus only when it is this
-  # large, by half the surplus, at most this much.
-  @nap_surplus_threshold 45 * 60
-  @max_bedtime_delay 30 * 60
-  # Wake-window trend: needs this many closed windows over at least this many
-  # days; applied at this fraction, capped at this much (and a share of the
-  # window) — a drifting schedule shouldn't be chased, only leaned into.
-  @trend_min_windows 8
-  @trend_min_span_days 6
-  @trend_damp 0.5
-  @trend_cap_seconds 10 * 60
-  @trend_cap_fraction 0.10
   # A night statistic (the stretches between feeds, night length) is only
   # trusted from this many matching stretches / nights.
   @min_night_sample 3
@@ -95,20 +83,9 @@ defmodule Trygg.Reports.Insights do
   @min_range_half_seconds 10 * 60
   @max_range_half_seconds 90 * 60
   @range_mae_factor 1.25
-  # Bedtime is the average of the usual clock time and "last wake + usual last
-  # window"; the adaptive blend leans on whichever has been steadier, within
-  # these bounds on the wake-window side's share.
-  @bedtime_wake_share {0.25, 0.75}
-
   # Prediction refinements that can be switched off, so a backtest can score
   # them against the behaviour before them (`legacy_features/0`).
-  @default_features %{
-    trend: true,
-    night_length_wake: true,
-    symmetric_debt: true,
-    adaptive_blend: true,
-    shift_half_life: true
-  }
+  @default_features %{night_length_wake: true, shift_half_life: true}
 
   @doc """
   Summarizes `days` (oldest first) and builds a prediction for `today`.
@@ -161,7 +138,7 @@ defmodule Trygg.Reports.Insights do
 
     recent_stats = %{
       naps: weighted_nap_stats(child, weighted, today.date),
-      wake_windows: weighted_wake_stats(weighted, today.date, features.trend),
+      wake_windows: weighted_wake_stats(weighted),
       morning_wake: weighted_clock_stat(child, weighted, :morning_wake, recent_ready?, false),
       bedtime: weighted_clock_stat(child, weighted, :bedtime, recent_ready?, true),
       corrected_age_days: Norms.corrected_age_days(child, today.date)
@@ -395,82 +372,28 @@ defmodule Trygg.Reports.Insights do
     end)
   end
 
-  defp weighted_wake_stats(weighted_days, today_date, trend?) do
+  defp weighted_wake_stats(weighted_days) do
     closed =
       for {day, w} <- weighted_days,
           window <- day.wake_windows,
           not window.open? do
-        {window.seconds, window.ordinal, w, Date.diff(today_date, day.date)}
+        {window.seconds, window.ordinal, w}
       end
 
-    by_ordinal =
-      closed
-      |> Enum.group_by(&elem(&1, 1))
-      |> Enum.sort_by(&elem(&1, 0))
-      |> Enum.map(fn {ordinal, group} ->
-        group
-        |> Enum.map(fn {s, _o, w, _ago} -> {s, w} end)
-        |> weighted_summary()
-        |> Map.put(:ordinal, ordinal)
-      end)
-
-    overall = weighted_summary(for {s, _o, w, _ago} <- closed, do: {s, w})
-    trend = if trend?, do: wake_trend(closed, by_ordinal)
-
     %{
-      overall: apply_trend(overall, trend),
-      by_ordinal: Enum.map(by_ordinal, &apply_trend(&1, trend)),
-      trend: trend
+      overall: weighted_summary(for {s, _o, w} <- closed, do: {s, w}),
+      by_ordinal:
+        closed
+        |> Enum.group_by(&elem(&1, 1))
+        |> Enum.sort_by(&elem(&1, 0))
+        |> Enum.map(fn {ordinal, group} ->
+          group
+          |> Enum.map(fn {s, _o, w} -> {s, w} end)
+          |> weighted_summary()
+          |> Map.put(:ordinal, ordinal)
+        end)
     }
   end
-
-  # Wake windows drift with age, and a (recency-weighted) median always sits a
-  # few days behind a drift. Fit one slope through every window's deviation
-  # from its own ordinal's median, and lean the medians that far toward where
-  # the line says they are now — damped, capped, and only on enough data.
-  defp wake_trend(closed, by_ordinal) do
-    medians = Map.new(by_ordinal, &{&1.ordinal, &1.median})
-
-    points =
-      for {s, o, w, ago} <- closed, is_number(medians[o]), do: {-ago, s - medians[o], w, ago}
-
-    agos = for {_x, _r, _w, ago} <- points, do: ago
-    span = if agos == [], do: 0, else: Enum.max(agos) - Enum.min(agos)
-
-    with true <- length(points) >= @trend_min_windows and span >= @trend_min_span_days,
-         slope when is_number(slope) <-
-           Stats.weighted_slope(
-             Enum.map(points, &elem(&1, 0)),
-             Enum.map(points, &elem(&1, 1)),
-             Enum.map(points, &elem(&1, 2))
-           ) do
-      total_w = points |> Enum.map(&elem(&1, 2)) |> Enum.sum()
-      centroid = Enum.sum(for {_x, _r, w, ago} <- points, do: w * ago) / total_w
-
-      %{
-        slope_seconds_per_day: slope,
-        centroid_days: centroid,
-        shift_seconds: @trend_damp * slope * centroid
-      }
-    else
-      _ -> nil
-    end
-  end
-
-  defp apply_trend(%{median: med} = summary, %{shift_seconds: shift}) when is_number(med) do
-    cap = min(@trend_cap_seconds, @trend_cap_fraction * med)
-    adj = clamp(shift, -cap, cap)
-
-    %{
-      summary
-      | median: med + adj,
-        quartiles:
-          summary.quartiles &&
-            {elem(summary.quartiles, 0) + adj, elem(summary.quartiles, 1) + adj}
-    }
-  end
-
-  defp apply_trend(summary, _trend), do: summary
 
   # Nap *count* is taken from complete prior days only (today's partial count
   # would otherwise drag the median down, and today carries the most weight).
@@ -923,7 +846,6 @@ defmodule Trygg.Reports.Insights do
       morning_wake: morning,
       bedtime: bedtime,
       night: night_prediction(child, night, stats, now),
-      wake_trend: stats.wake_windows.trend,
       transition?: transition?
     })
   end
@@ -1274,7 +1196,9 @@ defmodule Trygg.Reports.Insights do
     base =
       cond do
         median_dt && from_wake ->
-          %{at: blend_datetimes(median_dt, from_wake, wake_share(stats)), source: :blended}
+          unix = div(DateTime.to_unix(median_dt) + DateTime.to_unix(from_wake), 2)
+          at = DateTime.from_unix!(unix) |> DateTime.truncate(:second)
+          %{at: at, source: :blended}
 
         median_dt ->
           %{at: median_dt, source: :history}
@@ -1288,28 +1212,6 @@ defmodule Trygg.Reports.Insights do
 
     finish_bedtime(base, child, today, stats, n_done, typical, bias)
   end
-
-  # The share of the bedtime blend taken from "last wake + usual last window"
-  # (the rest is the usual clock time): the steadier of the two leads, so a
-  # child with a loose bedtime but a steady last window is read off the window,
-  # and the reverse.
-  defp wake_share(%{features: %{adaptive_blend: true}} = stats) do
-    clock_iqr = stats.bedtime.iqr_minutes && stats.bedtime.iqr_minutes * 60
-
-    wake_iqr =
-      case List.last(stats.wake_windows.by_ordinal) do
-        %{quartiles: {lo, hi}} -> hi - lo
-        _ -> nil
-      end
-
-    {lo, hi} = @bedtime_wake_share
-
-    if is_number(clock_iqr) and is_number(wake_iqr) and clock_iqr + wake_iqr > 0,
-      do: clamp(clock_iqr / (clock_iqr + wake_iqr), lo, hi),
-      else: 0.5
-  end
-
-  defp wake_share(_stats), do: 0.5
 
   defp finish_bedtime(nil, _child, _today, _stats, _n_done, _typical, _bias), do: nil
 
@@ -1357,8 +1259,7 @@ defmodule Trygg.Reports.Insights do
   end
 
   # When the day's daytime sleep is running short of this child's norm, bring
-  # bedtime earlier by half the deficit (capped), but never before 18:00 local;
-  # when it is well over, nudge it later (`shifted_by_seconds` < 0).
+  # bedtime earlier by half the deficit (capped), but never before 18:00 local.
   defp shift_for_nap_debt(at, child, today, stats, n_done, typical) do
     typ = stats.naps[:day_total_median]
 
@@ -1374,20 +1275,13 @@ defmodule Trygg.Reports.Insights do
     done = closed_nap_seconds(today)
     deficit = if is_number(typ), do: typ - (done + remaining), else: 0
 
-    cond do
-      deficit > @nap_debt_threshold ->
-        earlier = min(round(deficit / 2), @max_bedtime_shift)
-        floor = minutes_to_dt(child, today.date, @earliest_bedtime_minutes)
-        shifted = at |> DateTime.add(-earlier, :second) |> clamp_after_floor(floor)
-        {shifted, DateTime.diff(at, shifted, :second)}
-
-      stats.features.symmetric_debt and -deficit > @nap_surplus_threshold ->
-        # A surplus of daytime sleep: later by half of it, never by much.
-        later = min(round(-deficit / 2), @max_bedtime_delay)
-        {DateTime.add(at, later, :second), -later}
-
-      true ->
-        {at, 0}
+    if deficit > @nap_debt_threshold do
+      earlier = min(round(deficit / 2), @max_bedtime_shift)
+      floor = minutes_to_dt(child, today.date, @earliest_bedtime_minutes)
+      shifted = at |> DateTime.add(-earlier, :second) |> clamp_after_floor(floor)
+      {shifted, DateTime.diff(at, shifted, :second)}
+    else
+      {at, 0}
     end
   end
 

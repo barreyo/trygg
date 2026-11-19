@@ -33,19 +33,6 @@ defmodule Trygg.Reports.StatsTest do
     assert %{n: 3, median: 2.0, mean: 2.0} = Stats.sample([1, nil, 2, 3])
   end
 
-  test "weighted_slope is the weighted least-squares gradient" do
-    assert Stats.weighted_slope([1], [1], [1]) == nil
-    assert Stats.weighted_slope([2, 2, 2], [1, 2, 3], [1, 1, 1]) == nil
-    assert_in_delta Stats.weighted_slope([0, 1, 2], [0, 2, 4], [1, 1, 1]), 2.0, 1.0e-9
-    # Equal weights match the unweighted slope.
-    assert_in_delta Stats.weighted_slope([0, 1, 2, 3], [0, 2, 3, 7], [1, 1, 1, 1]),
-                    Stats.slope([0, 1, 2, 3], [0, 2, 3, 7]),
-                    1.0e-9
-
-    # A heavily-weighted pair dominates the fit; zero-weight points are ignored.
-    assert_in_delta Stats.weighted_slope([0, 1, 5], [0, 1, 100], [1000, 1000, 0]), 1.0, 1.0e-9
-  end
-
   test "slope is the least-squares gradient per index" do
     assert Stats.slope([1]) == nil
     assert_in_delta Stats.slope([0, 2, 4, 6]), 2.0, 1.0e-9

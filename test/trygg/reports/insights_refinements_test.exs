@@ -283,125 +283,6 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
     end
   end
 
-  describe "daytime sleep running over" do
-    test "pushes bedtime a little later, never by more than half an hour" do
-      child = %{child() | birth_date: ~D[2025-11-15]}
-
-      two_nap_day = fn date ->
-        prev = Date.add(date, -1)
-
-        [
-          sleep(dt(prev, ~T[20:00:00]), dt(date, ~T[07:00:00])),
-          sleep(dt(date, ~T[09:30:00]), dt(date, ~T[11:00:00])),
-          sleep(dt(date, ~T[13:30:00]), dt(date, ~T[15:00:00])),
-          sleep(dt(date, ~T[19:30:00]), dt(Date.add(date, 1), ~T[07:00:00]))
-        ]
-      end
-
-      dates = for d <- 1..4, do: Date.new!(2026, 3, d)
-      history = Enum.flat_map(dates, two_nap_day)
-      now = ~U[2026-03-05 17:00:00Z]
-
-      # Today both naps ran three hours.
-      long = [
-        sleep(~U[2026-03-04 19:30:00Z], ~U[2026-03-05 07:00:00Z]),
-        sleep(~U[2026-03-05 09:30:00Z], ~U[2026-03-05 12:30:00Z]),
-        sleep(~U[2026-03-05 13:30:00Z], ~U[2026-03-05 16:30:00Z])
-      ]
-
-      entries = history ++ long
-      days = Enum.map(dates, &Day.build(child, &1, entries, now))
-      today = Day.build(child, ~D[2026-03-05], entries, now)
-
-      %{prediction: p} = Insights.summarize(child, days, today, now)
-
-      %{prediction: legacy} =
-        Insights.summarize(child, days, today, now, features: Insights.legacy_features())
-
-      assert p.bedtime.shifted_by_seconds == -30 * 60
-      assert legacy.bedtime.shifted_by_seconds == 0
-      assert DateTime.diff(p.bedtime.at, legacy.bedtime.at) == 30 * 60
-    end
-  end
-
-  describe "the bedtime blend" do
-    test "leans on the steadier of the clock time and the last wake window" do
-      # Bedtime is always 20:00, but the nap (so the last wake window) wanders.
-      nap_ends = [
-        ~T[14:00:00],
-        ~T[15:30:00],
-        ~T[16:30:00],
-        ~T[15:00:00],
-        ~T[17:00:00],
-        ~T[14:30:00]
-      ]
-
-      entries =
-        for {nap_end, i} <- Enum.with_index(nap_ends), reduce: night(~D[2026-02-28], @unbroken) do
-          acc ->
-            date = Date.add(~D[2026-03-01], i)
-
-            acc ++
-              night(date, @unbroken) ++
-              [sleep(DateTime.add(dt(date, nap_end), -3600), dt(date, nap_end))]
-        end
-
-      dates = for i <- 0..5, do: Date.add(~D[2026-03-01], i)
-
-      # Today the nap ended late, so "last wake + usual window" says late.
-      entries = entries ++ [sleep(~U[2026-03-07 16:30:00Z], ~U[2026-03-07 17:30:00Z])]
-      now = ~U[2026-03-07 18:00:00Z]
-
-      %{prediction: p} = summarize(entries, dates, ~D[2026-03-07], now)
-
-      %{prediction: even} =
-        summarize(entries, dates, ~D[2026-03-07], now, features: %{adaptive_blend: false})
-
-      clock = ~U[2026-03-07 20:00:00Z]
-
-      # A rock-steady clock against a wobbly window: closer to the clock than
-      # the even blend is, but not all the way.
-      assert DateTime.compare(p.bedtime.at, clock) == :gt
-      assert DateTime.diff(p.bedtime.at, clock) < DateTime.diff(even.bedtime.at, clock)
-    end
-  end
-
-  describe "the wake-window trend" do
-    test "leans toward where steadily lengthening windows are now" do
-      # The morning window grows 3 minutes a day (nap 1 starts later; it always
-      # ends at noon); nothing else moves.
-      dates = for d <- 1..12, do: Date.new!(2026, 3, d)
-
-      entries =
-        Enum.flat_map([Date.add(hd(dates), -1) | dates], &night(&1, @unbroken)) ++
-          for {date, i} <- Enum.with_index(dates) do
-            start = dt(date, ~T[09:00:00]) |> DateTime.add(i * 3 * 60, :second)
-            sleep(start, dt(date, ~T[12:00:00]))
-          end
-
-      now = ~U[2026-03-13 07:30:00Z]
-      today = ~D[2026-03-13]
-
-      %{prediction: %{wake_trend: trend} = on} = summarize(entries, dates, today, now)
-
-      %{prediction: off} =
-        summarize(entries, dates, today, now, features: %{trend: false})
-
-      assert trend.slope_seconds_per_day > 0
-      # Lengthening windows: the nap comes later than the plain median says, by
-      # a damped, capped amount.
-      shift = DateTime.diff(on.next_nap.at, off.next_nap.at)
-      assert shift > 0
-      assert shift <= 10 * 60
-    end
-
-    test "does nothing without enough windows over enough days" do
-      {entries, dates} = history(@unbroken, ~D[2026-03-01], ~D[2026-03-04])
-      %{prediction: p} = summarize(entries, dates, ~D[2026-03-05], ~U[2026-03-05 08:00:00Z])
-      assert p.wake_trend == nil
-    end
-  end
-
   describe "a shift in the child's own pattern" do
     test "shortens the half-life so recent nights win sooner" do
       dates = for d <- 1..17, do: Date.new!(2026, 3, d)
@@ -478,6 +359,6 @@ defmodule Trygg.Reports.InsightsRefinementsTest do
 
   test "legacy_features switches every refinement off" do
     assert Insights.legacy_features() |> Map.values() |> Enum.all?(&(&1 == false))
-    assert map_size(Insights.legacy_features()) >= 5
+    assert map_size(Insights.legacy_features()) == 2
   end
 end
