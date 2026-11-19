@@ -507,7 +507,23 @@ defmodule TryggWeb.ReportsLive do
     <p :if={@prediction.bedtime} class="text-sm opacity-70 mt-1">
       Typical bedtime {@prediction.bedtime.label}
     </p>
-    <ul :if={@next_feed} class="text-sm mt-1">
+    <%!-- Overnight the first feed comes from how long her first stretch usually
+         lasts, which a daytime feeding interval can't know. --%>
+    <ul :if={night_feed(@prediction)} id="outlook-night" class="text-sm mt-1 space-y-1">
+      <li id="outlook-night-feed">
+        <span class="opacity-70">First feed ≈</span>
+        <span class="font-semibold tabular-nums">{night_feed(@prediction).label}</span>
+        <span :if={night_feed(@prediction).range} class="opacity-70 tabular-nums">
+          ({night_feed(@prediction).range.label})
+        </span>
+        <span class="opacity-70">{"· " <> in_label(night_feed(@prediction).in_seconds)}</span>
+      </li>
+      <li :if={night_wake(@prediction)} id="outlook-night-wake">
+        <span class="opacity-70">Up around</span>
+        <span class="font-semibold tabular-nums">{night_wake(@prediction).label}</span>
+      </li>
+    </ul>
+    <ul :if={@next_feed && !night_feed(@prediction)} class="text-sm mt-1">
       <.next_feed_line next_feed={@next_feed} />
     </ul>
     """
@@ -549,6 +565,9 @@ defmodule TryggWeb.ReportsLive do
           {if @prediction.bedtime.estimate?, do: "Bedtime ≈", else: "Bedtime"}
         </span>
         <span class="font-semibold tabular-nums">{@prediction.bedtime.label}</span>
+        <span :if={@prediction.bedtime[:range]} class="opacity-70 tabular-nums">
+          ({@prediction.bedtime.range.label})
+        </span>
       </li>
       <li :if={
         @prediction.morning_wake == nil and @prediction.next_nap == nil and @prediction.bedtime == nil
@@ -566,6 +585,12 @@ defmodule TryggWeb.ReportsLive do
     </ul>
     """
   end
+
+  defp night_feed(%{night: %{next_feed: %{} = feed}}), do: feed
+  defp night_feed(_prediction), do: nil
+
+  defp night_wake(%{night: %{morning_wake: %{} = wake}}), do: wake
+  defp night_wake(_prediction), do: nil
 
   attr :next_feed, :map, default: nil
 

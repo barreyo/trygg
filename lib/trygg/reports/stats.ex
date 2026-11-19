@@ -187,6 +187,32 @@ defmodule Trygg.Reports.Stats do
   def slope(ys) when length(ys) < 2, do: nil
   def slope(ys), do: slope(Enum.to_list(0..(length(ys) - 1)), ys)
 
+  @doc """
+  Weighted least squares slope of `ys` against `xs`, each point carrying the
+  matching weight in `weights`. Points with a non-positive or non-numeric
+  weight are dropped. `nil` with fewer than two points left or no spread in
+  `xs`.
+  """
+  def weighted_slope(xs, ys, weights)
+      when is_list(xs) and is_list(ys) and is_list(weights) do
+    pts =
+      [xs, ys, weights]
+      |> Enum.zip()
+      |> Enum.filter(fn {x, y, w} -> is_number(x) and is_number(y) and is_number(w) and w > 0 end)
+
+    if length(pts) < 2 do
+      nil
+    else
+      sw = pts |> Enum.map(&elem(&1, 2)) |> Enum.sum()
+      mx = Enum.sum(for {x, _y, w} <- pts, do: w * x) / sw
+      my = Enum.sum(for {_x, y, w} <- pts, do: w * y) / sw
+      sxx = Enum.sum(for {x, _y, w} <- pts, do: w * (x - mx) * (x - mx))
+      sxy = Enum.sum(for {x, y, w} <- pts, do: w * (x - mx) * (y - my))
+
+      if sxx == 0, do: nil, else: sxy / sxx
+    end
+  end
+
   @doc "Ordinary least squares slope of `ys` against `xs`, or `nil`."
   def slope(xs, ys) when length(xs) != length(ys) or length(ys) < 2, do: nil
 

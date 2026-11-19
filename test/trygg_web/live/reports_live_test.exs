@@ -270,6 +270,64 @@ defmodule TryggWeb.ReportsLiveTest do
     assert has_element?(lv, "#sleep-#{entry.id}")
   end
 
+  describe "asleep overnight" do
+    # A fixed-offset zone that keeps the child's local time around 23:00
+    # whenever the test runs, so "tonight" has begun but not ended.
+    defp late_evening_zone do
+      offset = rem(23 - DateTime.utc_now().hour + 24, 24)
+      offset = if offset > 14, do: offset - 24, else: offset
+
+      cond do
+        offset == 0 -> "Etc/UTC"
+        offset > 0 -> "Etc/GMT-#{offset}"
+        true -> "Etc/GMT+#{-offset}"
+      end
+    end
+
+    defp local_utc(date, time, zone) do
+      date |> DateTime.new!(time, zone) |> DateTime.shift_zone!("Etc/UTC")
+    end
+
+    defp sleep!(scope, child, started, ended) do
+      attrs = %{:type => :sleep, "started_at" => started}
+      entry_fixture(scope, child, if(ended, do: Map.put(attrs, "ended_at", ended), else: attrs))
+    end
+
+    test "shows the first feed and the morning wake from her recent nights", %{
+      conn: conn,
+      scope: scope
+    } do
+      zone = late_evening_zone()
+      child = child_fixture(scope, %{timezone: zone})
+      today = Child.local_today(child)
+
+      # A week of: down at 21:00, a feed 6.5h later, up at 07:30.
+      for k <- 8..1//-1 do
+        date = Date.add(today, -k)
+        bed = local_utc(date, ~T[21:00:00], zone)
+        first_end = DateTime.add(bed, 390 * 60, :second)
+
+        sleep!(scope, child, bed, first_end)
+
+        sleep!(
+          scope,
+          child,
+          DateTime.add(first_end, 30 * 60, :second),
+          local_utc(Date.add(date, 1), ~T[07:30:00], zone)
+        )
+      end
+
+      # Tonight she went down at 21:00 and is still asleep.
+      sleep!(scope, child, local_utc(today, ~T[21:00:00], zone), nil)
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
+
+      assert has_element?(lv, "#outlook-asleep")
+      assert has_element?(lv, "#outlook-night-feed", "03:30")
+      assert has_element?(lv, "#outlook-night-wake", "07:30")
+    end
+  end
+
   describe "trends: feeding, diapers and changes" do
     test "cards render their empty states without any logs", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/reports?view=trends")
