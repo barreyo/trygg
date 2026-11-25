@@ -196,9 +196,7 @@ defmodule TryggWeb.SleepToolkitLive do
             />
             <.bedtime_panel
               plan={@toolkit.bedtime_plan}
-              table={@toolkit.table}
-              guide_day={@toolkit.guide_day}
-              tz={@current_child.timezone}
+              child_id={@current_child.id}
             />
           </:left>
           <:right>

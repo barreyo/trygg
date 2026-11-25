@@ -181,9 +181,7 @@ defmodule TryggWeb.SleepToolkitComponents do
   ## Bedtime plan -----------------------------------------------------------------
 
   attr :plan, :map, default: nil
-  attr :table, :map, default: nil
-  attr :guide_day, :map, default: nil
-  attr :tz, :string, required: true
+  attr :child_id, :integer, required: true
 
   def bedtime_panel(%{plan: nil} = assigns) do
     ~H"""
@@ -226,36 +224,15 @@ defmodule TryggWeb.SleepToolkitComponents do
         (100–120 minutes before bed).
       </p>
 
-      <details :if={@guide_day} id="guide-day" class="fold mt-4">
-        <summary class="cursor-pointer text-sm font-semibold text-primary">
-          A day by the guide ({@table.label})
-        </summary>
-        <p class="mt-1 text-xs opacity-70">
-          {@table.naps} naps, awake {format_duration(elem(@table.wake_window, 0) * 60)}–{format_duration(
-            elem(@table.wake_window, 1) * 60
-          )} between, and {format_duration(elem(@table.daytime_goal, 0) * 60)}–{format_duration(
-            elem(@table.daytime_goal, 1) * 60
-          )} of daytime sleep (not over {format_duration(@table.daytime_cap * 60)}). Feeds {@table.feeds}.
-        </p>
-        <table class="mt-2 w-full text-sm">
-          <tbody>
-            <tr
-              :for={item <- @guide_day.items}
-              id={"guide-#{item.kind}-#{item.ordinal || "bed"}"}
-              class="border-t border-base-300"
-            >
-              <th scope="row" class="py-1.5 pr-3 text-left font-medium whitespace-nowrap">
-                {guide_label(item)}
-              </th>
-              <td class="tabular-nums">{guide_time(item, @tz)}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p :for={note <- @guide_day.notes} class="mt-1 text-xs opacity-70">{guide_note(note)}</p>
-        <p class="mt-2 text-xs opacity-70">
-          Built from this morning's wake-up. A routine to practise, not a schedule to follow exactly.
-        </p>
-      </details>
+      <p class="mt-3 text-sm">
+        <.link
+          id="bedtime-schedule-link"
+          navigate={"/c/#{@child_id}/sleep/schedule"}
+          class="font-semibold text-primary"
+        >
+          See and change their day →
+        </.link>
+      </p>
     </section>
     """
   end
@@ -276,18 +253,6 @@ defmodule TryggWeb.SleepToolkitComponents do
 
   defp step_label(1), do: "Tonight"
   defp step_label(n), do: "Evening #{n}"
-
-  defp guide_label(%{kind: :nap, ordinal: n}), do: "Nap #{n}"
-  defp guide_label(%{kind: :bed}), do: "Bedtime"
-
-  defp guide_time(%{kind: :bed, start: at}, tz), do: clock(at, tz)
-  defp guide_time(%{start: from, end: to}, tz), do: clock(from, tz) <> "–" <> clock(to, tz)
-
-  defp guide_note(:late_naps),
-    do: "The naps run late for the bedtime window: shorten the last nap or wake from it sooner."
-
-  defp guide_note(:early_bedtime),
-    do: "An early bedtime, because the day ended early. Earlier is fine when naps were short."
 
   ## Night feeds ------------------------------------------------------------------
 
