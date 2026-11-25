@@ -247,6 +247,7 @@ defmodule TryggWeb.SleepScheduleLive do
                 history={(@data.schedule && @data.schedule.history) || []}
                 can_write={@can_write}
               />
+              <.schedule_fit_panel fit={@data.fit} tz={@current_child.timezone} />
             </:left>
             <:right>
               <.schedule_form_panel form={@form} eff={@data.effective} can_write={@can_write} />

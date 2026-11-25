@@ -124,6 +124,136 @@ defmodule Trygg.Sleep.NudgesTest do
     end
   end
 
+  describe "candidates/1 from the family's own schedule" do
+    defp schedule(attrs \\ []) do
+      Map.merge(
+        %{
+          customized?: true,
+          mode: :guide,
+          slots: [
+            %{ordinal: 1, window: %{minutes: 90}},
+            %{ordinal: 2, window: %{minutes: 100}}
+          ],
+          bedtime: %{source: :guide, minutes: 19 * 60}
+        },
+        Map.new(attrs)
+      )
+    end
+
+    defp scheduled(attrs) do
+      now = attrs[:now] || t(8, 25)
+
+      ctx(
+        [
+          now: now,
+          phase: %{id: :foundations, age_days: 100},
+          schedule: schedule(),
+          today: %{naps: [], morning_wake: t(7), bedtime: nil},
+          insights: [%{id: "nap-window", detail: "Awake 1h 30m."}]
+        ] ++ Keyword.delete(attrs, :now)
+      )
+    end
+
+    test "the first nap's window nudges from ten minutes before it ends" do
+      assert [%{kind: :nap_window, title: title, body: body, key: key}] =
+               Nudges.candidates(scheduled(now: t(8, 20)))
+
+      assert title == "Nap 1 is due around 08:30"
+      assert body =~ "90 minutes"
+      assert key == "sched-nap:1:#{DateTime.to_unix(t(7))}"
+
+      assert kinds(scheduled(now: t(8, 19))) == []
+    end
+
+    test "still nudges a little after the window, then lets it go" do
+      assert kinds(scheduled(now: t(8, 59))) == [:nap_window]
+      assert kinds(scheduled(now: t(9, 1))) == []
+    end
+
+    test "counts from the end of the last nap and moves on to the next slot" do
+      nap = %{running?: false, end: t(10), ordinal: 1}
+      today = %{naps: [nap], morning_wake: t(7), bedtime: nil}
+
+      assert [%{title: "Nap 2 is due around 11:40", key: key}] =
+               Nudges.candidates(scheduled(now: t(11, 35), today: today))
+
+      assert key == "sched-nap:2:#{DateTime.to_unix(t(10))}"
+    end
+
+    test "has nothing to say once the day's naps are done, while asleep, or at night" do
+      done = %{
+        naps: [
+          %{running?: false, end: t(10), ordinal: 1},
+          %{running?: false, end: t(13), ordinal: 2}
+        ],
+        morning_wake: t(7),
+        bedtime: nil
+      }
+
+      assert kinds(scheduled(now: t(14), today: done)) == []
+
+      asleep = put_in(scheduled(now: t(8, 30)).prediction.state, :asleep)
+      assert kinds(asleep) == []
+
+      assert kinds(scheduled(now: t(22), today: %{naps: [], morning_wake: t(20), bedtime: nil})) ==
+               []
+    end
+
+    test "replaces the history-based nap nudge, but only for a family with their own schedule" do
+      stock = scheduled(now: t(8, 20))
+      assert [%{key: "sched-nap:" <> _}] = Nudges.candidates(stock)
+
+      guide_only = %{stock | schedule: schedule(customized?: false)}
+      assert [%{key: "nap-window:" <> _}] = Nudges.candidates(guide_only)
+
+      # The newborn rhythm has no nap slots to follow either.
+      newborn = %{stock | schedule: schedule(mode: :newborn, slots: [])}
+      assert [%{key: "nap-window:" <> _}] = Nudges.candidates(newborn)
+    end
+
+    test "the bedtime routine follows the bedtime they chose" do
+      ctx =
+        scheduled(
+          now: t(18, 35),
+          schedule: schedule(bedtime: %{source: :pinned, minutes: 19 * 60}),
+          today: %{naps: [], morning_wake: t(7), bedtime: nil},
+          insights: [],
+          prediction: %{
+            state: :awake,
+            anchor_ts: t(17),
+            bedtime: %{at: t(20, 45), label: "20:45"}
+          }
+        )
+
+      assert [%{kind: :bedtime_routine, key: "bedtime:2026-10-10", body: body}] =
+               Nudges.candidates(ctx)
+
+      assert body =~ "Your schedule has bedtime at 19:00"
+
+      # Thirty minutes ahead, not before; and not once it has started or has passed.
+      assert kinds(%{ctx | now: t(18, 29)}) == []
+      assert kinds(%{ctx | now: t(19, 1)}) == []
+      assert kinds(%{ctx | today: %{ctx.today | bedtime: t(18, 30)}}) == []
+      assert kinds(%{ctx | phase: %{id: :newborn, age_days: 40}}) == []
+    end
+
+    test "a bedtime the model only estimated doesn't override the estimate's nudge" do
+      ctx =
+        scheduled(
+          now: t(19, 15),
+          insights: [],
+          prediction: %{
+            state: :awake,
+            anchor_ts: t(17),
+            bedtime: %{at: t(19, 40), label: "19:40"}
+          }
+        )
+
+      assert [%{body: body}] = Nudges.candidates(ctx)
+      assert body =~ "19:40"
+    end
+  end
+
   describe "run/1" do
     setup do
       Trygg.Push.Sender.Test.listen()
@@ -189,6 +319,25 @@ defmodule Trygg.Sleep.NudgesTest do
         "endpoint" => "https://push.example.com/#{slug}",
         "keys" => %{"p256dh" => "BP#{slug}", "auth" => "auth-#{slug}"}
       }
+    end
+
+    test "follows the family's own wake windows once they've set them", ctx do
+      {:ok, child} =
+        Families.update_child(ctx.owner, ctx.child, %{
+          birth_date: Date.add(Date.utc_today(), -100)
+        })
+
+      # The nap ended 90 minutes ago: nap 2's window of 95 minutes ends in five.
+      {:ok, _} =
+        Trygg.Sleep.DaySchedules.save(ctx.owner, child, %{wake_windows: [nil, 95]})
+
+      assert run_scan() == 1
+      assert_received {:web_push, _sub, message}
+      payload = Jason.decode!(message)
+      assert payload["title"] =~ "Nap 2 is due around"
+      refute payload["title"] =~ "nap window"
+
+      assert run_scan() == 0
     end
 
     test "sends the nap window nudge to every caregiver, once", ctx do

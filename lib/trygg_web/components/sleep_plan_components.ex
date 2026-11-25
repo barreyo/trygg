@@ -211,7 +211,7 @@ defmodule TryggWeb.SleepPlanComponents do
 
   @doc """
   Today's whole sleep day as a timeline: what happened, what's running, what's
-  predicted. `plan` is a `Trygg.Reports.DayPlan.build/3` map.
+  predicted. `plan` is a `Trygg.Reports.DayPlan.build/5` map.
   """
   attr :plan, :map, required: true
   attr :tz, :string, required: true
@@ -863,6 +863,7 @@ defmodule TryggWeb.SleepPlanComponents do
   defp presence(""), do: nil
   defp presence(s), do: s
 
+  defp source_label(:schedule), do: "The bedtime in your schedule"
   defp source_label(:history), do: "Based on their last couple of weeks"
   defp source_label(:blended), do: "A blend of their pattern and what's typical for their age"
   defp source_label(:age_prior), do: "Typical for their age so far"
