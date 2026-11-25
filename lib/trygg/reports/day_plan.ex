@@ -19,6 +19,10 @@ defmodule Trygg.Reports.DayPlan do
   two of history the model can land on one mid-afternoon, and showing it would
   only mislead.
 
+  A bedtime the family has chosen (`bedtime: minutes` after local midnight in
+  the options) replaces the estimate, with `source: :schedule`; it is shown
+  whatever the hour, since they set it.
+
   Pure: takes the child, their `%Day{}` for today, the `Insights` prediction and
   now.
   """
@@ -30,13 +34,14 @@ defmodule Trygg.Reports.DayPlan do
   Builds the plan. `prediction` may be `nil` (no history yet), in which case only
   what has already happened is listed.
   """
-  def build(%Child{} = child, %Day{} = today, prediction, %DateTime{} = now) do
+  def build(%Child{} = child, %Day{} = today, prediction, %DateTime{} = now, opts \\ []) do
     done = done_items(today, now)
 
     items =
       [wake_item(today, prediction, now)]
       |> Kernel.++(done)
       |> Kernel.++(today |> upcoming_items(prediction, now) |> after_last_nap(done))
+      |> Enum.map(&chosen_bedtime(&1, child, today, opts[:bedtime]))
       |> Enum.reject(&implausible_bedtime?(&1, child))
       |> Enum.reject(&is_nil/1)
       |> link_awake()
@@ -45,6 +50,22 @@ defmodule Trygg.Reports.DayPlan do
   end
 
   @earliest_bedtime_minutes 17 * 60
+
+  defp chosen_bedtime(%{kind: :bed, estimate?: true} = item, child, today, minutes)
+       when is_integer(minutes) do
+    time = Time.new!(div(minutes, 60), rem(minutes, 60), 0)
+
+    %{
+      item
+      | start: Child.at_local(child, today.date, time),
+        source: :schedule,
+        shifted_by_seconds: nil
+    }
+  end
+
+  defp chosen_bedtime(item, _child, _today, _minutes), do: item
+
+  defp implausible_bedtime?(%{source: :schedule}, _child), do: false
 
   defp implausible_bedtime?(%{kind: :bed, estimate?: true, start: at}, child) do
     local = DateTime.shift_zone!(at, child.timezone)

@@ -222,6 +222,71 @@ defmodule TryggWeb.SleepScheduleComponents do
       "It looks like a rough patch around a common regression age. Changing the day now would mistake a blip for a pattern, so suggestions wait until things settle."
 
   @doc """
+  How the last two weeks lined up with the day above. `fit` is a
+  `Trygg.Reports.ScheduleFit.score/3` map.
+  """
+  attr :fit, :map, required: true
+  attr :tz, :string, required: true
+
+  def schedule_fit_panel(%{fit: %{ready?: false}} = assigns) do
+    ~H"""
+    <section id="schedule-fit" class={panel_class()}>
+      <h2 class={heading_class()}>How the last two weeks fit</h2>
+      <p id="fit-waiting" class="text-sm opacity-80">
+        This lines the day up against what they did once there are about {Trygg.Reports.ScheduleFit.min_days()} complete days of sleep logged. {@fit.days} so far.
+      </p>
+    </section>
+    """
+  end
+
+  def schedule_fit_panel(assigns) do
+    ~H"""
+    <section id="schedule-fit" class={panel_class()}>
+      <h2 class={heading_class()}>How the last two weeks fit</h2>
+      <ul class="space-y-1.5 text-sm">
+        <li :if={@fit.naps} id="fit-naps">
+          <span class="font-medium">Naps:</span>
+          the schedule has {@fit.naps.scheduled} a day; they took exactly that on {@fit.naps.matched} of {@fit.days} days
+          (usually {format_count(@fit.naps.median)}).
+        </li>
+        <li :for={w <- @fit.windows} id={"fit-window-#{w.ordinal}"}>
+          <span class="font-medium">Before nap {w.ordinal}:</span>
+          awake {format_duration(w.median * 60)} usually, against {format_duration(w.scheduled * 60)} planned
+          ({signed(w.delta)}).
+        </li>
+        <li :if={@fit.wake} id="fit-wake">
+          <span class="font-medium">Wake-up:</span>
+          {drift(@fit.wake)} {TimeFormat.clock(@fit.wake.scheduled)}; within 30 minutes of it on {@fit.wake.close} of {@fit.wake.n} mornings.
+        </li>
+        <li :if={@fit.bedtime} id="fit-bedtime">
+          <span class="font-medium">Bedtime:</span>
+          {drift(@fit.bedtime)} {TimeFormat.clock(@fit.bedtime.scheduled)}; within 30 minutes of it on {@fit.bedtime.close} of {@fit.bedtime.n} nights.
+        </li>
+      </ul>
+      <p :if={!@fit.naps and !@fit.wake and !@fit.bedtime} id="fit-nothing" class="text-sm opacity-80">
+        Nothing to line up yet. Set a wake-up or bedtime below and this shows how closely they keep to it.
+      </p>
+      <p class="mt-2 text-xs opacity-70">
+        A look back over {@fit.days} days, not a grade. A gap that lasts is what the suggestions above pick up on.
+      </p>
+    </section>
+    """
+  end
+
+  defp signed(0), do: "on the mark"
+  defp signed(n) when n > 0, do: "#{n} min longer"
+  defp signed(n), do: "#{-n} min shorter"
+
+  defp drift(%{median_delta: delta}) when abs(delta) <= 10, do: "usually right on"
+  defp drift(%{median_delta: delta}) when delta > 0, do: "usually #{delta} min after"
+  defp drift(%{median_delta: delta}), do: "usually #{-delta} min before"
+
+  defp format_count(n) when is_float(n),
+    do: n |> Float.round(1) |> to_string() |> String.trim_trailing(".0") |> Kernel.<>(" a day")
+
+  defp format_count(n), do: "#{n} a day"
+
+  @doc """
   The form for the family's choices. `form` is built from the params (see
   `Trygg.Sleep.DaySchedules.parse_params/1`); blanks follow the guide.
   """

@@ -196,6 +196,33 @@ defmodule TryggWeb.SleepScheduleLiveTest do
       )
     end
 
+    test "the week is lined up against the schedule", %{conn: conn, scope: scope, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
+      assert has_element?(lv, "#fit-waiting")
+
+      log_a_fortnight(child)
+      {:ok, _} = DaySchedules.save(scope, child, %{bedtime_minutes: 19 * 60})
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
+
+      refute has_element?(lv, "#fit-waiting")
+      assert has_element?(lv, "#fit-naps", "4 a day")
+      assert has_element?(lv, "#fit-window-1")
+      assert has_element?(lv, "#fit-bedtime", "19:00")
+    end
+
+    test "the Today timeline shows the bedtime they chose", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      log_a_fortnight(child)
+      {:ok, _} = DaySchedules.save(scope, child, %{bedtime_minutes: 19 * 60 + 30})
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep")
+      assert has_element?(lv, "#plan-bed", "19:30")
+      assert has_element?(lv, "#plan-bed", "The bedtime in your schedule")
+    end
+
     test "wait for a week of log", %{conn: conn, child: child} do
       {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
 

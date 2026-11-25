@@ -340,8 +340,9 @@ defmodule Trygg.Reports do
   today's wake-up and the usual wake-up and bedtime from the log feeding it, and
   the changes the log suggests (`Trygg.Sleep.ScheduleCoach`).
 
-  Returns `%{phase, schedule, effective, coach}` (`effective` is `nil` without a
-  birth date; `coach` is `ScheduleCoach.suggest/1`'s `%{ready?, hold, suggestions}`).
+  Returns `%{phase, schedule, effective, coach, fit}` (`effective` is `nil`
+  without a birth date; `coach` is `ScheduleCoach.suggest/1`'s
+  `%{ready?, hold, suggestions}`; `fit` is `Trygg.Reports.ScheduleFit.score/3`).
   Requires `:viewer`.
   """
   def sleep_schedule(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
@@ -362,16 +363,19 @@ defmodule Trygg.Reports do
 
     effective = Trygg.Sleep.DaySchedules.effective(child, phase, schedule, inputs)
 
-    {findings, _naps} =
-      setback_checks(
-        scope,
-        child,
-        now,
-        today,
-        phase && phase.age_days,
-        s,
-        nights(scope, child, now, count: 14)
-      )
+    age_days = phase && phase.age_days
+    {days, entries} = load_days(scope, child, Date.add(today, -13), today, now)
+
+    findings =
+      Trygg.Reports.Setbacks.detect(%{
+        child: child,
+        age_days: age_days,
+        nights: nights(scope, child, now, count: 14),
+        days: days,
+        entries: entries,
+        insights: s,
+        today: today
+      })
 
     coach =
       Trygg.Sleep.ScheduleCoach.suggest(%{
@@ -384,7 +388,13 @@ defmodule Trygg.Reports do
         history: (schedule && schedule.history) || []
       })
 
-    %{phase: phase, schedule: schedule, effective: effective, coach: coach}
+    %{
+      phase: phase,
+      schedule: schedule,
+      effective: effective,
+      coach: coach,
+      fit: Trygg.Reports.ScheduleFit.score(child, effective, days)
+    }
   end
 
   @doc """
@@ -405,6 +415,7 @@ defmodule Trygg.Reports do
     phase = Trygg.Sleep.Phase.for_child(child)
 
     nights = nights(scope, child, now)
+    schedule = Trygg.Sleep.DaySchedules.get(scope, child)
 
     context = %{
       child: child,
@@ -424,7 +435,10 @@ defmodule Trygg.Reports do
       setback_checks(scope, child, now, Child.local_today(child), age_days, s, nights)
 
     %{
-      plan: DayPlan.build(child, s.today, s.prediction, now),
+      plan:
+        DayPlan.build(child, s.today, s.prediction, now,
+          bedtime: schedule && schedule.bedtime_minutes
+        ),
       findings: Enum.take(findings, 3),
       insights: Trygg.Sleep.Coach.insights(context),
       habits: habits,

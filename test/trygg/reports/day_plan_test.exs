@@ -210,4 +210,42 @@ defmodule Trygg.Reports.DayPlanTest do
   test "an empty day is an empty plan" do
     assert %{items: [], day_sleep_seconds: 0} = DayPlan.build(child(), day([], t(6)), nil, t(6))
   end
+
+  describe "a bedtime the family chose" do
+    defp planned(bed_opts, estimate_at \\ t(19, 30)) do
+      now = t(12)
+      today = day([night(), sleep(2, t(9, 30), t(10, 30))], now)
+
+      prediction =
+        prediction(
+          schedule: [bed_entry(estimate_at)],
+          bedtime: %{at: estimate_at, label: "x", source: :history, shifted_by_seconds: 600}
+        )
+
+      DayPlan.build(child(), today, prediction, now, bed_opts)
+    end
+
+    test "replaces the estimate and says where it comes from" do
+      bed = item(planned(bedtime: 18 * 60 + 45), "bed")
+
+      assert bed.start == t(18, 45)
+      assert bed.source == :schedule
+      assert bed.estimate?
+      assert bed.shifted_by_seconds == nil
+    end
+
+    test "is shown even where an estimate that early would be left out" do
+      assert item(planned([bedtime: 16 * 60], t(16, 30)), "bed").start == t(16)
+      assert item(planned([], t(16, 30)), "bed") == nil
+    end
+
+    test "leaves the estimate alone without one, and a bedtime already logged" do
+      assert item(planned([]), "bed").source == :history
+
+      now = t(20, 30)
+      today = day([night(), sleep(2, t(20, 5), t(20, 25))], now)
+      plan = DayPlan.build(child(), today, prediction([]), now, bedtime: 19 * 60)
+      assert Enum.all?(plan.items, &(&1.source != :schedule))
+    end
+  end
 end
