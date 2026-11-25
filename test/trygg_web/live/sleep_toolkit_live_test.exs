@@ -159,7 +159,7 @@ defmodule TryggWeb.SleepToolkitLiveTest do
       assert data["settle_minutes"] == 10
     end
 
-    test "the bedtime plan with no history asks for a few bedtimes, and shows the guide's day", %{
+    test "the bedtime plan with no history asks for a few bedtimes, and links to the day", %{
       conn: conn,
       child: child
     } do
@@ -167,8 +167,7 @@ defmodule TryggWeb.SleepToolkitLiveTest do
 
       assert has_element?(lv, "#toolkit-bedtime")
       assert has_element?(lv, "#bedtime-status", "Log a few bedtimes")
-      assert has_element?(lv, "#guide-day #guide-nap-1")
-      assert has_element?(lv, "#guide-day #guide-bed-bed")
+      assert has_element?(lv, "#bedtime-schedule-link[href$='/sleep/schedule']")
     end
   end
 

@@ -152,6 +152,7 @@ defmodule TryggWeb.Router do
       live "/c/:id/log", TimelineLive, :index
       live "/c/:id/sleep", SleepLive, :index
       live "/c/:id/sleep/toolkit", SleepToolkitLive, :index
+      live "/c/:id/sleep/schedule", SleepScheduleLive, :index
       live "/c/:id/sleep/plan", SleepPlanLive, :index
       live "/c/:id/sleep/playbooks", SleepPlaybooksLive, :index
       live "/c/:id/sleep/night", SleepNightLive, :index

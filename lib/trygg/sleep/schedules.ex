@@ -93,8 +93,12 @@ defmodule Trygg.Sleep.Schedules do
   `%{kind: :nap | :bed, ordinal, start, end}`. Bedtime is the last nap's end plus
   the middle of `bed_gap`, held inside the table's bedtime window (and not
   before 18:00); `notes` says when it had to be held.
+
+  With `bedtime: minutes` (after local midnight) the bedtime is that, as chosen
+  by the family, and `notes` says instead whether the last nap ends `:short_gap`
+  or `:long_gap` before it, against the table's `bed_gap`.
   """
-  def plan_day(%Child{} = child, table, %DateTime{} = wake_at) do
+  def plan_day(%Child{} = child, table, %DateTime{} = wake_at, opts \\ []) do
     {naps, last_end} =
       table.windows
       |> Enum.zip(table.nap_minutes)
@@ -107,13 +111,34 @@ defmodule Trygg.Sleep.Schedules do
 
     {gap_lo, gap_hi} = table.bed_gap
     raw = DateTime.add(last_end, div(gap_lo + gap_hi, 2) * 60, :second)
-    {bed, notes} = hold_in_window(child, table, raw)
+
+    {bed, notes} =
+      case opts[:bedtime] do
+        nil -> hold_in_window(child, table, raw)
+        minutes -> fixed_bedtime(child, table, last_end, raw, minutes)
+      end
 
     %{
       items: naps ++ [%{kind: :bed, ordinal: nil, start: bed, end: bed}],
       bedtime: bed,
       notes: notes
     }
+  end
+
+  defp fixed_bedtime(child, table, last_end, raw, minutes) do
+    {gap_lo, gap_hi} = table.bed_gap
+    date = raw |> DateTime.shift_zone!(child.timezone) |> DateTime.to_date()
+    bed = at(child, date, minutes)
+    gap = div(DateTime.diff(bed, last_end), 60)
+
+    notes =
+      cond do
+        gap < gap_lo -> [:short_gap]
+        gap > gap_hi -> [:long_gap]
+        true -> []
+      end
+
+    {bed, notes}
   end
 
   defp hold_in_window(child, table, raw) do

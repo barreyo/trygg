@@ -215,11 +215,21 @@ defmodule TryggWeb.SleepPlanComponents do
   """
   attr :plan, :map, required: true
   attr :tz, :string, required: true
+  attr :child_id, :integer, required: true
 
   def schedule_panel(assigns) do
     ~H"""
     <section id="sleep-schedule" class={panel_class()}>
-      <h2 class={heading_class()}>Today's schedule</h2>
+      <div class="flex items-baseline justify-between gap-3">
+        <h2 class={heading_class()}>Today's schedule</h2>
+        <.link
+          id="sleep-schedule-edit"
+          navigate={"/c/#{@child_id}/sleep/schedule"}
+          class="text-xs font-semibold text-primary"
+        >
+          Their day →
+        </.link>
+      </div>
 
       <%= if @plan.items == [] do %>
         <p id="sleep-schedule-empty" class="text-sm opacity-80">

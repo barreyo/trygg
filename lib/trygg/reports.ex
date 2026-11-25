@@ -309,12 +309,6 @@ defmodule Trygg.Reports do
     table = phase && Trygg.Sleep.Schedules.for_age(phase.age_days)
     usual = s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes)
 
-    wake_at =
-      s.today.morning_wake ||
-        (s.morning_wake && s.morning_wake.median_minutes &&
-           Child.at_local(child, today, minutes_to_time(s.morning_wake.median_minutes))) ||
-        Child.at_local(child, today, ~T[07:00:00])
-
     gates = Trygg.Sleep.NightFeeds.gates(child, phase || %{age_days: 0, next: nil}, growth, today)
 
     %{
@@ -322,7 +316,6 @@ defmodule Trygg.Reports do
       table: table,
       falling_asleep: falling,
       bedtime_plan: table && Trygg.Sleep.BedtimePlan.build(table, usual),
-      guide_day: table && Trygg.Sleep.Schedules.plan_day(child, table, wake_at),
       nights: nights,
       night_wakes:
         Trygg.Sleep.NightWakes.summarize(Trygg.Sleep.NightWakes.recent(scope, child, 14)),
@@ -341,9 +334,33 @@ defmodule Trygg.Reports do
     }
   end
 
-  defp minutes_to_time(minutes) do
-    minutes = round(minutes)
-    Time.new!(rem(div(minutes, 60), 24), rem(minutes, 60), 0)
+  @doc """
+  The child's sleep day for the Schedule page: what the family has chosen laid
+  over the guide for their age (`Trygg.Sleep.DaySchedules.effective/4`), with
+  today's wake-up and the usual wake-up and bedtime from the log feeding it.
+  Returns `%{phase, schedule, effective}` (`effective` is `nil` without a birth
+  date). Requires `:viewer`.
+  """
+  def sleep_schedule(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
+    Families.authorize!(scope, child, :viewer)
+    now = DateTime.truncate(now, :second)
+
+    phase = Trygg.Sleep.Phase.for_child(child)
+    s = summary(scope, child, @outlook_window, now)
+    schedule = Trygg.Sleep.DaySchedules.get(scope, child)
+
+    inputs = %{
+      today_wake: s.today.morning_wake,
+      observed_wake:
+        s.morning_wake && s.morning_wake.median_minutes && round(s.morning_wake.median_minutes),
+      observed_bed: s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes)
+    }
+
+    %{
+      phase: phase,
+      schedule: schedule,
+      effective: Trygg.Sleep.DaySchedules.effective(child, phase, schedule, inputs)
+    }
   end
 
   @doc """

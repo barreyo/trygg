@@ -31,7 +31,7 @@ defmodule Trygg.Sleep.SchedulesTest do
     end
   end
 
-  describe "plan_day/3" do
+  describe "plan_day/4" do
     test "naps follow the wake windows and bedtime follows the last nap" do
       table = Schedules.for_age(100)
       plan = Schedules.plan_day(@child, table, at(7))
@@ -63,6 +63,27 @@ defmodule Trygg.Sleep.SchedulesTest do
 
       assert plan.bedtime == at(20)
       assert :late_naps in plan.notes
+    end
+
+    test "a bedtime chosen by the family is used as it is, with a note on the last nap's gap" do
+      table = Schedules.for_age(100)
+
+      close = Schedules.plan_day(@child, table, at(7), bedtime: 18 * 60)
+      assert close.bedtime == at(18)
+      assert close.notes == [:short_gap]
+
+      far = Schedules.plan_day(@child, table, at(7), bedtime: 21 * 60)
+      assert far.bedtime == at(21)
+      assert far.notes == [:long_gap]
+
+      natural = Schedules.plan_day(@child, table, at(7))
+
+      fitting =
+        Schedules.plan_day(@child, table, at(7),
+          bedtime: DateTime.to_time(natural.bedtime) |> then(&(&1.hour * 60 + &1.minute))
+        )
+
+      assert fitting.notes == []
     end
 
     test "a very early finish gets an early bedtime, not before 18:00" do

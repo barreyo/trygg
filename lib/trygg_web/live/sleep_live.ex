@@ -281,7 +281,7 @@ defmodule TryggWeb.SleepLive do
               track_assist={!!(@phase && @phase.id != :newborn)}
               plan={@plan}
             />
-            <.schedule_panel plan={@plan} tz={@current_child.timezone} />
+            <.schedule_panel plan={@plan} tz={@current_child.timezone} child_id={@current_child.id} />
             <.insights_panel insights={@insights} findings={@findings} child={@current_child} />
           </:left>
           <:right>
