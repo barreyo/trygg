@@ -21,6 +21,10 @@ defmodule Trygg.Sleep.DaySchedule do
     field :wake_windows, {:array, :integer}, default: []
     field :nap_lengths, {:array, :integer}, default: []
     field :guide_id, :string
+    # Suggestions turned down ("<id>:<value>" => ISO date) and accepted
+    # (`%{"on", "id", "title"}`, newest last). Set by `DaySchedules`, never cast.
+    field :dismissed, :map, default: %{}
+    field :history, {:array, :map}, default: []
 
     belongs_to :child, Trygg.Families.Child
     belongs_to :updated_by, Trygg.Accounts.User
@@ -52,7 +56,10 @@ defmodule Trygg.Sleep.DaySchedule do
   @doc "The most naps a day can have here."
   def max_naps, do: @max_naps
 
-  @doc "Whether nothing is set, so the schedule is the guide as it stands."
+  @doc """
+  Whether no choice is set, so the day is the guide as it stands. (The row may
+  still be kept for the suggestions it has dismissed or accepted.)
+  """
   def empty?(%__MODULE__{} = schedule) do
     is_nil(schedule.wake_minutes) and is_nil(schedule.bedtime_minutes) and
       is_nil(schedule.nap_count) and Enum.all?(schedule.wake_windows, &is_nil/1) and

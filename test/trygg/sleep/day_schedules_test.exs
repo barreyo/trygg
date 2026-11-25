@@ -114,8 +114,10 @@ defmodule Trygg.Sleep.DaySchedulesTest do
     test "says when the guide has moved on since the choices were saved", %{child: child} do
       id = DaySchedules.guide_id(Phase.for_child(child))
 
-      refute effective(child, %DaySchedule{guide_id: id}).stale?
-      assert effective(child, %DaySchedule{guide_id: "newborn"}).stale?
+      refute effective(child, %DaySchedule{nap_count: 3, guide_id: id}).stale?
+      assert effective(child, %DaySchedule{nap_count: 3, guide_id: "newborn"}).stale?
+      # A row kept only for its dismissed suggestions has no choices to review.
+      refute effective(child, %DaySchedule{guide_id: "newborn"}).stale?
     end
   end
 
@@ -210,6 +212,109 @@ defmodule Trygg.Sleep.DaySchedulesTest do
       end
 
       _ = scope
+    end
+  end
+
+  describe "accept/3 and dismiss/3" do
+    setup %{scope: scope} do
+      %{child: child_of_age(scope, 100)}
+    end
+
+    test "accepting lays the change over what's set and notes it", %{scope: scope, child: child} do
+      {:ok, _} = DaySchedules.save(scope, child, %{wake_minutes: 400, wake_windows: [80]})
+
+      suggestion = %{id: :nap_count, title: "Plan 3 naps a day", change: %{nap_count: 3}}
+      assert {:ok, saved} = DaySchedules.accept(scope, child, suggestion)
+
+      assert %{wake_minutes: 400, wake_windows: [80], nap_count: 3} = saved
+      assert [%{"id" => "nap_count", "title" => "Plan 3 naps a day", "on" => on}] = saved.history
+      assert on == Date.to_iso8601(Trygg.Families.Child.local_today(child))
+    end
+
+    test "accepting works from nothing, and a bad change is refused", %{
+      scope: scope,
+      child: child
+    } do
+      assert {:ok, %{nap_count: 2}} =
+               DaySchedules.accept(scope, child, %{
+                 id: :nap_count,
+                 title: "t",
+                 change: %{nap_count: 2}
+               })
+
+      assert {:error, _} =
+               DaySchedules.accept(scope, child, %{
+                 id: :nap_count,
+                 title: "t",
+                 change: %{nap_count: 9}
+               })
+    end
+
+    test "history keeps the latest ten", %{scope: scope, child: child} do
+      for n <- 1..12 do
+        {:ok, _} =
+          DaySchedules.accept(scope, child, %{
+            id: :bedtime_earlier,
+            title: "t#{n}",
+            change: %{bedtime_minutes: 1100 + n}
+          })
+      end
+
+      assert %{history: history} = DaySchedules.get(scope, child)
+      assert length(history) == 10
+      assert List.last(history)["title"] == "t12"
+    end
+
+    test "dismissing remembers the key without choosing anything", %{scope: scope, child: child} do
+      assert {:ok, saved} = DaySchedules.dismiss(scope, child, "nap_count:3")
+      today = Date.to_iso8601(Trygg.Families.Child.local_today(child))
+
+      assert saved.dismissed == %{"nap_count:3" => today}
+      assert DaySchedule.empty?(saved)
+
+      effective = DaySchedules.effective(child, Phase.for_child(child), saved)
+      refute effective.customized?
+      refute effective.stale?
+    end
+
+    test "saving the form keeps dismissals and history; going back to the guide clears them", %{
+      scope: scope,
+      child: child
+    } do
+      {:ok, _} = DaySchedules.dismiss(scope, child, "nap_count:3")
+
+      {:ok, _} =
+        DaySchedules.accept(scope, child, %{id: :nap_count, title: "t", change: %{nap_count: 3}})
+
+      {:ok, saved} = DaySchedules.save(scope, child, %{wake_minutes: 400})
+      assert saved.dismissed != %{}
+      assert length(saved.history) == 1
+
+      # Blanking every choice keeps the row for what it remembers.
+      assert {:ok, %DaySchedule{nap_count: nil}} = DaySchedules.save(scope, child, %{})
+
+      {:ok, nil} = DaySchedules.clear(scope, child)
+      assert DaySchedules.get(scope, child) == nil
+    end
+
+    test "old dismissals are dropped when a new one is added", %{scope: scope, child: child} do
+      {:ok, _} = DaySchedules.dismiss(scope, child, "old:1")
+      Repo.update_all(DaySchedule, set: [dismissed: %{"old:1" => "2026-01-01"}])
+
+      {:ok, saved} = DaySchedules.dismiss(scope, child, "new:2")
+      assert Map.keys(saved.dismissed) == ["new:2"]
+    end
+
+    test "viewers can't" do
+      %{child: child, member_scope: viewer} = shared_child_fixture(:viewer)
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        DaySchedules.dismiss(viewer, child, "k")
+      end
+
+      assert_raise Trygg.Families.NotAuthorizedError, fn ->
+        DaySchedules.accept(viewer, child, %{id: :nap_count, title: "t", change: %{nap_count: 2}})
+      end
     end
   end
 

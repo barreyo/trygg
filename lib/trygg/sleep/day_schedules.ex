@@ -24,9 +24,10 @@ defmodule Trygg.Sleep.DaySchedules do
   alias Trygg.Families
   alias Trygg.Families.Child
   alias Trygg.Repo
-  alias Trygg.Sleep.{AgeGuide, DaySchedule, Phase, Schedules}
+  alias Trygg.Sleep.{AgeGuide, DaySchedule, Phase, ScheduleCoach, Schedules}
 
   @default_wake 7 * 60
+  @history_limit 10
 
   @doc "The child's saved schedule, or `nil` when they follow the guide as it is. Requires `:viewer`."
   def get(%Scope{} = scope, %Child{} = child) do
@@ -40,9 +41,10 @@ defmodule Trygg.Sleep.DaySchedules do
   dropped. Returns `{:ok, schedule | nil}` or `{:error, changeset}`. Requires
   `:caregiver`.
   """
-  def save(%Scope{} = scope, %Child{} = child, attrs) do
+  def save(%Scope{} = scope, %Child{} = child, attrs, opts \\ []) do
     Families.authorize!(scope, child, :caregiver)
     guide_id = guide_id(Phase.for_child(child))
+    existing = fetch(child)
 
     # Saving replaces: what `attrs` leaves out goes back to the guide.
     attrs =
@@ -58,15 +60,19 @@ defmodule Trygg.Sleep.DaySchedules do
       |> Map.put(:guide_id, guide_id)
 
     changeset =
-      (fetch(child) || %DaySchedule{child_id: child.id})
+      (existing || %DaySchedule{child_id: child.id})
       |> DaySchedule.changeset(attrs)
       |> Ecto.Changeset.put_change(:updated_by_id, scope.user.id)
+      |> add_history(opts[:history], child)
+
+    applied = Ecto.Changeset.apply_changes(changeset)
 
     cond do
       not changeset.valid? ->
         {:error, %{changeset | action: :validate}}
 
-      DaySchedule.empty?(Ecto.Changeset.apply_changes(changeset)) ->
+      # Nothing chosen and nothing remembered: back to the guide.
+      DaySchedule.empty?(applied) and applied.dismissed == %{} and applied.history == [] ->
         clear(scope, child)
 
       true ->
@@ -75,6 +81,19 @@ defmodule Trygg.Sleep.DaySchedules do
           {:ok, schedule}
         end
     end
+  end
+
+  defp add_history(changeset, nil, _child), do: changeset
+
+  defp add_history(changeset, %{id: id, title: title}, child) do
+    entry = %{
+      "on" => Date.to_iso8601(Child.local_today(child)),
+      "id" => Atom.to_string(id),
+      "title" => title
+    }
+
+    history = Ecto.Changeset.get_field(changeset, :history) ++ [entry]
+    Ecto.Changeset.put_change(changeset, :history, Enum.take(history, -@history_limit))
   end
 
   @doc "Drops the child's choices so the day follows the guide again. Requires `:caregiver`."
@@ -103,6 +122,66 @@ defmodule Trygg.Sleep.DaySchedules do
           Families.broadcast(child.id, {:day_schedule, :saved, schedule})
           {:ok, schedule}
         end
+    end
+  end
+
+  @doc """
+  Applies a suggestion from `Trygg.Sleep.ScheduleCoach` on top of what's set, and
+  notes it in the schedule's history. Requires `:caregiver`.
+  """
+  def accept(%Scope{} = scope, %Child{} = child, %{change: change} = suggestion) do
+    Families.authorize!(scope, child, :caregiver)
+
+    current =
+      case fetch(child) do
+        nil ->
+          %{}
+
+        schedule ->
+          Map.take(schedule, [
+            :wake_minutes,
+            :bedtime_minutes,
+            :nap_count,
+            :wake_windows,
+            :nap_lengths
+          ])
+      end
+
+    save(scope, child, Map.merge(current, change), history: suggestion)
+  end
+
+  @doc """
+  Turns a suggestion down (by its `key`) for `Trygg.Sleep.ScheduleCoach.dismiss_days/0`
+  days. A different suggestion on the same subject has a different key and
+  still shows. Requires `:caregiver`.
+  """
+  def dismiss(%Scope{} = scope, %Child{} = child, key) when is_binary(key) do
+    Families.authorize!(scope, child, :caregiver)
+    today = Child.local_today(child)
+
+    existing =
+      fetch(child) ||
+        %DaySchedule{child_id: child.id, guide_id: guide_id(Phase.for_child(child))}
+
+    keep = ScheduleCoach.dismiss_days()
+
+    dismissed =
+      existing.dismissed
+      |> Enum.filter(fn {_key, on} ->
+        case Date.from_iso8601(on) do
+          {:ok, date} -> Date.diff(today, date) < keep
+          _ -> false
+        end
+      end)
+      |> Map.new()
+      |> Map.put(key, Date.to_iso8601(today))
+
+    with {:ok, schedule} <-
+           existing
+           |> Ecto.Changeset.change(dismissed: dismissed, updated_by_id: scope.user.id)
+           |> Repo.insert_or_update() do
+      Families.broadcast(child.id, {:day_schedule, :saved, schedule})
+      {:ok, schedule}
     end
   end
 
@@ -147,6 +226,7 @@ defmodule Trygg.Sleep.DaySchedules do
 
   def effective(%Child{} = child, %{age_days: age_days} = phase, schedule, inputs) do
     pins = schedule || %DaySchedule{}
+    customized? = not is_nil(schedule) and not DaySchedule.empty?(schedule)
     id = guide_id(phase)
 
     wake =
@@ -158,8 +238,8 @@ defmodule Trygg.Sleep.DaySchedules do
 
     base = %{
       guide_id: id,
-      stale?: not is_nil(pins.guide_id) and pins.guide_id != id,
-      customized?: not is_nil(schedule),
+      stale?: customized? and pins.guide_id != id,
+      customized?: customized?,
       wake: wake
     }
 

@@ -170,6 +170,92 @@ defmodule TryggWeb.SleepScheduleLiveTest do
     end
   end
 
+  describe "suggestions" do
+    # Three naps a day with long wake windows against the 3–4 month guide's four
+    # naps and 75–90 minute windows: the log has something to say.
+    @model %{wake: 420, ww: [95, 120, 140, 170], nap: [75, 80, 60]}
+
+    setup %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+
+      child =
+        child_fixture(scope, %{
+          birth_date: Date.add(Date.utc_today(), -112),
+          day_start: ~T[06:00:00],
+          night_start: ~T[18:00:00]
+        })
+
+      %{conn: conn, scope: scope, child: child}
+    end
+
+    defp log_a_fortnight(child) do
+      Trygg.SleepSimulator.generate(child, Date.utc_today(), 14,
+        model: fn _ -> @model end,
+        jitter: :low,
+        seed: 3
+      )
+    end
+
+    test "wait for a week of log", %{conn: conn, child: child} do
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
+
+      assert has_element?(lv, "#suggestions-waiting")
+      refute has_element?(lv, "#schedule-suggestions li")
+    end
+
+    test "point out what the log shows, and applying one changes the schedule", %{
+      conn: conn,
+      scope: scope,
+      child: child
+    } do
+      log_a_fortnight(child)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
+
+      assert has_element?(lv, "#suggestion-nap_count")
+      assert has_element?(lv, "#suggestion-wake_windows")
+      refute has_element?(lv, "#suggestions-waiting")
+      assert DaySchedules.get(scope, child) == nil
+
+      lv |> element("#suggestion-nap_count-accept") |> render_click()
+
+      assert %{nap_count: 3, history: [%{"id" => "nap_count"}]} = DaySchedules.get(scope, child)
+      refute has_element?(lv, "#suggestion-nap_count")
+      assert has_element?(lv, "#schedule-nap-3")
+      refute has_element?(lv, "#schedule-nap-4")
+      assert has_element?(lv, "#suggestion-history", "Plan 3 naps a day")
+    end
+
+    test "can be turned down and stay away", %{conn: conn, scope: scope, child: child} do
+      log_a_fortnight(child)
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
+
+      lv |> element("#suggestion-nap_count-dismiss") |> render_click()
+      refute has_element?(lv, "#suggestion-nap_count")
+
+      assert %{dismissed: %{"nap_count:3" => _}} = DaySchedules.get(scope, child)
+      # Turning one down chooses nothing: the day is still the guide's.
+      assert has_element?(lv, "#schedule-guide-label", "the guide")
+
+      {:ok, lv, _html} = live_loaded(conn, ~p"/c/#{child}/sleep/schedule")
+      refute has_element?(lv, "#suggestion-nap_count")
+      assert has_element?(lv, "#suggestion-wake_windows")
+    end
+
+    test "viewers can read them but not act", %{conn: conn, scope: owner, child: child} do
+      log_a_fortnight(child)
+      viewer = user_fixture()
+      membership_fixture(child, viewer, :viewer)
+
+      {:ok, lv, _html} = live_loaded(log_in_user(conn, viewer), ~p"/c/#{child}/sleep/schedule")
+      assert has_element?(lv, "#suggestion-nap_count")
+      refute has_element?(lv, "#suggestion-nap_count-accept")
+
+      # A crafted event does nothing.
+      render_click(lv, "accept", %{"id" => "nap_count"})
+      assert DaySchedules.get(owner, child) == nil
+    end
+  end
+
   describe "viewers" do
     test "see the day but not the form", %{conn: conn} do
       %{owner_scope: owner, child: child, member: member} = shared_child_fixture(:viewer)
