@@ -10,7 +10,7 @@ defmodule Trygg.Sleep.ScheduleCoachTest do
   # window 19:00–20:00, wake windows 75–120).
   defp child, do: %Child{birth_date: Date.add(Date.utc_today(), -100), timezone: "Etc/UTC"}
 
-  defp insights(opts \\ []) do
+  defp insights(opts) do
     %{
       ready?: Keyword.get(opts, :ready?, true),
       sample_days: Keyword.get(opts, :sample_days, 14),
