@@ -141,6 +141,87 @@ defmodule TryggWeb.SleepScheduleComponents do
   end
 
   @doc """
+  What the log suggests changing, for a caregiver to apply or turn down. `coach`
+  is `Trygg.Sleep.ScheduleCoach.suggest/1`'s result, `history` the accepted ones.
+  """
+  attr :coach, :map, required: true
+  attr :history, :list, default: []
+  attr :can_write, :boolean, required: true
+
+  def schedule_suggestions_panel(assigns) do
+    ~H"""
+    <section id="schedule-suggestions" class={panel_class()}>
+      <h2 class={heading_class()}>Suggestions</h2>
+
+      <p :if={!@coach.ready?} id="suggestions-waiting" class="text-sm opacity-80">
+        After about a week of logged sleep, changes the log points to show up here. Nothing changes
+        unless you apply it.
+      </p>
+
+      <p :if={@coach.hold} id="suggestions-hold" class="text-sm opacity-80">
+        {hold_text(@coach.hold.reason)}
+      </p>
+
+      <p
+        :if={@coach.ready? and !@coach.hold and @coach.suggestions == []}
+        id="suggestions-none"
+        class="text-sm opacity-80"
+      >
+        The schedule matches what they've been doing. Nothing to change.
+      </p>
+
+      <ul :if={@coach.suggestions != []} class="space-y-3">
+        <li
+          :for={s <- @coach.suggestions}
+          id={"suggestion-#{s.id}"}
+          class="rounded-box border border-base-300 bg-base-100 p-3"
+        >
+          <p class="font-semibold leading-tight">{s.title}</p>
+          <p class="mt-1 text-sm opacity-80">{s.detail}</p>
+          <div :if={@can_write} class="mt-2 flex gap-2">
+            <.button
+              id={"suggestion-#{s.id}-accept"}
+              phx-click="accept"
+              phx-value-id={s.id}
+              size="sm"
+              variant="primary"
+            >
+              Apply
+            </.button>
+            <.button
+              id={"suggestion-#{s.id}-dismiss"}
+              phx-click="dismiss"
+              phx-value-id={s.id}
+              size="sm"
+            >
+              Not now
+            </.button>
+          </div>
+        </li>
+      </ul>
+
+      <details :if={@history != []} id="suggestion-history" class="fold mt-3">
+        <summary class="cursor-pointer text-sm font-semibold text-primary">Applied before</summary>
+        <ul class="mt-1 space-y-0.5 text-sm">
+          <li :for={entry <- Enum.reverse(@history)}>
+            <span class="tabular-nums opacity-70">{entry["on"]}</span>
+            {entry["title"]}
+          </li>
+        </ul>
+      </details>
+    </section>
+    """
+  end
+
+  defp hold_text(:clock_change),
+    do:
+      "The clocks change soon. Hold the schedule as it is until you're through it; the clock-change planner in Help has the steps."
+
+  defp hold_text(:rough_patch),
+    do:
+      "It looks like a rough patch around a common regression age. Changing the day now would mistake a blip for a pattern, so suggestions wait until things settle."
+
+  @doc """
   The form for the family's choices. `form` is built from the params (see
   `Trygg.Sleep.DaySchedules.parse_params/1`); blanks follow the guide.
   """

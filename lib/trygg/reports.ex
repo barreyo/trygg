@@ -337,13 +337,17 @@ defmodule Trygg.Reports do
   @doc """
   The child's sleep day for the Schedule page: what the family has chosen laid
   over the guide for their age (`Trygg.Sleep.DaySchedules.effective/4`), with
-  today's wake-up and the usual wake-up and bedtime from the log feeding it.
-  Returns `%{phase, schedule, effective}` (`effective` is `nil` without a birth
-  date). Requires `:viewer`.
+  today's wake-up and the usual wake-up and bedtime from the log feeding it, and
+  the changes the log suggests (`Trygg.Sleep.ScheduleCoach`).
+
+  Returns `%{phase, schedule, effective, coach}` (`effective` is `nil` without a
+  birth date; `coach` is `ScheduleCoach.suggest/1`'s `%{ready?, hold, suggestions}`).
+  Requires `:viewer`.
   """
   def sleep_schedule(%Scope{} = scope, %Child{} = child, now \\ DateTime.utc_now()) do
     Families.authorize!(scope, child, :viewer)
     now = DateTime.truncate(now, :second)
+    today = Child.local_today(child)
 
     phase = Trygg.Sleep.Phase.for_child(child)
     s = summary(scope, child, @outlook_window, now)
@@ -356,11 +360,31 @@ defmodule Trygg.Reports do
       observed_bed: s.bedtime && s.bedtime.median_minutes && round(s.bedtime.median_minutes)
     }
 
-    %{
-      phase: phase,
-      schedule: schedule,
-      effective: Trygg.Sleep.DaySchedules.effective(child, phase, schedule, inputs)
-    }
+    effective = Trygg.Sleep.DaySchedules.effective(child, phase, schedule, inputs)
+
+    {findings, _naps} =
+      setback_checks(
+        scope,
+        child,
+        now,
+        today,
+        phase && phase.age_days,
+        s,
+        nights(scope, child, now, count: 14)
+      )
+
+    coach =
+      Trygg.Sleep.ScheduleCoach.suggest(%{
+        effective: effective,
+        schedule: schedule,
+        insights: s,
+        findings: Enum.map(findings, & &1.id),
+        today: today,
+        dismissed: (schedule && schedule.dismissed) || %{},
+        history: (schedule && schedule.history) || []
+      })
+
+    %{phase: phase, schedule: schedule, effective: effective, coach: coach}
   end
 
   @doc """

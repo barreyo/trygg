@@ -133,6 +133,50 @@ defmodule TryggWeb.SleepScheduleLive do
     end
   end
 
+  # Suggestions are looked up afresh by id, so what's applied is what the log
+  # says now, never what a stale page or a crafted event claims.
+  def handle_event("accept", %{"id" => id}, socket) do
+    with true <- socket.assigns.can_write,
+         %{} = suggestion <- find_suggestion(socket, id) do
+      case DaySchedules.accept(
+             socket.assigns.current_scope,
+             socket.assigns.current_child,
+             suggestion
+           ) do
+        {:ok, _} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Applied: #{suggestion.title}.")
+           |> refresh(reset_form: true)}
+
+        {:error, changeset} ->
+          {:noreply, put_flash(socket, :error, error_message(changeset))}
+      end
+    else
+      _ -> {:noreply, refresh(socket)}
+    end
+  end
+
+  def handle_event("dismiss", %{"id" => id}, socket) do
+    with true <- socket.assigns.can_write,
+         %{} = suggestion <- find_suggestion(socket, id),
+         {:ok, _} <-
+           DaySchedules.dismiss(
+             socket.assigns.current_scope,
+             socket.assigns.current_child,
+             suggestion.key
+           ) do
+      {:noreply, refresh(socket)}
+    else
+      _ -> {:noreply, refresh(socket)}
+    end
+  end
+
+  defp find_suggestion(socket, id) do
+    %{data: data} = fetch(socket.assigns.current_scope, socket.assigns.current_child)
+    Enum.find(data.coach.suggestions, &(Atom.to_string(&1.id) == id))
+  end
+
   defp error_message(changeset) do
     changeset
     |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
@@ -196,6 +240,11 @@ defmodule TryggWeb.SleepScheduleLive do
               <.schedule_day_panel
                 eff={@data.effective}
                 tz={@current_child.timezone}
+                can_write={@can_write}
+              />
+              <.schedule_suggestions_panel
+                coach={@data.coach}
+                history={(@data.schedule && @data.schedule.history) || []}
                 can_write={@can_write}
               />
             </:left>
